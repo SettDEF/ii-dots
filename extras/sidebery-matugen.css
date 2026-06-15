@@ -1,0 +1,833 @@
+/* ==========================================================================
+   Sidebery custom CSS — uses PopFox / matugen --md-sys-color-* variables.
+   Paste into:  Sidebery → Settings → Styles editor → Sidebar
+   --------------------------------------------------------------------------
+   Targets the DOM as it actually renders in this setup:
+     .PinnedTabsBar  .tab-wrapper  .Tab[data-pin="true"]
+     .Tab            (ordinary tab)
+     .NavigationBar  .panel-btn   .settings-btn
+     .CtxMenu
+     .bottom-space   .NewTabBar
+   ========================================================================== */
+
+:root {
+  --rounding-tab:     12px;
+  --rounding-pin:     16px;
+  --rounding-pill:    9999px;
+  --rounding-popup:   12px;
+  --tab-h:            34px;
+  --tab-pad-h:        12px;
+  --tab-gap:          3px;
+  --indent:           16px;
+  --easing:           cubic-bezier(0.2, 0.0, 0, 1.0);
+  --dur:              160ms;
+
+  --pin-cols:         3;
+  --pin-gap:          6px;
+  --pin-margin:       8px;
+
+  /* Override Sidebery's own pinned-tab size variables */
+  --tabs-pinned-width:  64px !important;
+  --tabs-pinned-height: 64px !important;
+}
+#root.root,
+.Sidebar {
+  --tabs-pinned-width:  64px !important;
+  --tabs-pinned-height: 64px !important;
+  /* Disable default Sidebery hover/active/selected overlays to prevent overlapping opacity */
+  --tabs-hover-bg: transparent !important;
+  --tabs-activated-bg: transparent !important;
+  --tabs-selected-bg: transparent !important;
+  --frame-el-overlay-hover-bg: transparent !important;
+  --frame-el-overlay-selected-bg: transparent !important;
+  --tabs-bg-hover: transparent !important;
+  --tabs-bg-active: transparent !important;
+}
+
+/* ── Frame ─────────────────────────────────────────────────────────── */
+#root,
+.Sidebar,
+body {
+  background: var(--md-sys-color-surface) !important;
+  color: var(--md-sys-color-on-surface) !important;
+  font-family: "Inter", "Roboto", "Noto Sans", system-ui, sans-serif !important;
+  font-size: 13px !important;
+}
+
+/* ── Top nav bar ───────────────────────────────────────────────────── */
+.NavigationBar {
+  background: var(--md-sys-color-surface-container-low) !important;
+  border-bottom: 0 !important;
+  padding: 6px !important;
+  box-shadow: none !important;
+}
+.NavigationBar .panel-btn,
+.NavigationBar .settings-btn {
+  border-radius: var(--rounding-pill) !important;
+  width: 32px !important;
+  height: 32px !important;
+  margin: 0 2px !important;
+  background: transparent !important;
+  color: var(--md-sys-color-on-surface) !important;
+  transition: background var(--dur) var(--easing),
+              color var(--dur) var(--easing) !important;
+}
+.NavigationBar .panel-btn:hover,
+.NavigationBar .settings-btn:hover {
+  background: var(--md-sys-color-surface-container-high) !important;
+}
+.NavigationBar .panel-btn[data-active="true"] {
+  background: var(--md-sys-color-secondary-container) !important;
+  color: var(--md-sys-color-on-secondary-container) !important;
+}
+.NavigationBar .update-badge { background: var(--md-sys-color-tertiary) !important; }
+.NavigationBar .err-badge    { background: var(--md-sys-color-error)    !important; }
+.NavigationBar .ok-badge     { background: var(--md-sys-color-primary)  !important; }
+
+/* ── Pinned-tabs bar — Quickshell QuickToggle look, dynamic sizing ─── */
+/* The visual chip is the .body element inside the Tab. We size the
+   .tab-wrapper (3-column grid), let the Tab inside fill it, and style
+   .body as the actual chip surface. */
+#root .PinnedTabsBar {
+  background: transparent !important;
+  background-color: transparent !important;
+  border-bottom: 0 !important;
+  padding: var(--pin-margin) !important;
+  margin: 0 !important;
+  box-shadow: none !important;
+  display: grid !important;
+  grid-template-columns: repeat(3, 1fr) !important;
+  gap: var(--pin-gap) !important;
+  /* No scrolling — bar grows to fit all pinned tabs */
+  max-height: none !important;
+  height: auto !important;
+  overflow: visible !important;
+  overscroll-behavior: auto !important;
+}
+#root .PinnedTabsBar::-webkit-scrollbar { display: none !important; }
+
+/* Wrapper takes a grid cell, no styling itself */
+#root .PinnedTabsBar .tab-wrapper {
+  width: 100% !important;
+  height: 56px !important;
+  background: transparent !important;
+  border: 0 !important;
+  padding: 0 !important;
+  margin: 0 !important;
+}
+
+/* The Tab fills the wrapper */
+#root .PinnedTabsBar .tab-wrapper .Tab[data-pin="true"],
+#root .PinnedTabsBar .Tab[data-pin="true"] {
+  width: 100% !important;
+  height: 100% !important;
+  min-width: 0 !important;
+  min-height: 0 !important;
+  max-height: none !important;
+  background: transparent !important;
+  border: 0 !important;
+  box-shadow: none !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  position: relative !important;
+}
+
+/* The .body is the actual chip — this is what gets the colour and shape */
+#root .PinnedTabsBar .Tab[data-pin="true"] > .body,
+#root .PinnedTabsBar .Tab[data-pin="true"] .body {
+  width: 100% !important;
+  height: 100% !important;
+  border-radius: var(--rounding-pill) !important;
+  background: var(--md-sys-color-surface-container-high) !important;
+  background-color: var(--md-sys-color-surface-container-high) !important;
+  color: var(--md-sys-color-on-surface) !important;
+  border: 0 !important;
+  box-shadow: none !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  overflow: hidden !important;
+  position: relative !important;
+  transition:
+    background var(--dur) var(--easing),
+    border-radius var(--dur) var(--easing),
+    color var(--dur) var(--easing),
+    transform var(--dur) var(--easing) !important;
+}
+
+/* Hover */
+#root .PinnedTabsBar .Tab[data-pin="true"]:hover > .body {
+  background: var(--md-sys-color-surface-container-highest) !important;
+}
+
+/* Active — primary fill, rounded-large (matches QuickToggle on-state) */
+#root .PinnedTabsBar .Tab[data-pin="true"][data-active="true"] > .body {
+  background: var(--md-sys-color-primary) !important;
+  color: var(--md-sys-color-on-primary) !important;
+  border-radius: var(--rounding-pin) !important;
+}
+#root .PinnedTabsBar .Tab[data-pin="true"][data-active="true"]:active > .body {
+  border-radius: var(--rounding-tab) !important;
+}
+
+/* Selected (multi-select) */
+#root .PinnedTabsBar .Tab[data-pin="true"][data-selected="true"] > .body {
+  background: var(--md-sys-color-secondary-container) !important;
+  color: var(--md-sys-color-on-secondary-container) !important;
+  border-radius: var(--rounding-pin) !important;
+}
+
+/* Discarded */
+#root .PinnedTabsBar .Tab[data-pin="true"][data-discarded="true"] > .body {
+  opacity: 0.6 !important;
+}
+
+/* Hide title / close / context — pinned tabs are icon-only chips */
+#root .PinnedTabsBar .Tab[data-pin="true"] .t-box,
+#root .PinnedTabsBar .Tab[data-pin="true"] .title,
+#root .PinnedTabsBar .Tab[data-pin="true"] .close,
+#root .PinnedTabsBar .Tab[data-pin="true"] .ctx {
+  display: none !important;
+}
+
+/* Larger, centred favicon */
+#root .PinnedTabsBar .Tab[data-pin="true"] .fav,
+#root .PinnedTabsBar .Tab[data-pin="true"] .body > .fav {
+  width: 24px !important;
+  height: 24px !important;
+  margin: 0 !important;
+  position: static !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+}
+#root .PinnedTabsBar .Tab[data-pin="true"] .fav-icon {
+  width: 22px !important;
+  height: 22px !important;
+}
+
+/* Audio/mute glyph */
+#root .PinnedTabsBar .Tab[data-pin="true"][data-audible="true"] svg.-loud,
+#root .PinnedTabsBar .Tab[data-pin="true"][data-muted="true"]   svg.-mute {
+  color: var(--md-sys-color-tertiary) !important;
+}
+
+/* Hide the tab-update dot we don't want on chips */
+#root .PinnedTabsBar .Tab[data-pin="true"] .badge { display: none !important; }
+
+/* dynamic widening when the trailing row is incomplete */
+.PinnedTabsBar:has(.tab-wrapper:nth-child(3n + 1):last-child) .tab-wrapper:last-child {
+  grid-column: span 3 !important;
+}
+.PinnedTabsBar:has(.tab-wrapper:nth-child(3n + 2):last-child) .tab-wrapper:last-child {
+  grid-column: span 2 !important;
+}
+
+/* Hover */
+.PinnedTabsBar .Tab[data-pin="true"]:hover {
+  background: transparent !important;
+  background-color: transparent !important;
+  box-shadow: none !important;
+}
+.PinnedDock .PinnedTab:hover {
+  background: var(--md-sys-color-surface-container-highest) !important;
+}
+
+/* Active — primary fill, larger rounded (matches QuickToggle on-state) */
+.PinnedTabsBar .Tab[data-pin="true"][data-active="true"],
+.PinnedTabsBar .Tab[data-pin="true"][data-active="true"]:active {
+  background: transparent !important;
+  background-color: transparent !important;
+  box-shadow: none !important;
+}
+.PinnedDock .PinnedTab[data-active="true"] {
+  background: var(--md-sys-color-primary) !important;
+  color: var(--md-sys-color-on-primary) !important;
+  border-radius: var(--rounding-pin) !important;
+}
+.PinnedDock .PinnedTab[data-active="true"]:active {
+  border-radius: var(--rounding-tab) !important;
+}
+
+/* Selected (multi-select) */
+.PinnedTabsBar .Tab[data-pin="true"][data-selected="true"] {
+  background: transparent !important;
+  background-color: transparent !important;
+  box-shadow: none !important;
+}
+.PinnedDock .PinnedTab[data-selected="true"] {
+  background: var(--md-sys-color-secondary-container) !important;
+  color: var(--md-sys-color-on-secondary-container) !important;
+  border-radius: var(--rounding-pin) !important;
+}
+
+/* Discarded / loading */
+.PinnedTabsBar .Tab[data-pin="true"][data-discarded="true"] { opacity: 0.6 !important; }
+
+/* Hide title / close / context stripe — pinned tabs are icon-only chips */
+.PinnedTabsBar .Tab[data-pin="true"] .t-box,
+.PinnedTabsBar .Tab[data-pin="true"] .title,
+.PinnedTabsBar .Tab[data-pin="true"] .close,
+.PinnedTabsBar .Tab[data-pin="true"] .ctx,
+.PinnedDock .PinnedTab .title,
+.PinnedDock .PinnedTab .close,
+.PinnedDock .PinnedTab .ctx { display: none !important; }
+
+/* Larger favicon */
+.PinnedTabsBar .Tab[data-pin="true"] .fav,
+.PinnedDock .PinnedTab .fav {
+  width: 26px !important;
+  height: 26px !important;
+  margin: 0 !important;
+}
+
+/* Audio / mute glyph */
+.PinnedTabsBar .Tab[data-pin="true"][data-audible="true"] svg.-loud,
+.PinnedTabsBar .Tab[data-pin="true"][data-muted="true"]   svg.-mute,
+.PinnedDock .PinnedTab[data-audible="true"] .audio-badge.-loud,
+.PinnedDock .PinnedTab[data-muted="true"]   .audio-badge.-mute {
+  color: var(--md-sys-color-tertiary) !important;
+}
+
+/* ── Tabs panel ────────────────────────────────────────────────────── */
+.TabsPanel { background: transparent !important; padding-top: 4px !important; }
+
+/* Hide the empty-panel placeholder cog/info that Sidebery shows behind
+   tabs (visible when the panel is configured but otherwise empty). */
+.PanelPlaceholder,
+.panel-placeholder,
+.panel-cfg,
+.panel-setup,
+.panel-ph-icon,
+.panel-info,
+.empty-state,
+.tabs-panel-bg,
+.panel-bg,
+.panel-icon-bg {
+  display: none !important;
+}
+/* Kill the inset 1px highlight Sidebery puts on .container — that's the
+   thin spacer line that appears between the tab list and the new-tab btn. */
+#root .TabsPanel .container,
+#root .TabsPanel .scrollable,
+#root .TabsPanel .ScrollBox {
+  box-shadow: none !important;
+  border: 0 !important;
+  padding-bottom: 0 !important;
+}
+#root .new-tab-btns {
+  box-shadow: none !important;
+  border: 0 !important;
+}
+
+/* ── Ordinary tabs ─────────────────────────────────────────────────── */
+/* DOM (no .body wrapper):
+     .Tab
+       .flash-fx
+       .fav         (with .fav-icon, .badge, .progress-spinner inside)
+       .t-box
+         .title
+       .close
+         .close-icon
+*/
+.Tab:not([data-pin="true"]) {
+  position: relative !important;
+  width: auto !important;
+  height: var(--tab-h) !important;
+  margin: var(--tab-gap) 6px !important;
+  border-radius: var(--rounding-tab) !important;
+  background: transparent !important;
+  color: var(--md-sys-color-on-surface) !important;
+  display: flex !important;
+  align-items: center !important;
+  padding: 0 32px 0 12px !important;   /* adjusted right padding for close button placement */
+  gap: 10px !important;
+  transition: background var(--dur) var(--easing),
+              color var(--dur) var(--easing),
+              transform var(--dur) var(--easing) !important;
+}
+
+/* Flash-fx is a load animation overlay — keep behind everything */
+.Tab:not([data-pin="true"]) > .flash-fx {
+  position: absolute !important;
+  inset: 0 !important;
+  z-index: 0 !important;
+  pointer-events: none !important;
+}
+
+.Tab .body,
+.Tab:hover .body,
+.Tab:hover > .body,
+.Tab[data-active="true"] .body,
+.Tab[data-active="true"] > .body,
+.Tab[data-selected="true"] .body,
+.Tab[data-selected="true"] > .body {
+  background: transparent !important;
+  background-color: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+}
+
+/* Favicon: fixed slot, never shifts based on audio/loading state */
+.Tab:not([data-pin="true"]) > .fav {
+  position: relative !important;
+  flex: 0 0 18px !important;
+  width: 18px !important;
+  height: 18px !important;
+  margin: 0 !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  z-index: 1 !important;
+}
+.Tab:not([data-pin="true"]) .fav-icon {
+  width: 16px !important;
+  height: 16px !important;
+}
+
+/* Audio glyph: small, in-line right after favicon */
+.Tab:not([data-pin="true"]) .audio {
+  flex: 0 0 14px !important;
+  width: 14px !important;
+  height: 14px !important;
+  margin: 0 !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+}
+.Tab:not([data-pin="true"]) .audio svg {
+  width: 14px !important;
+  height: 14px !important;
+}
+
+/* Title takes remaining space */
+.Tab:not([data-pin="true"]) > .t-box {
+  position: relative !important;
+  flex: 1 1 auto !important;
+  min-width: 0 !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  display: flex !important;
+  align-items: center !important;
+  overflow: hidden !important;
+  z-index: 1 !important;
+}
+.Tab:not([data-pin="true"]) .title {
+  flex: 1 1 auto !important;        /* grow so close gets shoved to the right */
+  min-width: 0 !important;
+  font-size: 13px !important;
+  line-height: 1.3 !important;
+  white-space: nowrap !important;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+}
+
+/* ── Hover & active states ────────────────────────────────────────────
+   Active tab        → bigger, full-width fill of the row.
+   Hover (any tab)   → full-width fill of the row. */
+
+/* Base transparent state for ordinary tabs */
+.Tab:not([data-pin="true"]),
+.Tab:not([data-pin="true"]):focus,
+.Tab:not([data-pin="true"]):focus-within {
+  background: transparent !important;
+  background-color: transparent !important;
+}
+
+/* Hover state — styled directly on the Tab container */
+.Tab:not([data-pin="true"]):hover {
+  background: var(--md-sys-color-surface-container-highest) !important;
+  background-color: var(--md-sys-color-surface-container-highest) !important;
+  transform: translateX(2px) !important;
+}
+
+/* Drag over highlight */
+.Tab:not([data-pin="true"])[data-drag-over="true"] {
+  background: transparent !important;
+  background-color: transparent !important;
+  outline: 2px solid var(--md-sys-color-primary) !important;
+  outline-offset: -2px !important;
+}
+
+/* The active tab keeps its full-width fill — re-assert it and override hover */
+.Tab:not([data-pin="true"])[data-active="true"],
+.Tab:not([data-pin="true"])[data-active="true"]:hover {
+  background: var(--md-sys-color-secondary-container) !important;
+  background-color: var(--md-sys-color-secondary-container) !important;
+}
+
+/* Active tab — full-width fill, distinctive container colour, no left bar */
+.Tab:not([data-pin="true"])[data-active="true"] {
+  background: var(--md-sys-color-secondary-container) !important;
+  color: var(--md-sys-color-on-secondary-container) !important;
+  font-weight: 600 !important;
+  box-shadow: none !important;
+  border-left: 0 !important;
+  border: 0 !important;
+}
+/* Hide every possible source of a left-edge bar */
+.Tab:not([data-pin="true"])[data-active="true"]::before,
+.Tab:not([data-pin="true"])[data-active="true"] .complete-fx,
+.Tab:not([data-pin="true"])[data-active="true"] .audio-badge,
+.Tab:not([data-pin="true"])[data-active="true"] .ctx,
+.Tab:not([data-pin="true"])[data-active="true"] .lvl-line,
+.Tab:not([data-pin="true"])[data-active="true"] .progress-bar,
+.Tab:not([data-pin="true"])[data-active="true"] .selected-fx {
+  display: none !important;
+  content: none !important;
+  background: transparent !important;
+  width: 0 !important;
+  border: 0 !important;
+}
+
+/* Children must sit above the ::after hover surface */
+.Tab:not([data-pin="true"]) .fav,
+.Tab:not([data-pin="true"]) .t-box,
+.Tab:not([data-pin="true"]) .close,
+.Tab:not([data-pin="true"]) .lvl-wrapper {
+  position: relative !important;
+  z-index: 1 !important;
+}
+
+.Tab:not([data-pin="true"])[data-selected="true"] {
+  background: var(--md-sys-color-primary-container) !important;
+  color: var(--md-sys-color-on-primary-container) !important;
+}
+
+.Tab[data-discarded="true"] .title {
+  color: var(--md-sys-color-outline) !important;
+  font-style: italic !important;
+}
+.Tab[data-pending="true"] .title  { opacity: 0.65 !important; }
+.Tab[data-loading="true"] .complete-fx { background: var(--md-sys-color-primary) !important; }
+.Tab[data-audible="true"] .audio.-loud,
+.Tab[data-muted="true"]   .audio.-mute { color: var(--md-sys-color-tertiary) !important; }
+.Tab[data-updated="true"] .title { color: var(--md-sys-color-primary) !important; }
+.Tab[data-unread="true"]  .title { font-weight: 600 !important; }
+
+/* Premium unread/updated tab dot indicator on the left edge */
+.Tab:not([data-pin="true"])[data-updated="true"]::after,
+.Tab:not([data-pin="true"])[data-unread="true"]::after {
+  content: "" !important;
+  position: absolute !important;
+  left: 4px !important;
+  top: 50% !important;
+  transform: translateY(-50%) !important;
+  width: 4px !important;
+  height: 4px !important;
+  background: var(--md-sys-color-primary) !important;
+  border-radius: var(--rounding-pill) !important;
+  transition: opacity var(--dur) var(--easing) !important;
+  z-index: 3 !important;
+}
+/* Hide the dot on active or hovered states to keep the UI clean */
+.Tab:not([data-pin="true"])[data-active="true"]::after,
+.Tab:not([data-pin="true"]):hover::after {
+  opacity: 0 !important;
+  pointer-events: none !important;
+}
+
+/* Sidebery puts .close as an absolute element overlaid on the title.
+   Force it to anchor to the right edge of the .Tab itself with explicit
+   coordinates — most reliable way regardless of inner DOM layout. */
+.Tab:not([data-pin="true"]) .close {
+  position: absolute !important;
+  right: 6px !important;
+  top: 50% !important;
+  left: auto !important;
+  bottom: auto !important;
+  transform: translateY(-50%) !important;
+  width: 20px !important;
+  height: 20px !important;
+  border-radius: var(--rounding-pill) !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  opacity: 0 !important;
+  cursor: pointer !important;
+  pointer-events: none !important;
+  z-index: 2 !important;
+  transition: opacity var(--dur) var(--easing),
+              background var(--dur) var(--easing),
+              color var(--dur) var(--easing) !important;
+}
+
+/* (Padding is now baked into .Tab itself — no .body wrapper exists.) */
+.Tab:not([data-pin="true"]) .close > svg,
+.Tab:not([data-pin="true"]) .close .close-icon {
+  width: 12px !important;
+  height: 12px !important;
+  /* Force the inner SVG to dead-center inside the 20×20 button. */
+  position: static !important;
+  top: auto !important;
+  left: auto !important;
+  right: auto !important;
+  bottom: auto !important;
+  transform: none !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  display: block !important;
+  flex: 0 0 auto !important;
+}
+.Tab:not([data-pin="true"]):hover .close,
+.Tab:not([data-pin="true"])[data-active="true"] .close {
+  opacity: 0.7 !important;
+  pointer-events: auto !important;
+}
+.Tab:not([data-pin="true"]) .close:hover {
+  background: var(--md-sys-color-surface-container-highest) !important;
+  color: var(--md-sys-color-error) !important;
+  opacity: 1 !important;
+  pointer-events: auto !important;
+}
+
+.Tab[data-lvl="0"] { margin-left: 6px !important; }
+.Tab[data-lvl="1"] .lvl-wrapper { margin-left: calc(var(--indent) * 1) !important; }
+.Tab[data-lvl="2"] .lvl-wrapper { margin-left: calc(var(--indent) * 2) !important; }
+.Tab[data-lvl="3"] .lvl-wrapper { margin-left: calc(var(--indent) * 3) !important; }
+.Tab[data-lvl="4"] .lvl-wrapper { margin-left: calc(var(--indent) * 4) !important; }
+.Tab[data-folded="true"] { font-style: italic !important; }
+.Tab[data-invisible="true"] { display: none !important; }
+
+.Tab .ctx { width: 3px !important; border-radius: 2px !important; }
+
+/* ── New-tab "+" button — sized exactly like a regular tab ─────────── */
+#root .new-tab-btns {
+  background: transparent !important;
+  border: 0 !important;
+  box-shadow: none !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  display: flex !important;
+  gap: 0 !important;
+}
+#root .new-tab-btns .new-tab-btn {
+  flex: 1 1 auto !important;
+  height: var(--tab-h) !important;
+  margin: var(--tab-gap) 6px !important;
+  padding: 0 !important;
+  border-radius: var(--rounding-tab) !important;
+  background: transparent !important;
+  color: var(--md-sys-color-on-surface) !important;
+  border: 0 !important;
+  box-shadow: none !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  cursor: pointer !important;
+  transition: background var(--dur) var(--easing),
+              color var(--dur) var(--easing) !important;
+}
+#root .new-tab-btns .new-tab-btn:hover {
+  background: var(--md-sys-color-surface-container) !important;
+}
+#root .new-tab-btns .new-tab-btn:active {
+  background: var(--md-sys-color-secondary-container) !important;
+  color: var(--md-sys-color-on-secondary-container) !important;
+}
+#root .new-tab-btns .new-tab-btn svg {
+  width: 16px !important;
+  height: 16px !important;
+}
+
+/* ── Empty space helpers (just inherit the frame colour) ───────────── */
+.bottom-space,
+.tab-space-filler,
+.bottom-bar-space,
+.TabsPanel .bottom-space,
+.TabsPanel .tab-space-filler,
+.scrollable .bottom-space,
+.scrollable .tab-space-filler {
+  background: transparent !important;
+  background-color: transparent !important;
+  border: 0 !important;
+  box-shadow: none !important;
+}
+
+/* ── BottomBar (trash / bookmarks / clock buttons at the bottom) ───── */
+#root .BottomBar {
+  background: var(--md-sys-color-surface-container-low) !important;
+  border-top: 0 !important;
+  padding: 8px 12px !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: space-around !important;
+  gap: 8px !important;
+}
+#root .BottomBar .tool-btn {
+  flex: 1 1 0 !important;
+  border-radius: var(--rounding-pill) !important;
+  width: auto !important;
+  height: 36px !important;
+  background: transparent !important;
+  color: var(--md-sys-color-on-surface) !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  cursor: pointer !important;
+  transition: background var(--dur) var(--easing),
+              color var(--dur) var(--easing),
+              opacity var(--dur) var(--easing) !important;
+}
+#root .BottomBar .tool-btn svg {
+  width: 18px !important;
+  height: 18px !important;
+}
+#root .BottomBar .tool-btn:hover {
+  background: var(--md-sys-color-surface-container-high) !important;
+}
+#root .BottomBar .tool-btn[data-disabled="true"] {
+  opacity: 1 !important;
+  color: var(--md-sys-color-outline) !important;
+  pointer-events: auto !important;
+  background: transparent !important;
+}
+#root .BottomBar .tool-btn[data-disabled="true"]:hover {
+  background: var(--md-sys-color-surface-container-high) !important;
+  color: var(--md-sys-color-on-surface) !important;
+}
+
+/* ── Context menu ──────────────────────────────────────────────────── */
+.CtxMenu {
+  background: var(--md-sys-color-surface-container-high) !important;
+  color: var(--md-sys-color-on-surface) !important;
+  border: 1px solid var(--md-sys-color-outline-variant) !important;
+  border-radius: var(--rounding-popup) !important;
+  padding: 4px !important;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45),
+              0 2px 6px rgba(0, 0, 0, 0.30) !important;
+}
+.CtxMenu .opt {
+  border-radius: 8px !important;
+  padding: 7px 10px !important;
+  font-size: 13px !important;
+  transition: background var(--dur) var(--easing),
+              color var(--dur) var(--easing) !important;
+}
+.CtxMenu .opt:hover { background: var(--md-sys-color-surface-container-highest) !important; }
+.CtxMenu .opt.-danger:hover,
+.CtxMenu .opt[data-danger="true"]:hover { color: var(--md-sys-color-error) !important; }
+.CtxMenu .icon-opt { padding: 6px !important; }
+.CtxMenu .badge {
+  background: var(--md-sys-color-secondary-container) !important;
+  color: var(--md-sys-color-on-secondary-container) !important;
+  border-radius: var(--rounding-pill) !important;
+  font-size: 11px !important;
+  padding: 1px 6px !important;
+}
+.CtxMenu .inline-group,
+.CtxMenu .list-group { border-color: var(--md-sys-color-outline-variant) !important; }
+
+/* ── Scrollbar ─────────────────────────────────────────────────────── */
+.ScrollBox, .scrollable {
+  scrollbar-width: thin !important;
+  scrollbar-color: var(--md-sys-color-outline-variant) transparent !important;
+}
+::-webkit-scrollbar { width: 6px !important; }
+::-webkit-scrollbar-track { background: transparent !important; }
+::-webkit-scrollbar-thumb {
+  background: var(--md-sys-color-outline-variant) !important;
+  border-radius: var(--rounding-pill) !important;
+}
+::-webkit-scrollbar-thumb:hover { background: var(--md-sys-color-outline) !important; }
+
+/* ── Confirm dialog / notifications ────────────────────────────────── */
+.confirm-overlay,
+.notification {
+  background: var(--md-sys-color-surface-container-high) !important;
+  color: var(--md-sys-color-on-surface) !important;
+  border: 1px solid var(--md-sys-color-outline-variant) !important;
+  border-radius: var(--rounding-popup) !important;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45) !important;
+}
+
+/* ── Lucide Icon Replacements (Premium Modern Look) ──────────────── */
+/* Hide default SVGs for styled UI buttons */
+#root .NavigationBar .settings-btn svg,
+#root .NavigationBar .panel-btn[data-type="create_panel"] svg,
+#root .NavigationBar .nav-item[data-type="create_panel"] svg,
+#root .new-tab-btns .new-tab-btn svg,
+#root .Tab:not([data-pin="true"]) .close > svg,
+#root .BottomBar .tool-btn svg {
+  display: none !important;
+}
+
+/* Set up mask rendering for pseudo-elements */
+#root .NavigationBar .settings-btn::before,
+#root .NavigationBar .panel-btn[data-type="create_panel"]::before,
+#root .NavigationBar .nav-item[data-type="create_panel"]::before,
+#root .new-tab-btns .new-tab-btn::before,
+#root .Tab:not([data-pin="true"]) .close::before,
+#root .BottomBar .tool-btn::before {
+  content: "" !important;
+  display: block !important;
+  background-color: currentColor !important;
+  -webkit-mask-size: cover !important;
+  mask-size: cover !important;
+  margin: auto !important;
+}
+
+/* Settings Cog Icon */
+#root .NavigationBar .settings-btn::before {
+  width: 16px !important;
+  height: 16px !important;
+  -webkit-mask: url("data:image/svg+xml;utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.1a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z'/%3E%3Ccircle cx='12' cy='12' r='3'/%3E%3C/svg%3E") no-repeat center !important;
+  mask: url("data:image/svg+xml;utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.1a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z'/%3E%3Ccircle cx='12' cy='12' r='3'/%3E%3C/svg%3E") no-repeat center !important;
+}
+
+/* Create Panel Button (Plus Sign) */
+#root .NavigationBar .panel-btn[data-type="create_panel"]::before,
+#root .NavigationBar .nav-item[data-type="create_panel"]::before {
+  width: 16px !important;
+  height: 16px !important;
+  -webkit-mask: url("data:image/svg+xml;utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M5 12h14'/%3E%3Cpath d='M12 5v14'/%3E%3C/svg%3E") no-repeat center !important;
+  mask: url("data:image/svg+xml;utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M5 12h14'/%3E%3Cpath d='M12 5v14'/%3E%3C/svg%3E") no-repeat center !important;
+}
+
+/* New Tab Button (Plus Sign) */
+#root .new-tab-btns .new-tab-btn::before {
+  width: 16px !important;
+  height: 16px !important;
+  -webkit-mask: url("data:image/svg+xml;utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M5 12h14'/%3E%3Cpath d='M12 5v14'/%3E%3C/svg%3E") no-repeat center !important;
+  mask: url("data:image/svg+xml;utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M5 12h14'/%3E%3Cpath d='M12 5v14'/%3E%3C/svg%3E") no-repeat center !important;
+}
+
+/* Tab Close Button (X Sign) */
+#root .Tab:not([data-pin="true"]) .close::before {
+  width: 12px !important;
+  height: 12px !important;
+  -webkit-mask: url("data:image/svg+xml;utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M18 6 6 18'/%3E%3Cpath d='m6 6 12 12'/%3E%3C/svg%3E") no-repeat center !important;
+  mask: url("data:image/svg+xml;utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M18 6 6 18'/%3E%3Cpath d='m6 6 12 12'/%3E%3C/svg%3E") no-repeat center !important;
+}
+
+/* Bottom Bar Icon Container Sizing */
+#root .BottomBar .tool-btn::before {
+  width: 18px !important;
+  height: 18px !important;
+}
+
+/* Bottom Bar - Trash/Closed Tabs Button */
+#root .BottomBar .tool-btn[data-action="trash"]::before,
+#root .BottomBar .tool-btn:nth-child(1)::before {
+  -webkit-mask: url("data:image/svg+xml;utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M3 6h18'/%3E%3Cpath d='M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6'/%3E%3Cpath d='M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2'/%3E%3Cline x1='10' x2='10' y1='11' y2='17'/%3E%3Cline x1='14' x2='14' y1='11' y2='17'/%3E%3C/svg%3E") no-repeat center !important;
+  mask: url("data:image/svg+xml;utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M3 6h18'/%3E%3Cpath d='M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6'/%3E%3Cpath d='M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2'/%3E%3Cline x1='10' x2='10' y1='11' y2='17'/%3E%3Cline x1='14' x2='14' y1='11' y2='17'/%3E%3C/svg%3E") no-repeat center !important;
+}
+
+/* Bottom Bar - Bookmarks Button */
+#root .BottomBar .tool-btn[data-action="bookmarks"]::before,
+#root .BottomBar .tool-btn:nth-child(2)::before {
+  -webkit-mask: url("data:image/svg+xml;utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m19 21-7-4-7 4V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v16z'/%3E%3C/svg%3E") no-repeat center !important;
+  mask: url("data:image/svg+xml;utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m19 21-7-4-7 4V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v16z'/%3E%3C/svg%3E") no-repeat center !important;
+}
+
+/* Bottom Bar - History Button */
+#root .BottomBar .tool-btn[data-action="history"]::before,
+#root .BottomBar .tool-btn:nth-child(3)::before {
+  -webkit-mask: url("data:image/svg+xml;utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8'/%3E%3Cpath d='M3 3v5h5'/%3E%3Cpath d='M12 7v5l4 2'/%3E%3C/svg%3E") no-repeat center !important;
+  mask: url("data:image/svg+xml;utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8'/%3E%3Cpath d='M3 3v5h5'/%3E%3Cpath d='M12 7v5l4 2'/%3E%3C/svg%3E") no-repeat center !important;
+}
+

@@ -1,0 +1,3 @@
+module qs.modules.ii.skwdWall
+SkwdWall 1.0 SkwdWall.qml
+SkwdWallContent 1.0 SkwdWallContent.qml

@@ -1,0 +1,3 @@
+module qs.modules.ii.sidebarRight.kdeConnect
+KdeConnectDialog 1.0 KdeConnectDialog.qml
+KdeConnectActions 1.0 KdeConnectActions.qml

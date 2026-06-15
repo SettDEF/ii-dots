@@ -1,0 +1,3 @@
+module qs.modules.ii.desktopIcons
+DesktopIcons 1.0 DesktopIcons.qml
+DesktopIconsContent 1.0 DesktopIconsContent.qml

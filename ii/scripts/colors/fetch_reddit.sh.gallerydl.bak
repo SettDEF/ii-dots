@@ -1,0 +1,127 @@
+#!/usr/bin/env bash
+# Reddit fetcher — gallery-dl wrapper.
+#
+# Reverted from the OAuth direct-API version (saved as
+# fetch_reddit.sh.oauth.bak) per user request. gallery-dl uses the
+# config in ~/.config/gallery-dl/config.json and authenticates via the
+# Firefox cookie jar referenced there, so NSFW unblur etc. still work
+# without our own OAuth token.
+#
+# Same CLI contract as the OAuth version, so SkwdWallContent.qml doesn't
+# need to change:
+#
+# Usage:
+#   fetch_reddit.sh <sub> <sort> <after> <dest>
+#
+# Args:
+#   sub    — subreddit name
+#   sort   — "hot" | "top?t=all" | "top?t=year" | "new" | "rising" | ...
+#   after  — pagination cursor. We encode an integer post offset here
+#            because gallery-dl doesn't expose Reddit's after-token.
+#            Empty means start from post 1.
+#   dest   — destination root; files go to $dest/reddit/<sub>/
+#
+# Output (stdout):
+#   First line: "AFTER=<next-offset>" — empty if exhausted
+#   Subsequent lines: paths of files newly written
+#
+# Atomic write: gallery-dl writes to a tmpdir, validated files move to
+# the final dir. Prevents the partial-JPEG race the QML scanner used to
+# hit when reading mid-write.
+
+set -u
+
+[ $# -lt 4 ] && { echo "Usage: $0 <sub> <sort> <after> <dest>" >&2; exit 2; }
+SUB=$1
+SORT=$2
+AFTER=$3
+DEST=$4
+
+# Sanitise sub name.
+SUB=$(printf '%s' "$SUB" | tr -d '\r\n' | tr -cd 'A-Za-z0-9_+')
+[ -z "$SUB" ] && { echo "empty sub" >&2; exit 2; }
+
+OUT_DIR="$DEST/reddit/$SUB"
+mkdir -p "$OUT_DIR"
+
+# Page size per call. 50 posts is a sweet spot — small enough that
+# gallery-dl returns quickly, big enough that the prefetch chain in
+# SkwdWallContent has plenty of headroom.
+PAGE=50
+START=${AFTER:-1}
+case "$START" in *[!0-9]*|"") START=1 ;; esac
+END=$((START + PAGE - 1))
+
+# Emit AFTER first to match the OAuth fetcher's contract — the QML
+# SplitParser keys off the first "AFTER=" line it sees.
+NEXT=$((END + 1))
+if [ "$NEXT" -gt 500 ]; then
+    # Reddit's listing endpoints cap around 1000 posts. 500 is well
+    # under that; once we cross it, signal exhaustion and let the
+    # sort-cycle in SkwdWallContent move on (hot → top → new etc.).
+    echo "AFTER="
+else
+    echo "AFTER=$NEXT"
+fi
+
+# Stage everything under a tmpdir so the QML scanner can't see files
+# mid-write. We validate JPEG end markers before promoting to OUT_DIR.
+STAGE_DIR=$(mktemp -d "${TMPDIR:-/tmp}/skwd-fetch.XXXXXX") || exit 3
+trap 'rm -rf "$STAGE_DIR"' EXIT
+
+# URL builder — same scheme as the OAuth version.
+URL="https://www.reddit.com/r/${SUB}/${SORT}"
+
+# gallery-dl invocation:
+#   --range START-END  — emulate pagination via post-index slicing
+#   --no-mtime         — don't set the file mtime to the post date
+#                        (we want fresh mtimes so the scanner's
+#                         -printf '%T@' sort puts new arrivals first)
+#   --quiet            — skip progress chatter on stdout
+#   --directory STAGE  — write everything under STAGE_DIR
+#   --filename ...     — keep the same naming convention so the QML
+#                        scanner's id-parser keeps working
+gallery-dl \
+    --quiet \
+    --no-mtime \
+    --range "${START}-${END}" \
+    --directory "$STAGE_DIR" \
+    --filename "{id} {title}.{extension}" \
+    "$URL" >/dev/null 2>&1 || true
+
+# Walk the stage dir, validate, promote.
+while IFS= read -r -d '' f; do
+    name=$(basename "$f")
+    [ -f "$OUT_DIR/$name" ] && continue
+
+    # Reject tiny files (gallery-dl sometimes saves HTML error pages).
+    size=$(stat -c%s "$f" 2>/dev/null || echo 0)
+    [ "$size" -lt 4096 ] && continue
+
+    ext_lc=$(printf "%s" "${name##*.}" | tr "[:upper:]" "[:lower:]")
+    valid=1
+    case "$ext_lc" in
+        jpg|jpeg)
+            head_b=$(head -c2 "$f" | od -An -tx1 | tr -d " \n")
+            tail_b=$(tail -c2 "$f" | od -An -tx1 | tr -d " \n")
+            [ "$head_b" = "ffd8" ] && [ "$tail_b" = "ffd9" ] || valid=0
+            ;;
+        png)
+            head_b=$(head -c8 "$f" | od -An -tx1 | tr -d " \n")
+            tail_b=$(tail -c8 "$f" | head -c4)
+            [ "$head_b" = "89504e470d0a1a0a" ] && [ "$tail_b" = "IEND" ] || valid=0
+            ;;
+        webp)
+            head_b=$(head -c4 "$f" | tr -d "\0")
+            [ "$head_b" = "RIFF" ] || valid=0
+            ;;
+    esac
+    [ $valid -eq 0 ] && continue
+
+    # Atomic move into final dir. Same fs so rename is atomic.
+    if mv "$f" "$OUT_DIR/$name" 2>/dev/null; then
+        echo "$OUT_DIR/$name"
+    fi
+done < <(find "$STAGE_DIR" -type f -print0 2>/dev/null)
+
+exit 0

@@ -1,0 +1,12 @@
+// Let the active, local user "caesar" start/stop the Quickshell per-process
+// network monitor (nethogs) without a password prompt. The monitor only reads
+// traffic counters; it does not modify the system. Scoped to one action id and
+// one exec.path (set in io.quickshell.netmon.policy), so this grants nothing
+// else.
+polkit.addRule(function(action, subject) {
+    if (action.id == "io.quickshell.netmon.run" &&
+        subject.active && subject.local &&
+        subject.user == "caesar") {
+        return polkit.Result.YES;
+    }
+});

@@ -1,0 +1,3 @@
+singleton DeviceControl 1.0 DeviceControl.qml
+Tile 1.0 Tile.qml
+Panel 1.0 Panel.qml
