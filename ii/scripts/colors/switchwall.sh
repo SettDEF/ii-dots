@@ -1021,11 +1021,23 @@ switch() {
     # The Rust engine (one native call, byte-identical output) replaces
     # matugen + generate_colors_material.py + palette_transform.py.
     # TINCT=0 forces the legacy python pipeline for rollback.
+    local tinct_ok=0
     if [[ "${TINCT:-1}" == "1" ]] && command -v tinct >/dev/null 2>&1; then
-        tinct generate "${generate_colors_material_args[@]}" \
-            --out-json /tmp/matugen-temp-colors.json \
-            > /tmp/matugen-temp-material_colors.scss
+        # A failed generate (e.g. reading an image mid-write) must not apply
+        # an empty palette — fall through to the python path instead.
+        if tinct generate "${generate_colors_material_args[@]}" \
+                --out-json /tmp/matugen-temp-colors.json \
+                > /tmp/matugen-temp-material_colors.scss \
+            && [[ -s /tmp/matugen-temp-material_colors.scss ]] \
+            && [[ -s /tmp/matugen-temp-colors.json ]]; then
+            tinct_ok=1
+        else
+            echo "switchwall: tinct generate failed — falling back to python pipeline" >&2
+            rm -f /tmp/matugen-temp-colors.json /tmp/matugen-temp-material_colors.scss
+        fi
+    fi
 
+    if [[ "$tinct_ok" == "1" ]]; then
         if [[ -n "$theory_flag$style_flag$practical_flag$remap_flag" ]]; then
             tinct transform \
                 --theory    "$theory_flag" \
@@ -1037,7 +1049,9 @@ switch() {
                 --scss /tmp/matugen-temp-material_colors.scss \
                 2>/dev/null || true
         fi
-    else
+    fi
+
+    if [[ "$tinct_ok" != "1" ]]; then
         # ── legacy python pipeline ───────────────────────────────────────
         local temp_config="/tmp/matugen-temp-config.toml"
         cat > "$temp_config" <<EOF
