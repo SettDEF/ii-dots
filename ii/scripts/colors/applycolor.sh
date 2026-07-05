@@ -140,18 +140,25 @@ fi
 # (terminal pty + dbus broadcast) get the new theme in one synchronous pass.
 broadcast_color_scheme
 
+# Rebuild all matugen templates (including Bitwig Studio theme.bte)
+# using the final transformed, high-contrast, or preset-remapped colors.json.
+if [[ "${TINCT:-1}" == "1" ]] && command -v tinct >/dev/null 2>&1; then
+    # Rust template renderer — byte-identical to rebuild_templates.py+matugen,
+    # ~1ms instead of ~400ms. TINCT=0 falls back to the python path.
+    tinct render --colors "$colors_json_path" >/dev/null 2>&1 || true
+elif [ -x "$SCRIPT_DIR/rebuild_templates.py" ]; then
+    "$SCRIPT_DIR/rebuild_templates.py" "$colors_json_path" >/dev/null 2>&1 || true
+fi
+
 # Substitute $term0 into nvim's matugen palette and live-reload running nvims.
 # Runs here (not as matugen post_hook) because $term0 is only written into
 # material_colors.scss by generate_colors_material.py, which fires *after*
-# matugen.
+# matugen. MUST run AFTER rebuild_templates.py above — that re-renders
+# nvim_colors.lua from the template, re-introducing the A0 = "__TERM0__"
+# placeholder. Running before it (the old order) left the placeholder in the
+# final file, which crashes cocoa.nvim ("arithmetic on nil" in blend()).
 if [ -x "$HOME/.config/matugen/templates/neovim/post-hook.sh" ]; then
     "$HOME/.config/matugen/templates/neovim/post-hook.sh" 2>/dev/null || true
-fi
-
-# Rebuild all matugen templates (including Bitwig Studio theme.bte)
-# using the final transformed, high-contrast, or preset-remapped colors.json.
-if [ -x "$SCRIPT_DIR/rebuild_templates.py" ]; then
-    "$SCRIPT_DIR/rebuild_templates.py" "$colors_json_path" >/dev/null 2>&1 || true
 fi
 
 # Keep wezterm's config-level background in sync with the OSC palette.

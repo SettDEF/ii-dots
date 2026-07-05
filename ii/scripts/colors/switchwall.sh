@@ -872,7 +872,11 @@ switch() {
             exit 0
         fi
 
-        check_and_prompt_upscale "$imgpath" &
+        # Only offer to upscale on a real, interactive wallpaper switch — not on
+        # colour-only re-applies (--no-wallpaper-update), which WallTune fires
+        # repeatedly while you drag sliders. Without this gate every reprocess
+        # re-prompted "Upscale wallpaper?".
+        [[ -z "$no_wallpaper_update" ]] && check_and_prompt_upscale "$imgpath" &
         kill_existing_mpvpaper
 
         if is_video "$imgpath"; then
@@ -1010,9 +1014,33 @@ switch() {
         [[ "$term_fg_boost" != "null" && -n "$term_fg_boost" ]] && generate_colors_material_args+=(--term_fg_boost "$term_fg_boost")
     fi
 
-    # ALWAYS use temporary outputs to avoid default/raw colors flashing
-    local temp_config="/tmp/matugen-temp-config.toml"
-    cat > "$temp_config" <<EOF
+    # Clean up any stale temp files
+    rm -f /tmp/matugen-temp-colors.json /tmp/matugen-temp-material_colors.scss
+
+    # ── tinct fast path ──────────────────────────────────────────────────
+    # The Rust engine (one native call, byte-identical output) replaces
+    # matugen + generate_colors_material.py + palette_transform.py.
+    # TINCT=0 forces the legacy python pipeline for rollback.
+    if [[ "${TINCT:-1}" == "1" ]] && command -v tinct >/dev/null 2>&1; then
+        tinct generate "${generate_colors_material_args[@]}" \
+            --out-json /tmp/matugen-temp-colors.json \
+            > /tmp/matugen-temp-material_colors.scss
+
+        if [[ -n "$theory_flag$style_flag$practical_flag$remap_flag" ]]; then
+            tinct transform \
+                --theory    "$theory_flag" \
+                --style     "$style_flag" \
+                --practical "$practical_flag" \
+                --remap     "$remap_flag" \
+                --mix-order "$mix_order_flag" \
+                --json /tmp/matugen-temp-colors.json \
+                --scss /tmp/matugen-temp-material_colors.scss \
+                2>/dev/null || true
+        fi
+    else
+        # ── legacy python pipeline ───────────────────────────────────────
+        local temp_config="/tmp/matugen-temp-config.toml"
+        cat > "$temp_config" <<EOF
 [config]
 version_check = false
 
@@ -1021,26 +1049,24 @@ input_path = '$HOME/.config/matugen/templates/colors.json'
 output_path = '/tmp/matugen-temp-colors.json'
 EOF
 
-    # Clean up any stale temp files
-    rm -f /tmp/matugen-temp-colors.json /tmp/matugen-temp-material_colors.scss
+        matugen -c "$temp_config" "${matugen_args[@]}"
+        rm -f "$temp_config"
 
-    matugen -c "$temp_config" "${matugen_args[@]}"
-    rm -f "$temp_config"
+        source "$(eval echo "$ILLOGICAL_IMPULSE_VIRTUAL_ENV")/bin/activate"
+        python3 "$SCRIPT_DIR/generate_colors_material.py" "${generate_colors_material_args[@]}" \
+            > /tmp/matugen-temp-material_colors.scss
 
-    source "$(eval echo "$ILLOGICAL_IMPULSE_VIRTUAL_ENV")/bin/activate"
-    python3 "$SCRIPT_DIR/generate_colors_material.py" "${generate_colors_material_args[@]}" \
-        > /tmp/matugen-temp-material_colors.scss
-
-    if [[ -n "$theory_flag$style_flag$practical_flag$remap_flag" ]]; then
-        python3 "$SCRIPT_DIR/palette_transform.py" \
-            --theory    "$theory_flag" \
-            --style     "$style_flag" \
-            --practical "$practical_flag" \
-            --remap     "$remap_flag" \
-            --mix-order "$mix_order_flag" \
-            --json /tmp/matugen-temp-colors.json \
-            --scss /tmp/matugen-temp-material_colors.scss \
-            2>/dev/null || true
+        if [[ -n "$theory_flag$style_flag$practical_flag$remap_flag" ]]; then
+            python3 "$SCRIPT_DIR/palette_transform.py" \
+                --theory    "$theory_flag" \
+                --style     "$style_flag" \
+                --practical "$practical_flag" \
+                --remap     "$remap_flag" \
+                --mix-order "$mix_order_flag" \
+                --json /tmp/matugen-temp-colors.json \
+                --scss /tmp/matugen-temp-material_colors.scss \
+                2>/dev/null || true
+        fi
     fi
 
     # Run applycolor.sh using the temporary files.
@@ -1053,7 +1079,7 @@ EOF
     [[ -f /tmp/matugen-temp-colors.json ]] && mv /tmp/matugen-temp-colors.json "$STATE_DIR/user/generated/colors.json"
     [[ -f /tmp/matugen-temp-material_colors.scss ]] && mv /tmp/matugen-temp-material_colors.scss "$STATE_DIR/user/generated/material_colors.scss"
 
-    deactivate
+    command -v deactivate >/dev/null 2>&1 && deactivate || true   # only set in the legacy venv path
 
     # Tell Quickshell to re-read colors.json (handles atomic-write inotify miss)
     qs -c ii msg materialTheme reload 2>/dev/null || true
@@ -1090,6 +1116,12 @@ main() {
     }
     detect_scheme_type_from_image() {
         local img="$1"
+        if [[ "${TINCT:-1}" == "1" ]] && command -v tinct >/dev/null 2>&1; then
+            # Rust colorfulness metric — the python original needs cv2, which
+            # isn't installed in the venv (it has been failing silently).
+            tinct scheme "$img" 2>/dev/null | tr -d '\n'
+            return
+        fi
         source "$(eval echo "$ILLOGICAL_IMPULSE_VIRTUAL_ENV")/bin/activate"
         "$SCRIPT_DIR"/scheme_for_image.py "$img" 2>/dev/null | tr -d '\n'
         deactivate
