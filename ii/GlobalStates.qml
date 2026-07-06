@@ -18,6 +18,7 @@ Singleton {
     property bool osdVolumeOpen: false
     property bool oskOpen: false
     property bool touchpadOpen: false
+    property bool rogPowerOpen: false
     property var oskWindow: null
     property var touchpadWindow: null
     // Force the dock to reveal even when it would otherwise be hidden.
@@ -36,6 +37,11 @@ Singleton {
     property bool sessionOpen: false
     property bool superDown: false
     property bool superReleaseMightTrigger: true
+    // Timestamp of the last searchToggleRelease press — used to ignore the
+    // phantom catchall interrupt Hyprland 0.55.4 fires on the Super press
+    // itself (same-instant), while real interrupts (another key pressed
+    // while holding Super) arrive later and still veto the toggle.
+    property real superPressTime: 0
     property bool wallpaperSelectorOpen: false
     property bool workspaceShowNumbers: false
     property bool hudOpen: false

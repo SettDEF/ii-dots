@@ -113,6 +113,7 @@ Scope {
         description: "Toggles search on release"
 
         onPressed: {
+            GlobalStates.superPressTime = Date.now();
             GlobalStates.superReleaseMightTrigger = true;
         }
 
@@ -129,7 +130,11 @@ Scope {
         description: "Interrupts possibility of search being toggled on release. " + "This is necessary because GlobalShortcut.onReleased in quickshell triggers whether or not you press something else while holding the key. " + "To make sure this works consistently, use binditn = MODKEYS, catchall in an automatically triggered submap that includes everything."
 
         onPressed: {
-            GlobalStates.superReleaseMightTrigger = false;
+            // Ignore Hyprland 0.55.4's phantom catchall on the Super press
+            // itself (see Overview.qml).
+            if (Date.now() - GlobalStates.superPressTime > 80) {
+                GlobalStates.superReleaseMightTrigger = false;
+            }
         }
     }
 

@@ -20,6 +20,7 @@ Scope {
         property string searchingText: ""
         readonly property HyprlandMonitor monitor: Hyprland.monitorFor(panelWindow.screen)
         property bool monitorIsFocused: (Hyprland.focusedMonitor?.id == monitor?.id)
+        readonly property var overviewWidget: overviewLoader.item
         visible: GlobalStates.overviewOpen
 
         WlrLayershell.namespace: "quickshell:overview"
@@ -190,6 +191,7 @@ Scope {
         description: "Toggles search on release"
 
         onPressed: {
+            GlobalStates.superPressTime = Date.now();
             GlobalStates.superReleaseMightTrigger = true;
         }
 
@@ -206,7 +208,12 @@ Scope {
         description: "Interrupts possibility of search being toggled on release. " + "This is necessary because GlobalShortcut.onReleased in quickshell triggers whether or not you press something else while holding the key. " + "To make sure this works consistently, use binditn = MODKEYS, catchall in an automatically triggered submap that includes everything."
 
         onPressed: {
-            GlobalStates.superReleaseMightTrigger = false;
+            // Hyprland 0.55.4's catchall fires once for the Super press
+            // itself; only interrupts arriving clearly after the press are a
+            // real "other key pressed while holding Super".
+            if (Date.now() - GlobalStates.superPressTime > 80) {
+                GlobalStates.superReleaseMightTrigger = false;
+            }
         }
     }
     GlobalShortcut {
