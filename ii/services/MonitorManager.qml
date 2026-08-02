@@ -55,19 +55,53 @@ Singleton {
 
     function refresh() { HyprlandData.updateMonitors() }
 
-    // ── Mutations via `hyprctl keyword monitor ...` ─────────────────────
-    function _runKeyword(arg) {
-        keywordProc.command = ["hyprctl", "keyword", "monitor", arg]
-        keywordProc.running = true
+    // ── Mutations ───────────────────────────────────────────────────────
+    // NOT `hyprctl keyword monitor`. Under a Lua config Hyprland answers
+    // "unknown request" to `keyword`, so every function below used to be a
+    // no-op that reported success: monitors never enabled, disabled, or
+    // mirrored, and no error surfaced anywhere. HyprDispatch had already
+    // documented this for dispatchers; these calls bypassed it.
+    //
+    // The live transport is the `eval` request carrying Lua. DisplayProfiles
+    // owns the serialiser (and the string-vs-integer type contract that makes
+    // the difference between an applied call and a silent no-op), so this
+    // delegates rather than growing a second copy of it.
+    function _runMonitor(fields) {
+        // `output` is emitted directly rather than through luaField, because
+        // luaField drops empty values and an EMPTY output is meaningful here:
+        // it is Hyprland's wildcard, matching every monitor. Routing it through
+        // the normal path silently produced a rule with no target at all.
+        const parts = [`output = ${DisplayProfiles.luaQuote(fields.output ?? "")}`]
+        for (const k of Object.keys(fields)) {
+            if (k === "output") continue
+            const f = DisplayProfiles.luaField(k, fields[k])
+            if (f.length > 0) parts.push(f)
+        }
+        monitorProc.command = ["hyprctl", "eval", `hl.monitor({ ${parts.join(", ")} })`]
+        monitorProc.running = true
+    }
+
+    // "preferred/auto/1" is Hyprland's own default triple: best mode, let the
+    // compositor place it, no scaling.
+    function _defaults(name) {
+        return { output: name, mode: "preferred", position: "auto", scale: "1" }
     }
 
     function enable(name) {
-        _runKeyword(`${name},preferred,auto,1`)
+        _runMonitor(_defaults(name))
         Qt.callLater(refresh)
     }
 
     function disable(name) {
-        _runKeyword(`${name},disable`)
+        // Guarded in DisplayProfiles for profile-driven changes; repeated here
+        // because these presets can disable several monitors in one sweep.
+        if (friendly.filter(m => m.name !== name && !m.disabled).length === 0) {
+            console.warn("[MonitorManager] refusing to disable the last active monitor:", name)
+            return
+        }
+        monitorProc.command = ["hyprctl", "eval",
+            `hl.monitor({ output = ${DisplayProfiles.luaQuote(name)}, disabled = true })`]
+        monitorProc.running = true
         Qt.callLater(refresh)
     }
 
@@ -79,10 +113,10 @@ Singleton {
 
     /** Mirror `name` onto `targetName`. Pass empty target to stop mirroring. */
     function setMirror(name, targetName) {
+        const f = _defaults(name)
         if (targetName && targetName.length > 0)
-            _runKeyword(`${name},preferred,auto,1,mirror,${targetName}`)
-        else
-            _runKeyword(`${name},preferred,auto,1`)
+            f.mirror = targetName
+        _runMonitor(f)
         Qt.callLater(refresh)
     }
 
@@ -131,7 +165,11 @@ Singleton {
 
     /** Last-resort recovery: enable every connected monitor at preferred. */
     function enableAll() {
-        _runKeyword(",preferred,auto,1")
+        // An empty output name is Hyprland's wildcard rule. Issued per-monitor
+        // as well, because the wildcard does not revive an explicitly disabled
+        // panel — which is exactly the state this needs to recover from.
+        _runMonitor({ output: "", mode: "preferred", position: "auto", scale: "1" })
+        friendly.forEach(m => _runMonitor(_defaults(m.name)))
         Qt.callLater(refresh)
     }
 
@@ -149,6 +187,6 @@ Singleton {
     }
 
     Process {
-        id: keywordProc
+        id: monitorProc
     }
 }
