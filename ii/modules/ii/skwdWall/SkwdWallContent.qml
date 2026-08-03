@@ -30,7 +30,6 @@ Item {
     // Default subreddit(s) for the Videos tab — multireddit syntax
     // (a+b+c). Both verified live and carrying playable v.redd.it
     // videos with poster previews.
-    readonly property string videoSubs: "LivelyWallpaper+wallpaperengine"
     // Media type and the favourites filter live in WallpaperHub: the launcher
     // bar shows the same chips, and changing them there has to take effect
     // here immediately (they used to apply only at navigation time).
@@ -376,13 +375,11 @@ Item {
         wallhavenProc.running = true
     }
 
-    // Reddit pagination cursor — last response's `after` token; "" when
-    // exhausted. Only used by the Videos tab now; the Reddit tab proper
-    // reads gallery-dl's local cache (see redditScanProc) because Reddit
-    // 403s every unauthenticated JSON request as of 2024.
-    property string redditAfter: ""
-    property bool   redditHasMore: true
-    property bool   redditLoadingMore: false
+    // Reddit pagination state lives in redditAfterBySub, keyed by (sub, sort),
+    // and is fed by the authenticated fetcher. There used to be a second,
+    // separate cursor here for an unauthenticated hot.json path — Reddit has
+    // 403'd those since 2024, and nothing set the cursor, so the Videos tab
+    // that depended on it could never page. Both tabs now share syncReddit().
 
     // How many cached files the scan loads at once, and when it last ran.
     // Grown in pages as the user reaches the end, so a sub with thousands of
@@ -409,7 +406,14 @@ Item {
         // hundreds on disk), and a sub that was only partly in it showed a
         // handful of cards — which is why the carousel had nothing to scroll.
         readonly property string scanSub: {
-            if (root.activeSource !== "reddit") return ""
+            // "videos" too. Excluding it meant the Videos tab scanned the
+            // globally newest files across ALL subs and then filtered them down
+            // to the typed sub — the exact failure the comment above describes
+            // for Reddit, which was fixed there and never extended here. Asking
+            // for r/rule34 on the VID tab therefore surfaced only whatever of
+            // its videos happened to fall inside that global window.
+            if (root.activeSource !== "reddit" && root.activeSource !== "videos")
+                return ""
             const q = (root.query || "").trim()
             return q.replace(/^r\//i, "").replace(/[^A-Za-z0-9_]/g, "")
         }
@@ -887,117 +891,28 @@ Item {
             if (!redditScanProc.running) root.runScan(true)
         }
     }
-    Process {
-        id: redditProc
-        command: ["bash", "-c", "echo '{}'"]
-        property bool appendMode: false
-        stdout: StdioCollector {
-            onStreamFinished: {
-                try {
-                    const data = JSON.parse(text)
-                    const ch = data.data?.children ?? []
-                    // Videos tab keeps only video posts; Reddit tab keeps
-                    // both (the pic/vid media-type chips filter further).
-                    const videoOnly = (root.activeSource === "videos")
-                    const fresh = ch
-                        .map(c => root._classifyRedditPost(c.data))
-                        .filter(w => w !== null && (!videoOnly || w.kind === "vid"))
-                    root.redditAfter = data.data?.after ?? ""
-                    // Use raw child count, not `fresh` — a page can yield
-                    // zero videos yet still have more pages behind it.
-                    root.redditHasMore = root.redditAfter !== "" && ch.length > 0
-                    if (redditProc.appendMode) {
-                        const seen = new Set(root.wallpapers.map(w => w.id))
-                        const keepIdx = root.activeIndex
-                        root.wallpapers = root.wallpapers.concat(
-                            fresh.filter(w => !seen.has(w.id)))
-                        Qt.callLater(() => {
-                            if (keepIdx >= 0 && keepIdx < root.filtered.length
-                                    && root.activeIndex !== keepIdx)
-                                root.activeIndex = keepIdx
-                        })
-                    } else {
-                        root.wallpapers = fresh
-                    }
-                } catch (e) {
-                    if (!redditProc.appendMode) root.wallpapers = []
-                    root.redditHasMore = false
-                }
-                root.loading = false
-                root.redditLoadingMore = false
-            }
-        }
-    }
-    // Classify one reddit post into a wallpaper entry, or null if it
-    // carries no usable image/video. Detects v.redd.it videos, gif/
-    // gifv-as-video previews, and direct media links.
-    function _classifyRedditPost(p) {
-        if (!p || !p.id) return null
-        const imgRe = /\.(jpg|jpeg|png|webp)(\?|$)/i
-        const vidRe = /\.(mp4|webm|gif|gifv)(\?|$)/i
-        let videoUrl = ""
-        if (p.is_video && p.media && p.media.reddit_video)
-            videoUrl = p.media.reddit_video.fallback_url || ""
-        if (!videoUrl && p.preview && p.preview.reddit_video_preview)
-            videoUrl = p.preview.reddit_video_preview.fallback_url || ""
-        if (!videoUrl && vidRe.test(p.url || ""))
-            videoUrl = (p.url || "").replace(/\.gifv(\?|$)/i, ".mp4$1")
-        const isVid = videoUrl !== ""
-        const prev = p.preview?.images?.[0]
-        const thumb = (prev?.resolutions?.[2]?.url
-                    ?? prev?.source?.url
-                    ?? (isVid ? "" : (p.url ?? ""))).replace(/&amp;/g, "&")
-        // Image posts need a real image; video posts need a poster.
-        if (!isVid && !imgRe.test(p.url || "") && !prev?.source?.url)
-            return null
-        if (isVid && thumb === "") return null
-        return {
-            id: p.id,
-            title: p.title,
-            thumb: thumb,
-            full: isVid ? videoUrl.replace(/&amp;/g, "&")
-                        : (p.url ?? "").replace(/&amp;/g, "&"),
-            source: "reddit",
-            kind: isVid ? "vid" : "pic",
-            path: isVid ? videoUrl.replace(/&amp;/g, "&") : (p.url ?? ""),
-        }
-    }
 
-    // Builds the reddit hot.json URL. The Videos tab points at the
-    // video-wallpaper subs; either tab honours a typed subreddit query.
-    // Multireddit `+` joins must stay literal, so parts are encoded
-    // individually.
-    function _buildRedditUrl(after) {
-        let sub = root.query.trim()
-        if (sub === "")
-            sub = (root.activeSource === "videos") ? root.videoSubs : "wallpapers"
-        sub = sub.split("+")
-            .map(s => encodeURIComponent(s.trim()))
-            .filter(s => s.length > 0)
-            .join("+")
-        let u = `https://www.reddit.com/r/${sub}/hot.json?limit=80`
-        if (after) u += `&after=${encodeURIComponent(after)}`
-        return u
-    }
 
     // Stub kept so other references don't break.
     property var redditDrySubs: ({})
 
     function loadMoreReddit() {
         // Each call advances the per-sub page counter inside syncReddit.
-        if (root.activeSource === "reddit") {
-            if (redditSyncProc.busy) return
-            root.syncReddit()
+        //
+        // The Videos tab goes through the SAME authenticated fetcher. It used
+        // to fall through to an unauthenticated curl of reddit's .json, which
+        // has 403'd since 2024 (this file says so at redditAfter's declaration)
+        // — and it could not even reach that: `redditAfter` is only ever set
+        // from that dead request's response, so the `if (!redditAfter) return`
+        // above it returned on every single call. The tab could therefore never
+        // download anything, and only ever showed videos that some earlier
+        // Reddit-tab sync happened to leave on disk. Downloads land in one
+        // shared cache and `filtered` selects kind == "vid", so there is no
+        // reason for this tab to have its own fetch path at all.
+        if (root.activeSource !== "reddit" && root.activeSource !== "videos")
             return
-        }
-        if (root.activeSource !== "videos") return
-        if (root.loading || root.redditLoadingMore || !root.redditHasMore) return
-        if (!root.redditAfter) return
-        root.redditLoadingMore = true
-        redditProc.appendMode = true
-        redditProc.command = ["bash", "-c",
-            `curl -s --max-time 12 -A 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36' '${root._buildRedditUrl(root.redditAfter)}'`]
-        redditProc.running = true
+        if (redditSyncProc.busy) return
+        root.syncReddit()
     }
 
     function refresh() {
@@ -1010,9 +925,6 @@ Item {
         root.whPage = 1
         root.whHasMore = true
         root.whLoadingMore = false
-        root.redditAfter = ""
-        root.redditHasMore = true
-        root.redditLoadingMore = false
         if (activeSource === "local") {
             localScanProc.running = true
         } else if (activeSource === "wallhaven") {

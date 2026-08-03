@@ -36,60 +36,10 @@ SORT=$2
 AFTER=$3
 DEST=$4
 
-ENV_FILE="$HOME/.secure/reddit-app.env"
-TOKEN_CACHE="$HOME/.cache/quickshell/reddit-oauth-token.json"
-
-[ -r "$ENV_FILE" ] || {
-    echo "Missing $ENV_FILE — run reddit_oauth_setup.sh first." >&2
-    exit 5
-}
-# shellcheck disable=SC1090
-. "$ENV_FILE"
-
-# ── Token management ────────────────────────────────────────────────
-# Cached access token is good for ~50 min (Reddit's 60min - 60s safety
-# margin from the setup script). When expired, re-auth via password
-# grant — we have the creds in the env file.
-get_access_token() {
-    local now exp tok
-    now=$(date +%s)
-    if [ -r "$TOKEN_CACHE" ]; then
-        exp=$(jq -r '.expires_at // 0' "$TOKEN_CACHE" 2>/dev/null)
-        tok=$(jq -r '.access_token // empty' "$TOKEN_CACHE" 2>/dev/null)
-        if [ -n "$tok" ] && [ "$exp" -gt "$now" ] 2>/dev/null; then
-            printf '%s' "$tok"
-            return 0
-        fi
-    fi
-
-    # Refresh — exchange creds for a new token.
-    local response access_token expires_in
-    response=$(curl --silent --show-error --max-time 15 \
-        -X POST \
-        --user "${REDDIT_CLIENT_ID}:${REDDIT_CLIENT_SECRET}" \
-        -A "$REDDIT_UA" \
-        -d "grant_type=password" \
-        --data-urlencode "username=${REDDIT_USER}" \
-        --data-urlencode "password=${REDDIT_PASS}" \
-        "https://www.reddit.com/api/v1/access_token")
-    access_token=$(printf '%s' "$response" | jq -r '.access_token // empty')
-    expires_in=$(printf '%s' "$response" | jq -r '.expires_in // 3600')
-    if [ -z "$access_token" ]; then
-        echo "OAuth refresh failed:" >&2
-        printf '%s' "$response" | jq . 2>/dev/null >&2 || printf '%s\n' "$response" >&2
-        return 1
-    fi
-
-    umask 077
-    mkdir -p "$(dirname "$TOKEN_CACHE")"
-    cat > "$TOKEN_CACHE" <<EOF
-{
-  "access_token": "$access_token",
-  "expires_at": $((now + expires_in - 60))
-}
-EOF
-    printf '%s' "$access_token"
-}
+# Shared OAuth token + request helpers.
+# shellcheck source=reddit_lib.sh
+. "$(dirname "$0")/reddit_lib.sh"
+reddit_load_env || exit 5
 
 # ── Validate sub name ───────────────────────────────────────────────
 SUB=$(printf '%s' "$SUB" | tr -d '\r\n' | tr -cd 'A-Za-z0-9_+')
@@ -107,21 +57,15 @@ case "$URL" in *"?"*) SEP="&" ;; esac
 URL="${URL}${SEP}limit=100&raw_json=1"
 [ -n "$AFTER" ] && URL="${URL}&after=${AFTER}"
 
-TOKEN=$(get_access_token) || exit 5
+TOKEN=$(reddit_get_token) || exit 5
 
-JSON=$(curl --silent --show-error --max-time 12 \
-    -A "$REDDIT_UA" \
-    -H "Authorization: Bearer $TOKEN" \
-    "$URL")
+JSON=$(reddit_api "$TOKEN" "$URL")
 
 if ! printf '%s' "$JSON" | jq -e '.data.children' >/dev/null 2>&1; then
     # Token might have just expired — invalidate cache, try once more.
-    rm -f "$TOKEN_CACHE"
-    TOKEN=$(get_access_token) || exit 5
-    JSON=$(curl --silent --show-error --max-time 12 \
-        -A "$REDDIT_UA" \
-        -H "Authorization: Bearer $TOKEN" \
-        "$URL")
+    rm -f "$REDDIT_TOKEN_CACHE"
+    TOKEN=$(reddit_get_token) || exit 5
+    JSON=$(reddit_api "$TOKEN" "$URL")
     if ! printf '%s' "$JSON" | jq -e '.data.children' >/dev/null 2>&1; then
         err=$(printf '%s' "$JSON" | jq -r '.message // .error // empty' 2>/dev/null)
         [ -n "$err" ] && echo "reddit: $err" >&2
@@ -137,73 +81,149 @@ echo "AFTER=${NEXT_AFTER}"
 # Reddit post shapes we care about:
 #   1. Direct image: t3.url ends in .jpg/.png/.gif/.webp + host is
 #      i.redd.it / i.imgur.com
-#   2. Gallery: t3.is_gallery=true, URLs in t3.media_metadata[K].s.u
+#   2. Gallery: t3.is_gallery=true, URLs in t3.media_metadata[K]
 #   3. Crosspost: t3.crosspost_parent_list[0] is the real post, recurse
 #   4. Anything else: skipped (videos / external links handled elsewhere)
-TASKS=$(printf '%s' "$JSON" | jq -r '
+#
+# Resolution policy — the whole point of this pass:
+#   We DON'T download the raw original (p.url on i.redd.it). Those are
+#   frequently 5-9 MB PNGs and time out constantly. Reddit already hosts a
+#   re-encoded JPEG preview ladder (preview.images[0].resolutions[] plus a
+#   full-size .source). We pick the SMALLEST preview whose width is at least
+#   TARGET_W — enough pixels to fill the screen at native quality — and fall
+#   back to the largest available (usually .source) when nothing reaches it.
+#   Result: ~screen-res JPEGs that are a fraction of the bytes, so the
+#   carousel fills fast instead of stalling on multi-MB originals. GIFs keep
+#   their original url (previews would kill the animation).
+TARGET_W=${SKWD_TARGET_W:-2560}
+TASKS=$(printf '%s' "$JSON" | jq -r --argjson tw "$TARGET_W" '
+    def is_gif(u): (u | test("\\.gif(?:\\?|$)"; "i"));
     def is_image_url(u):
         (u | test("\\.(?:jpe?g|png|webp|gif|bmp)(?:\\?|$)"; "i"));
+    def is_video_url(u):
+        (u | test("\\.(?:mp4|webm|m4v|mov)(?:\\?|$)"; "i"));
 
-    def post_to_url(p):
+    # Reddit hosts video in a few places depending on how the post was made.
+    # Taking the first that exists, most-specific first. fallback_url is the
+    # muxed-video-only MP4 (audio is a separate track); for wallpaper use that
+    # is exactly what we want.
+    def video_url(p):
+        ( p.secure_media.reddit_video.fallback_url
+        // p.media.reddit_video.fallback_url
+        // p.preview.reddit_video_preview.fallback_url
+        // (if is_video_url(p.url // "") then p.url else null end)
+        # imgur .gifv is an MP4 wearing a costume.
+        // (if ((p.url // "") | test("\\.gifv(?:\\?|$)"; "i"))
+           then ((p.url) | sub("\\.gifv"; ".mp4"; "i")) else null end)
+        ) as $u
+        # MUST yield null, never `empty`, for a post with no video: this is
+        # used as an elif CONDITION, and an empty condition makes the whole
+        # if/elif chain produce nothing -- which silently dropped every plain
+        # image post rather than just failing the video test.
+        | if $u == null then null else ($u | gsub("&amp;"; "&")) end;
+
+    # From a candidate list [{url,width}], pick the smallest that meets the
+    # target width; if none do, take the widest we have.
+    def pick(cands; tw):
+        (cands | map(select(.url != null and .width != null))) as $c
+        | if ($c | length) == 0 then empty
+          else
+            ( [ $c[] | select(.width >= tw) ] | sort_by(.width) | first )
+            // ( $c | sort_by(.width) | last )
+            | .url | gsub("&amp;"; "&")
+          end;
+
+    # Preview ladder for a normal post → resolutions[] + source.
+    def preview_pick(p; tw):
+        (p.preview.images[0]) as $img
+        | if $img == null then empty
+          else pick( [ ($img.resolutions // [])[], $img.source ]; tw )
+          end;
+
+    # Emits {url, kind}. kind drives the download budget below — videos are
+    # an order of magnitude bigger than a capped JPEG preview and need their
+    # own ceiling rather than sharing the image one.
+    def post_to_url(p; tw):
         if (p.crosspost_parent_list // [] | length) > 0 then
-            post_to_url(p.crosspost_parent_list[0])
-        elif (p.is_gallery // false) then
+            post_to_url(p.crosspost_parent_list[0]; tw)
+        elif ((p.is_gallery // false) or (p.media_metadata != null)) then
+            # Gallery item: each media_metadata entry has a .p[] preview
+            # ladder and a .s source. Same capped pick per image. (Some
+            # galleries arrive with is_gallery unset but media_metadata
+            # present, so key off either.)
             ((p.media_metadata // {}) | to_entries[]
                 | select(.value.status == "valid")
-                | (.value.s.u // "")
-                | gsub("&amp;"; "&"))
-        elif is_image_url(p.url // "") then
-            p.url
+                | .value as $m
+                | { url: pick( [ ($m.p // [])[], ($m.s // {}) ]; tw ), kind: "img" })
+        elif is_gif(p.url // "") then
+            { url: p.url, kind: "img" }
+        elif ((video_url(p)) != null) then
+            # Checked BEFORE the image branch: a hosted video carries a
+            # preview ladder too, so testing images first would silently
+            # download the thumbnail and call the post handled. This branch
+            # not existing at all is why the Videos tab could never grow --
+            # every v.redd.it post fell through to `empty`.
+            { url: video_url(p), kind: "vid" }
+        elif (is_image_url(p.url // "") or (p.post_hint // "") == "image") then
+            # An actual image post: prefer the capped preview, fall back to
+            # the raw original only when there is no preview ladder. Gating
+            # on is_image_url / post_hint keeps self & text posts (which also
+            # carry a preview) out of the results.
+            { url: ((preview_pick(p; tw)) // (p.url)), kind: "img" }
         else
             empty
         end;
 
     .data.children[]
     | .data as $p
-    | (post_to_url($p)) as $u
-    | "\($u)\t\($p.id)\t\($p.title // "untitled")"
+    | (post_to_url($p; $tw)) as $m
+    | select($m != null and $m.url != null and $m.url != "")
+    | "\($m.url)\t\($m.kind)\t\($p.id)\t\($p.title // "untitled")"
 ' 2>/dev/null)
 
 [ -z "$TASKS" ] && exit 0
 
-# ── Download with 8-way parallelism ─────────────────────────────────
+# ── Download with parallelism ───────────────────────────────────────
 # Filename pattern matches gallery-dl's convention so existing
-# redditScanProc / filename → id parsing keeps working.
+# redditScanProc / filename → id parsing keeps working. The FINAL
+# extension is decided from the downloaded bytes, not the URL: preview
+# URLs end in ".png?format=pjpg" while serving JPEG, so trusting the
+# path would misname (and then mis-validate) every preview.
+export OUT_DIR REDDIT_UA
 printf '%s\n' "$TASKS" \
-  | while IFS=$'\t' read -r url id title; do
+  | while IFS=$'\t' read -r url kind id title; do
         [ -z "$url" ] && continue
         safe_title=$(printf '%s' "$title" \
             | tr -d '\r\n' \
             | tr -cd 'A-Za-z0-9 _.,!?()-' \
             | cut -c1-80 \
             | sed 's/[[:space:]]*$//')
-        ext="${url##*.}"
-        ext="${ext%%\?*}"
-        case "${ext,,}" in jpe?g|png|webp|gif|bmp) ;; *) ext=jpg ;; esac
-        out="$OUT_DIR/${id} ${safe_title}.${ext}"
-        [ -f "$out" ] && continue
-        printf '%s\t%s\n' "$url" "$out"
+        # Skip if ANY extension of this id is already on disk.
+        if ls "$OUT_DIR/${id} "* >/dev/null 2>&1; then continue; fi
+        printf '%s\t%s\t%s\t%s\n' "$url" "$kind" "$id" "$safe_title"
     done \
-  | xargs -P 8 -I{} bash -c '
+  | xargs -P 6 -I{} bash -c '
         line="{}"
         url="${line%%	*}"
-        out="${line#*	}"
-        # Atomic write + structural validation.
-        #
-        # Two problems we have to defend against:
-        #  1. Partial-read race: QML scanner sees the file mid-write and
-        #     decodes a half-JPEG → rainbow noise. Solved by writing to
-        #     <out>.part and atomic-rename only on success.
-        #  2. Silent truncation: curl returns 0 even when the server
-        #     hangs up mid-stream without Content-Length. The .part is
-        #     "complete" but structurally broken. QML decodes what it
-        #     can, hence the rainbow tail under a clean top. Solved by
-        #     verifying the JPEG end-of-image marker (FFD9) and a
-        #     minimum size before promoting to <out>.
-        tmp="${out}.part"
-        if ! curl --silent --show-error --location --max-time 25 --fail \
-                  --remove-on-error \
-                  -A "'"$REDDIT_UA"'" \
+        rest="${line#*	}"
+        kind="${rest%%	*}"
+        rest="${rest#*	}"
+        id="${rest%%	*}"
+        title="${rest#*	}"
+        # Budget by kind. Previews are ~screen-res JPEGs where 20s is plenty;
+        # a video is 10-50x that and was guaranteed to lose a 20s race.
+        # --max-filesize refuses the giants outright instead of spending the
+        # whole window on one file and getting killed mid-write -- the 58 MB
+        # posts are what filled the sync log with timeouts and SIGPIPEs.
+        if [ "$kind" = "vid" ]; then
+            max_time=90; max_bytes=$((60*1024*1024))
+        else
+            max_time=20; max_bytes=$((20*1024*1024))
+        fi
+        tmp="$OUT_DIR/.${id}.part"
+        if ! curl --silent --show-error --location --max-time "$max_time" --fail \
+                  --remove-on-error --max-filesize "$max_bytes" \
+                  -A "$REDDIT_UA" \
                   -o "$tmp" "$url"; then
             rm -f "$tmp"
             exit 0
@@ -214,34 +234,41 @@ printf '%s\n' "$TASKS" \
             rm -f "$tmp"
             exit 0
         fi
-        # Validate format by extension. JPEG must end in FFD9; PNG must
-        # end with IEND chunk; WebP must start with RIFF/WEBP. Anything
-        # else gets the same end-byte check as a coarse sanity floor.
-        ext_lc=$(printf "%s" "${out##*.}" | tr "[:upper:]" "[:lower:]")
-        valid=1
-        case "$ext_lc" in
-            jpg|jpeg)
-                # JPEG SOI = FFD8, EOI = FFD9. Read first 2 + last 2 bytes.
-                head_b=$(head -c2 "$tmp" | od -An -tx1 | tr -d " \n")
-                tail_b=$(tail -c2 "$tmp" | od -An -tx1 | tr -d " \n")
-                [ "$head_b" = "ffd8" ] && [ "$tail_b" = "ffd9" ] || valid=0
-                ;;
-            png)
-                # PNG signature is fixed 8 bytes; the IEND chunk lives
-                # in the last 12 bytes with literal "IEND" at offset -8.
-                head_b=$(head -c8 "$tmp" | od -An -tx1 | tr -d " \n")
-                tail_b=$(tail -c8 "$tmp" | head -c4)
-                [ "$head_b" = "89504e470d0a1a0a" ] && [ "$tail_b" = "IEND" ] || valid=0
-                ;;
-            webp)
-                head_b=$(head -c4 "$tmp" | tr -d "\0")
-                [ "$head_b" = "RIFF" ] || valid=0
-                ;;
+        # Decide format + integrity from the actual bytes. Magic at the
+        # head, structural end-marker at the tail (catches the silent
+        # mid-stream truncation curl reports as success).
+        head_hex=$(head -c12 "$tmp" | od -An -tx1 | tr -d " \n")
+        ext=""; ok=0
+        case "$head_hex" in
+            ffd8ff*)                       # JPEG
+                ext=jpg
+                [ "$(tail -c2 "$tmp" | od -An -tx1 | tr -d " \n")" = "ffd9" ] && ok=1 ;;
+            89504e470d0a1a0a*)             # PNG
+                ext=png
+                [ "$(tail -c8 "$tmp" | head -c4)" = "IEND" ] && ok=1 ;;
+            52494646*)                     # RIFF…  (WebP: bytes 8-11 = WEBP)
+                if [ "$(dd if="$tmp" bs=1 skip=8 count=4 2>/dev/null)" = "WEBP" ]; then
+                    ext=webp; ok=1
+                fi ;;
+            474946383*)                    # GIF87a / GIF89a
+                ext=gif; ok=1 ;;
+            ????????66747970*)             # ISO-BMFF: "ftyp" at byte offset 4
+                # MP4/MOV. No cheap structural end-marker exists the way IEND
+                # or ffd9 do, so integrity rests on curl having reported a
+                # complete transfer. A truncated MP4 still decodes up to the
+                # cut, which is a far better failure than discarding it.
+                ext=mp4; ok=1 ;;
+            1a45dfa3*)                     # EBML: WebM / Matroska
+                ext=webm; ok=1 ;;
         esac
-        if [ $valid -eq 0 ]; then
+        # Without a video branch here, every downloaded video failed this
+        # switch and was deleted below -- so even once a video URL was
+        # extracted, nothing could ever land on disk.
+        if [ "$ok" -ne 1 ] || [ -z "$ext" ]; then
             rm -f "$tmp"
             exit 0
         fi
+        out="$OUT_DIR/${id} ${title}.${ext}"
         mv "$tmp" "$out" && printf "%s\n" "$out"
     '
 
