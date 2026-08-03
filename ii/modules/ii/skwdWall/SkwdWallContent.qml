@@ -15,18 +15,30 @@ Item {
     id: root
     signal close()
 
+    // Embedded mode: the launcher search morphs into skwd and drives `query`
+    // itself, so we hide skwd's own SEARCH panel and skip state persistence
+    // (the windowed instance owns that).
+    property bool embedded: false
+
+    // Gap between the centered metadata+search panel and the post panel.
+    readonly property real pairGap: 12
+
     readonly property string home: "/home/caesar"
-    property string activeSource: "local"          // local | wallhaven | reddit | videos
+    // local | wallhaven | reddit | videos — owned by WallpaperHub so the
+    // source icons work identically in this toolbar and the launcher's.
+    readonly property string activeSource: WallpaperHub.source
     // Default subreddit(s) for the Videos tab — multireddit syntax
     // (a+b+c). Both verified live and carrying playable v.redd.it
     // videos with poster previews.
     readonly property string videoSubs: "LivelyWallpaper+wallpaperengine"
-    property string activeMediaType: "all"         // all | pic | vid | we
+    // Media type and the favourites filter live in WallpaperHub: the launcher
+    // bar shows the same chips, and changing them there has to take effect
+    // here immediately (they used to apply only at navigation time).
+    readonly property string activeMediaType: WallpaperHub.mediaType   // all | pic | vid | we
+    readonly property bool favoritesOnly: WallpaperHub.favoritesOnly
     property string viewLayout: "carousel"         // carousel | grid | hex
     property int activeIndex: 0
     property string query: ""
-    property string activeHue: ""                  // "" | "red" | "orange" | ...
-    property bool favoritesOnly: false
     property var wallpapers: []
     property bool loading: false
 
@@ -41,8 +53,10 @@ Item {
     property bool   whFilterOpen: false
     // Reddit filter panel — manual override for the auto-advanced sort
     // cycle. "" = let the auto-cycle pick (hot → top?t=all → … → new).
-    property bool   redditFilterOpen: false
-    property string redditForcedSort: ""   // "" = auto; else sort path key e.g. "top?t=all"
+    // Both live in WallpaperHub: the launcher draws the same chips in its
+    // dropdown, and picking a sort there has to mean the same thing here.
+    readonly property bool   redditFilterOpen: WallpaperHub.filterOpen
+    readonly property string redditForcedSort: WallpaperHub.forcedSort
 
     readonly property var whSortings: [
         { id: "toplist",    label: "TOP"   },
@@ -106,21 +120,9 @@ Item {
     // Hue palette — 13 buckets. `swatch` is what we draw in the UI;
     // `wh` is the Wallhaven API color code (https://wallhaven.cc/help/api
     // — `colors` parameter only accepts their fixed 27-colour palette).
-    readonly property var hues: [
-        { id: "red",    swatch: "#e34d4d", wh: "cc0000" },
-        { id: "orange", swatch: "#e58a3d", wh: "cc9933" },
-        { id: "amber",  swatch: "#e6b840", wh: "996633" },
-        { id: "yellow", swatch: "#e9d635", wh: "cccc33" },
-        { id: "lime",   swatch: "#9bd64b", wh: "77cc33" },
-        { id: "green",  swatch: "#3fc06d", wh: "336600" },
-        { id: "teal",   swatch: "#3fc0a8", wh: "66cccc" },
-        { id: "cyan",   swatch: "#3fb8c7", wh: "0099cc" },
-        { id: "blue",   swatch: "#4d84e0", wh: "0066cc" },
-        { id: "indigo", swatch: "#6a55d6", wh: "333399" },
-        { id: "purple", swatch: "#9a4de0", wh: "663399" },
-        { id: "pink",   swatch: "#e34da8", wh: "ea4c88" },
-        { id: "mono",   swatch: "#9aa0a6", wh: "999999" },
-    ]
+    // Single source of truth lives in the WallpaperHub singleton so the
+    // launcher's wallpaper mode and skwd share the exact same columns.
+    readonly property var hues: WallpaperHub.hues
     // ── Client-side palette extraction (for Reddit + local items) ─────
     // Wallhaven sends a 5-color palette in its API response. For other
     // sources we run `magick … -colors 5 txt:-` against the thumbnail and
@@ -138,6 +140,28 @@ Item {
     function _palImageFor(item) {
         if (!item) return ""
         return item.thumb || item.full || item.path || ""
+    }
+
+    // Palette extraction and metadata both shell out (magick / identify), and
+    // a touchpad produces a stream of index changes — running them per step
+    // spawned dozens of magick processes on 4K images and froze the shell.
+    // Nothing happens until the scroll settles.
+    Timer {
+        id: focusSettle
+        interval: 180
+        repeat: false
+        onTriggered: {
+            if (paletteExtractProc.running || metaProc.running) {
+                // Busy from the last settle — come back rather than piling on.
+                focusSettle.restart()
+                return
+            }
+            const i = root.activeIndex
+            if (i >= 0 && i < root.filtered.length) {
+                root._ensurePaletteFor(root.filtered[i])
+                root._fetchMetaFor(root.filtered[i])
+            }
+        }
     }
 
     function _ensurePaletteFor(item) {
@@ -177,16 +201,15 @@ Item {
     }
 
     // Comma-separated list of Wallhaven hex codes (no `#`). Empty = no
-    // colour filter. Multi-select.
-    property string whColors: ""
+    // colour filter. Multi-select, owned by WallpaperHub so the launcher's
+    // swatches and this panel edit ONE selection.
+    readonly property string whColors: WallpaperHub.colors
     function toggleColor(wh) {
-        const arr = whColors.length > 0 ? whColors.split(",") : []
-        const idx = arr.indexOf(wh)
-        if (idx >= 0) arr.splice(idx, 1)
-        else arr.push(wh)
-        whColors = arr.join(",")
-        refresh()
+        WallpaperHub.toggleColor(wh)
     }
+    // Re-query Wallhaven whenever the colour selection changes, wherever the
+    // change came from.
+    onWhColorsChanged: if (root.activeSource === "wallhaven") Qt.callLater(root.refresh)
 
     readonly property var sources: [
         { id: "local",     icon: "folder",   label: qsTr("Local")     },
@@ -204,6 +227,10 @@ Item {
 
     readonly property var filtered: {
         let list = wallpapers
+        // Favourites filter — the heart in either toolbar. Was previously a
+        // toggle that filtered nothing.
+        if (root.favoritesOnly)
+            list = list.filter(w => WallpaperHub.isFavorite(w.path))
         // Videos tab pre-filters to video kind regardless of the ALL/PIC/VID
         // media-type chip selection.
         if (activeSource === "videos")
@@ -218,10 +245,18 @@ Item {
             let q = (root.query || "").trim().toLowerCase()
             q = q.replace(/^r\//, "")
             if (q.length > 0) {
-                list = list.filter(w =>
-                    (w.subreddit || "").toLowerCase().includes(q)
-                 || (w.title     || "").toLowerCase().includes(q)
-                 || (w.id        || "").toLowerCase().includes(q))
+                // Prefer an EXACT subreddit match (so "wallpapers" doesn't also
+                // pull in "WallpapersDoA"); fall back to fuzzy title/id/sub
+                // matching only when nothing matches the sub exactly.
+                const exact = list.filter(w => (w.subreddit || "").toLowerCase() === q)
+                if (exact.length > 0) {
+                    list = exact
+                } else {
+                    list = list.filter(w =>
+                        (w.subreddit || "").toLowerCase().includes(q)
+                     || (w.title     || "").toLowerCase().includes(q)
+                     || (w.id        || "").toLowerCase().includes(q))
+                }
             }
         }
         return list
@@ -349,12 +384,41 @@ Item {
     property bool   redditHasMore: true
     property bool   redditLoadingMore: false
 
+    // How many cached files the scan loads at once, and when it last ran.
+    // Grown in pages as the user reaches the end, so a sub with thousands of
+    // cached files is fully reachable without loading them all up front.
+    readonly property int scanPageSize: 400
+    property int scanLimit: scanPageSize
+    property real lastScanTime: 0
+    // Run the disk scan. `incremental` only picks up files newer than the last
+    // pass and appends them (used by the live rescan during a sync).
+    function runScan(incremental) {
+        redditScanProc.since = incremental ? root.lastScanTime : 0
+        redditScanProc.running = true
+    }
+
     // ── Reddit (cached via gallery-dl) ────────────────────────────────
     // Scans the gallery-dl download dir for previously-fetched Reddit
     // posts. Filenames look like "<id> <title> [WxH].ext"; the id is
     // the leading non-space token.
     Process {
         id: redditScanProc
+        // The subreddit whose cache we want. Without this the scan took the
+        // globally newest 200 files across ALL subs, so asking for a sub whose
+        // files weren't in that window showed "Nothing cached" (even with
+        // hundreds on disk), and a sub that was only partly in it showed a
+        // handful of cards — which is why the carousel had nothing to scroll.
+        readonly property string scanSub: {
+            if (root.activeSource !== "reddit") return ""
+            const q = (root.query || "").trim()
+            return q.replace(/^r\//i, "").replace(/[^A-Za-z0-9_]/g, "")
+        }
+        // > 0 → only list files newer than this epoch time and APPEND them.
+        // The 800 ms rescan during a sync used to re-list and re-hash the whole
+        // folder and rebuild the model from scratch; now it looks at just the
+        // handful of files that landed since the last pass.
+        property real since: 0
+        readonly property bool appendMode: since > 0
         // Scan BOTH the new (under ~/Pictures/Wallpapers/skwd) and the
         // legacy (~/.config/gallery-dl) download roots, AND video files
         // alongside images. For each video, the first frame is extracted
@@ -362,36 +426,62 @@ Item {
         // carousel has something to paint until VideoOutput kicks in.
         // Output lines: `<kind>|<posterpath>|<realpath>`.
         command: ["bash", "-c",
-            `postdir="$HOME/.cache/quickshell/skwd-posters"; mkdir -p "$postdir"; \\
-             roots=(\\
-                "$HOME/Pictures/Wallpapers/skwd/reddit" \\
-                "$HOME/Pictures/Wallpapers/skwd/redgifs" \\
-                "$HOME/.config/gallery-dl/reddit" \\
-                "$HOME/.config/gallery-dl/redgifs"); \\
-             exist=(); for r in "\${roots[@]}"; do [ -d "$r" ] && exist+=("$r"); done; \\
-             [ \${#exist[@]} -eq 0 ] && exit 0; \\
-             find "\${exist[@]}" -maxdepth 2 -type f \\
-                \\( -iname '*.jpg' -o -iname '*.jpeg' -o -iname '*.png' \\
-                   -o -iname '*.webp' -o -iname '*.gif' \\
-                   -o -iname '*.mp4' -o -iname '*.webm' \\
-                   -o -iname '*.m4v' -o -iname '*.mkv' -o -iname '*.mov' \\) \\
-                -printf '%T@\\t%p\\n' 2>/dev/null \\
-             | sort -rn | cut -f2- | head -200 \\
-             | while IFS= read -r f; do \\
-                 case "\${f,,}" in \\
-                   *.mp4|*.webm|*.m4v|*.mkv|*.mov|*.gif) \\
-                     h=$(printf '%s' "$f" | md5sum | cut -d' ' -f1); \\
-                     p="$postdir/$h.jpg"; \\
-                     [ -f "$p" ] || ffmpeg -nostdin -y -loglevel quiet \\
-                         -i "$f" -vf 'scale=480:-2' -vframes 1 "$p" 2>/dev/null; \\
-                     echo "vid|$p|$f" ;; \\
-                   *) echo "pic|$f|$f" ;; \\
-                 esac; \\
-               done`]
+            `postdir="$HOME/.cache/quickshell/skwd-posters"; mkdir -p "$postdir"
+             sub='${redditScanProc.scanSub}'
+             limit='${root.scanLimit}'
+             since='${Math.floor(redditScanProc.since)}'
+             newer=(); [ "$since" -gt 0 ] && newer=( -newermt "@$since" )
+             roots=( "$HOME/Pictures/Wallpapers/skwd/reddit" "$HOME/Pictures/Wallpapers/skwd/redgifs" "$HOME/.config/gallery-dl/reddit" "$HOME/.config/gallery-dl/redgifs" )
+             exist=(); for r in "\${roots[@]}"; do [ -d "$r" ] && exist+=("$r"); done
+             [ \${#exist[@]} -eq 0 ] && exit 0
+             types=( -iname '*.jpg' -o -iname '*.jpeg' -o -iname '*.png' -o -iname '*.webp' -o -iname '*.gif' -o -iname '*.mp4' -o -iname '*.webm' -o -iname '*.m4v' -o -iname '*.mkv' -o -iname '*.mov' )
+             list=""
+             # Asked for one sub → take that sub's WHOLE folder (newest first),
+             # case-insensitively, so the carousel holds everything cached for
+             # it instead of whatever happened to be downloaded most recently.
+             # Matched as a DIRECTORY name, not with -ipath on the full path:
+             # the roots live under ~/Pictures/Wallpapers, so a path glob for
+             # r/wallpapers matches that prefix too and drags in every sub.
+             if [ -n "$sub" ]; then
+               mapfile -t sdirs < <(find "\${exist[@]}" -mindepth 1 -maxdepth 1 -type d -iname "$sub" 2>/dev/null)
+               if [ \${#sdirs[@]} -gt 0 ]; then
+                 list=$(find "\${sdirs[@]}" -maxdepth 1 -type f "\${newer[@]}" \\( "\${types[@]}" \\) -printf '%T@\\t%p\\n' 2>/dev/null | sort -rn | cut -f2- | head -"$limit")
+               fi
+             fi
+             # No sub (or nothing cached for it) → newest across every sub.
+             # Skipped for incremental passes: there we only want new arrivals.
+             if [ -z "$list" ] && [ "$since" -eq 0 ]; then
+               list=$(find "\${exist[@]}" -maxdepth 2 -type f \\( "\${types[@]}" \\) -printf '%T@\\t%p\\n' 2>/dev/null | sort -rn | cut -f2- | head -200)
+             fi
+             [ -z "$list" ] && exit 0
+             # Phase 1: build any missing thumbnails ACROSS ALL CORES. The
+             # jpeg:size hint lets libjpeg downscale while decoding, so a 4K
+             # original never fully decodes — this is the whole speed win.
+             maxj=$(nproc)
+             while IFS= read -r f; do
+               [ -z "$f" ] && continue
+               h=$(printf '%s' "$f" | md5sum | cut -d' ' -f1); p="$postdir/$h.jpg"
+               [ -f "$p" ] && continue
+               ( case "\${f,,}" in
+                   *.mp4|*.webm|*.m4v|*.mkv|*.mov|*.gif) ffmpeg -nostdin -y -loglevel quiet -i "$f" -vf 'scale=720:-2' -vframes 1 "$p" 2>/dev/null ;;
+                   *) magick -define jpeg:size=1024x1024 "$f" -auto-orient -thumbnail '720x>' -quality 80 "$p" 2>/dev/null ;;
+                 esac ) &
+               while [ "$(jobs -rp | wc -l)" -ge "$maxj" ]; do wait -n; done
+             done <<< "$list"
+             wait
+             # Phase 2: emit model lines (newest first), thumbnail if it exists.
+             while IFS= read -r f; do
+               [ -z "$f" ] && continue
+               h=$(printf '%s' "$f" | md5sum | cut -d' ' -f1); p="$postdir/$h.jpg"
+               case "\${f,,}" in
+                 *.mp4|*.webm|*.m4v|*.mkv|*.mov|*.gif) [ -f "$p" ] && echo "vid|$p|$f" || echo "vid|$f|$f" ;;
+                 *) [ -f "$p" ] && echo "pic|$p|$f" || echo "pic|$f|$f" ;;
+               esac
+             done <<< "$list"`]
         stdout: StdioCollector {
             onStreamFinished: {
                 const lines = text.trim().split("\n").filter(l => l.length > 0)
-                root.wallpapers = lines.map(line => {
+                const parsed = lines.map(line => {
                     const cols  = line.split("|")
                     const kind  = cols[0] || "pic"
                     const thumb = cols[1] || cols[2]
@@ -415,13 +505,30 @@ Item {
                         title: name.replace(/^\w+\s+/, "").replace(/\.[a-z0-9]+$/i, ""),
                         subreddit: subreddit,
                         thumb:  encUrl(thumb),
-                        full:   encUrl(thumb),
+                        full:   encUrl(real),
                         source: "reddit",
                         kind:   kind,                 // "pic" or "vid"
                         path:   real,                 // raw real path → fast apply
                         videoUrl: kind === "vid" ? encUrl(real) : "",
                     }
                 })
+                if (redditScanProc.appendMode) {
+                    // Incremental pass: keep what's already on screen (and the
+                    // user's place in it) and add only genuinely new files at
+                    // the END. A full rebuild here would reshuffle the strip
+                    // mid-scroll every 800 ms while a sync is running.
+                    const seen = {}
+                    root.wallpapers.forEach(w => seen[w.path] = true)
+                    const fresh = parsed.filter(w => !seen[w.path])
+                    if (fresh.length > 0)
+                        root.wallpapers = root.wallpapers.concat(fresh)
+                } else {
+                    root.wallpapers = parsed
+                }
+                // Stamp slightly in the past: file mtimes and the clock here
+                // can disagree by a hair, and missing a file is worse than
+                // re-listing one.
+                root.lastScanTime = Date.now() / 1000 - 5
                 root.loading = false
                 // Now that wallpapers reflects the just-arrived files, check
                 // whether the previous sync grew anything. If it didn't,
@@ -507,7 +614,8 @@ Item {
         onRunningChanged: if (!running) {
             redditSyncProc.busy = false
             redditSyncProc._checkSortAdvanceAfterScan = true
-            redditScanProc.running = true
+            // Full pass once the sync finishes, so ordering settles.
+            root.runScan(false)
         }
     }
     // (Dry-sub detection removed — gallery-dl re-downloading already
@@ -525,18 +633,9 @@ Item {
     // unique items per sub. After the cycle exhausts, the user has more
     // than they'll ever scroll through.
     property var redditSortBySub: ({})
-    readonly property var redditSorts: [
-        { path: "hot",          q: ""           },
-        { path: "top",          q: "?t=all"     },
-        { path: "top",          q: "?t=year"    },
-        { path: "top",          q: "?t=month"   },
-        { path: "top",          q: "?t=week"    },
-        { path: "top",          q: "?t=day"     },
-        { path: "new",          q: ""           },
-        { path: "rising",       q: ""           },
-        { path: "controversial",q: "?t=all"     },
-        { path: "controversial",q: "?t=year"    },
-    ]
+    // Defined once in WallpaperHub so the launcher's filter chips and this
+    // fetcher always mean the same listing.
+    readonly property var redditSorts: WallpaperHub.redditSorts
     property string redditLastSub: ""
 
     // Per-(sub,sort) `after` cursors. Reddit's OAuth API returns an
@@ -549,6 +648,115 @@ Item {
     // once per session instead of on every retry while auth is missing.
     property bool _redditAuthWarned: false
     Process { id: notifyAuthSetupProc }
+
+    // ── Subreddit autocomplete ────────────────────────────────────────
+    // As the user types a sub name, reddit_complete.sh hits Reddit's
+    // autocomplete API and we show a dropdown of matches — each with its
+    // subscriber count and an NSFW tag for over-18 subs. Picking one (click
+    // or Enter) fills the query and fetches it.
+    readonly property string scriptDir: `${root.home}/.config/quickshell/ii/scripts/colors`
+    property var redditCompletions: []      // [{ name, nsfw, subs }]
+    property int completionIndex: -1
+    property bool completionsOpen: false
+
+    Timer {
+        id: completionDebounce
+        interval: 220
+        repeat: false
+        onTriggered: {
+            if (root.activeSource !== "reddit") { root.completionsOpen = false; return }
+            const q = (root.query || "").trim().replace(/^\/?r\//i, "")
+            if (q.length < 2) { root.redditCompletions = []; root.completionsOpen = false; return }
+            redditCompleteProc.command = ["bash", "-c",
+                `'${root.scriptDir}/reddit_complete.sh' '${q.replace(/'/g, "")}'`]
+            redditCompleteProc.running = true
+        }
+    }
+    Process {
+        id: redditCompleteProc
+        stdout: StdioCollector {
+            onStreamFinished: {
+                if (root.activeSource !== "reddit") return
+                const rows = text.trim().split("\n").filter(l => l.length > 0)
+                root.redditCompletions = rows.map(l => {
+                    const c = l.split("\t")
+                    return { name: c[0] || "", nsfw: c[1] === "1", subs: parseInt(c[2] || "0", 10) }
+                }).filter(r => r.name.length > 0)
+                root.completionIndex = -1
+                root.completionsOpen = root.redditCompletions.length > 0
+            }
+        }
+    }
+    function applyCompletion(i) {
+        if (i < 0 || i >= root.redditCompletions.length) return
+        root.query = root.redditCompletions[i].name
+        root.querySubConfirmed = true
+        root.completionsOpen = false
+        root.redditCompletions = []
+        root.syncReddit()
+    }
+
+    // ── Only fetch subs the user actually meant ──────────────────────
+    // Typing "wallpapers" used to fire a fetch for "w", "wa", "wal", … each
+    // creating an empty cache dir and a junk page-map key. A sub counts as
+    // real once it's been chosen (launcher pick, completion pick, restored
+    // state) or typed out in full so a completion matches it exactly.
+    property bool querySubConfirmed: false
+    function queryIsRealSub() {
+        if (root.querySubConfirmed) return true
+        const q = (root.query || "").trim().replace(/^r\//i, "").toLowerCase()
+        if (q.length === 0) return false
+        return root.redditCompletions.some(c => (c.name || "").toLowerCase() === q)
+    }
+    // 1_962_009 → "2M", 736_079 → "736k".
+    function formatSubs(n) {
+        if (n >= 1000000) return (n / 1000000).toFixed(n >= 10000000 ? 0 : 1) + "M"
+        if (n >= 1000)    return (n / 1000).toFixed(n >= 100000 ? 0 : 1) + "k"
+        return String(n)
+    }
+
+    // ── Focused-item metadata ─────────────────────────────────────────
+    // dimensions / format / byte size read off the actual file (local &
+    // reddit-cached items only — remote URLs would need a download). Keyed
+    // by id so re-focusing a seen item doesn't re-run identify.
+    property var metaByItemId: ({})     // id → { dims, format, bytes }
+    function metaFor(item) { return item ? (metaByItemId[item.id] ?? null) : null }
+    function _fetchMetaFor(item) {
+        if (!item || !item.id) return
+        if (metaByItemId[item.id] !== undefined) return
+        const p = item.path || ""
+        if (!p.startsWith("/")) return          // remote — can't inspect cheaply
+        metaProc.itemId = item.id
+        const safe = p.replace(/'/g, "'\\''")
+        metaProc.command = ["bash", "-c",
+            `f='${safe}'; [ -f "$f" ] || exit 0; ` +
+            `d=$(identify -format '%wx%h|%m' "$f" 2>/dev/null | head -1); ` +
+            `s=$(stat -c%s "$f" 2>/dev/null || echo 0); echo "$d|$s"`]
+        metaProc.running = true
+    }
+    Process {
+        id: metaProc
+        property string itemId: ""
+        stdout: StdioCollector {
+            onStreamFinished: {
+                const parts = text.trim().split("|")
+                if (parts.length < 3) return
+                const next = Object.assign({}, root.metaByItemId)
+                next[metaProc.itemId] = {
+                    dims: parts[0] || "",
+                    format: (parts[1] || "").toUpperCase(),
+                    bytes: parseInt(parts[2] || "0", 10)
+                }
+                root.metaByItemId = next
+            }
+        }
+    }
+    function formatBytes(n) {
+        if (!n || n <= 0) return "—"
+        if (n >= 1048576) return (n / 1048576).toFixed(1) + " MB"
+        if (n >= 1024)    return (n / 1024).toFixed(0) + " KB"
+        return n + " B"
+    }
 
     function syncReddit() {
         // Robustify input: strip "r/", "/r/", "https://reddit.com/r/", quotes,
@@ -610,7 +818,15 @@ Item {
     // query survives a close/reopen.
     onQueryChanged: {
         skwdSaveDebounce.restart()
+        // Any change re-arms the gate; the paths that KNOW the sub is real
+        // (navigate, applyCompletion, restore) set it back right after they
+        // assign the query.
+        root.querySubConfirmed = false
         if (root.activeSource !== "reddit") return
+        // Refresh the autocomplete dropdown as they type. In embedded mode
+        // the launcher owns the search UI, so skip completions (and let the
+        // auto-fetch below fire, since it waits on !completionsOpen).
+        if (!root.embedded) completionDebounce.restart()
         const cleaned = (root.query || "")
             .trim().replace(/^r\//i, "").toLowerCase()
         if (cleaned !== (root.redditLastSub || "").toLowerCase()) {
@@ -633,8 +849,10 @@ Item {
         // this, searching for an un-fetched sub shows an empty carousel
         // and end-of-list pagination never kicks in (it needs at least
         // one visible item before activeIndex / filtered.length crosses
-        // the threshold).
-        if (cleaned.length >= 2) redditSearchKick.restart()
+        // the threshold). Skipped while the completion dropdown is up — the
+        // user is picking a sub, so we wait for their choice instead of
+        // fetching every half-typed prefix.
+        if (cleaned.length >= 2 && !root.completionsOpen) redditSearchKick.restart()
     }
     Timer {
         id: redditSearchKick
@@ -643,6 +861,8 @@ Item {
         onTriggered: {
             if (root.activeSource !== "reddit") return
             if (redditSyncProc.busy) return
+            // Half-typed prefixes are not subreddits — don't fetch them.
+            if (!root.queryIsRealSub()) return
             root.syncReddit()
         }
     }
@@ -662,7 +882,9 @@ Item {
                 running = false
                 return
             }
-            if (!redditScanProc.running) redditScanProc.running = true
+            // Incremental while files are still landing — cheap, and it
+            // doesn't move anything already on screen.
+            if (!redditScanProc.running) root.runScan(true)
         }
     }
     Process {
@@ -782,6 +1004,9 @@ Item {
         root.loading = true
         root.wallpapers = []
         root.activeIndex = 0
+        // New query/source → back to the first page of the disk scan.
+        root.scanLimit = root.scanPageSize
+        root.lastScanTime = 0
         root.whPage = 1
         root.whHasMore = true
         root.whLoadingMore = false
@@ -800,7 +1025,7 @@ Item {
             // 403'd JSON API. The Videos tab uses the same scan + a kind=="vid"
             // filter in `filtered`. The Sync button (UI) triggers a fresh fetch
             // when the user wants new posts.
-            redditScanProc.running = true
+            root.runScan(false)
         }
     }
 
@@ -811,35 +1036,242 @@ Item {
     // saving via a debounce on each property change.
     Timer { id: skwdSaveDebounce; interval: 250; repeat: false; onTriggered: root._savePersistedState() }
     function _savePersistedState() {
+        if (root.embedded) return
         const s = Persistent.states.skwd
         if (!s) return
         s.activeSource    = root.activeSource
         s.activeMediaType = root.activeMediaType
         s.query           = root.query
         s.activeIndex     = root.activeIndex
+        // The forced sort is a deliberate choice — it should still be in
+        // effect next time. (filterOpen deliberately isn't saved: the panel
+        // always starts closed.)
+        s.forcedSort      = WallpaperHub.forcedSort
         try {
             s.redditPageMap = JSON.stringify(root.redditPageBySub || {})
+            s.favorites     = JSON.stringify(Object.keys(WallpaperHub.favoritePaths || {}))
         } catch (e) { /* nothing */ }
     }
     function _restorePersistedState() {
+        if (root.embedded) return
         const s = Persistent.states.skwd
         if (!s) return
-        if (s.activeSource    && s.activeSource.length    > 0) root.activeSource    = s.activeSource
-        if (s.activeMediaType && s.activeMediaType.length > 0) root.activeMediaType = s.activeMediaType
-        if (s.query           !== undefined)                   root.query           = s.query
+        if (s.activeSource    && s.activeSource.length    > 0) WallpaperHub.source  = s.activeSource
+        if (s.activeMediaType && s.activeMediaType.length > 0) WallpaperHub.mediaType = s.activeMediaType
+        if (s.query           !== undefined)                 { root.query = s.query
+                                                               // Restored from a real session → fetchable.
+                                                               root.querySubConfirmed = true }
         if (s.activeIndex     >= 0)                            root.activeIndex     = s.activeIndex
+        if (s.forcedSort      !== undefined)                   WallpaperHub.forcedSort = s.forcedSort
         try {
             const m = JSON.parse(s.redditPageMap || "{}")
             if (m && typeof m === "object") root.redditPageBySub = m
         } catch (e) { /* leave default */ }
+        try {
+            const favs = JSON.parse(s.favorites || "[]")
+            if (Array.isArray(favs)) {
+                const m = {}
+                favs.forEach(p => { if (p) m[p] = true })
+                WallpaperHub.favoritePaths = m
+            }
+        } catch (e) { /* leave default */ }
     }
-    onActiveSourceChanged:    { skwdSaveDebounce.restart(); refresh() }
+
+    // ── Cache hygiene ────────────────────────────────────────────────
+    // Removes the empty sub dirs left behind by the old fetch-every-prefix
+    // behaviour, then reports what's actually cached so the page/sort/dry
+    // counters for subs that never existed can be dropped too.
+    Process {
+        id: cachePruneProc
+        command: ["bash", "-c",
+            `d="$HOME/Pictures/Wallpapers/skwd/reddit"
+             [ -d "$d" ] || exit 0
+             find "$d" -mindepth 1 -maxdepth 1 -type d -empty -delete 2>/dev/null
+             ls -1 "$d" 2>/dev/null`]
+        stdout: StdioCollector {
+            onStreamFinished: {
+                const live = {}
+                text.trim().split("\n").filter(l => l.length > 0)
+                    .forEach(n => live[n.toLowerCase()] = true)
+                if (Object.keys(live).length === 0) return
+                // Keys are either "<sub>" or "<sub>|<sortIdx>".
+                const keep = k => live[String(k).split("|")[0].toLowerCase()] === true
+                const prune = m => {
+                    const out = {}
+                    for (const k of Object.keys(m || {})) if (keep(k)) out[k] = m[k]
+                    return out
+                }
+                const before = Object.keys(root.redditPageBySub || {}).length
+                root.redditPageBySub  = prune(root.redditPageBySub)
+                root.redditSortBySub  = prune(root.redditSortBySub)
+                root.redditAfterBySub = prune(root.redditAfterBySub)
+                root.redditDrySubs    = prune(root.redditDrySubs)
+                const after = Object.keys(root.redditPageBySub || {}).length
+                if (after !== before) {
+                    console.log("[skwd] pruned", before - after, "stale page-map entries")
+                    skwdSaveDebounce.restart()
+                }
+            }
+        }
+    }
+    // Qt.callLater: `activeSource` is a binding on WallpaperHub.source, so it
+    // is first evaluated lazily — from inside `filtered`'s own evaluation.
+    // Refreshing straight away clears `wallpapers` mid-evaluation, which Qt
+    // reports as a binding loop and leaves `filtered` empty (nothing to
+    // scroll). Deferring by one event-loop turn keeps the two apart.
+    onActiveSourceChanged:    { skwdSaveDebounce.restart(); root.completionsOpen = false; root.redditCompletions = []; Qt.callLater(root.refresh) }
     onActiveMediaTypeChanged: skwdSaveDebounce.restart()
     Component.onCompleted: {
         _restorePersistedState()
         refresh()
+        if (!root.embedded) cachePruneProc.running = true
     }
     Component.onDestruction: _savePersistedState()
+
+    // Live navigation from the launcher: when skwd is already open and the
+    // user picks another subreddit in the launcher, jump to it (a fresh open
+    // instead seeds via _restorePersistedState above).
+    // Single clamped way to move the selection — wheel, middle-drag, arrow
+    // keys and the launcher bar all go through here, so every input steps the
+    // carousel identically in BOTH directions.
+    // ── Wheel → step the carousel ────────────────────────────────────
+    // Lives on root so ANY surface can feed it: the carousel, and the whole
+    // skwd area (the metadata/post panels underneath used to swallow the
+    // wheel, which read as "scrolling randomly stops working").
+    property real _wheelAccum: 0
+    property int _wheelBurst: 0
+    property real _lastWheelMs: 0
+    readonly property real wheelStepUnits: 120
+    readonly property int maxWheelStride: 12
+    // Finger travel that equals one wallpaper on a touchpad. Tuned against the
+    // 120-unit notch below so a mouse click and a short swipe move the same.
+    readonly property real wheelPixelsPerStep: 100
+    // A gesture that stopped this long ago is over; its leftover fraction must
+    // not add itself to the next one and make the first step arrive early.
+    readonly property int wheelIdleMs: 400
+    // Opt-in delta logging; see the console.log in wheelScroll below.
+    readonly property bool _wheelDebug: Quickshell.env("SKWD_WHEEL_DEBUG") === "1"
+
+    /// `axis` is the orientation of the handler that delivered this event.
+    /// It matters: the two handlers below both receive a DIAGONAL event, and
+    /// this used to add (x + y) on each of them, counting a drifting swipe
+    /// twice. Each handler now contributes only its own axis, so the total is
+    /// still x + y but each component lands exactly once.
+    function wheelScroll(event, axis) {
+        event.accepted = true
+        const now = Date.now()
+        if (now - root._lastWheelMs > root.wheelIdleMs)
+            root._wheelAccum = 0
+
+        const vertical = (axis === undefined) || (axis === Qt.Vertical)
+        const px  = vertical ? event.pixelDelta.y : event.pixelDelta.x
+        const ang = vertical ? event.angleDelta.y : event.angleDelta.x
+
+        // Both axes are normalised to FRACTIONS OF ONE WALLPAPER and the
+        // larger wins.
+        //
+        // pixelDelta used to be consulted only when angleDelta was exactly
+        // zero. A touchpad sends small non-zero angleDelta fragments, so a slow
+        // swipe contributed a few units against a 120-unit threshold and moved
+        // nothing — "it only scrolls if I swipe fast" was that threshold, not a
+        // dropped event.
+        //
+        // Simply preferring pixelDelta would be wrong in the other direction:
+        // where Qt reports a well-scaled angleDelta (30) beside a small
+        // pixelDelta (5), that swaps a working path for a 5x slower one. Taking
+        // the larger of the two can only ever help, whichever way this
+        // compositor and Qt build happen to report a touchpad.
+        const fromAngle = ang / root.wheelStepUnits
+        const fromPixel = px / root.wheelPixelsPerStep
+        const steps = Math.abs(fromPixel) > Math.abs(fromAngle) ? fromPixel : fromAngle
+
+        // What a touchpad actually reports here is compositor- and Qt-build
+        // specific, and the two cases need different tuning: plenty of
+        // pixelDelta is handled above, whereas tiny angleDelta with NO
+        // pixelDelta cannot be fixed without knowing the real magnitudes.
+        // `SKWD_WHEEL_DEBUG=1 qs -c ii` prints them instead of guessing.
+        if (root._wheelDebug)
+            console.log("[skwd wheel]", (axis === Qt.Horizontal ? "h" : "v"),
+                        "angle=" + ang, "pixel=" + px,
+                        "steps=" + steps.toFixed(3),
+                        "accum=" + (root._wheelAccum + steps).toFixed(3))
+
+        if (steps === 0)
+            return
+        // Gap since the PREVIOUS event, captured before the clock is advanced —
+        // the burst detector below compares against it, and updating first made
+        // every notch look 0ms apart, i.e. permanently accelerating.
+        const sinceLast = now - root._lastWheelMs
+        root._lastWheelMs = now
+
+        // A click wheel sends whole ±120 notches; a touchpad sends a stream of
+        // small fragments. Only the former accelerates — applying a burst
+        // multiplier to a touchpad made one swipe jump dozens of wallpapers.
+        // Judged on the RAW angle delta: a fast touchpad swipe can now produce
+        // a scaled `d` past 120, and treating that as a notch would bring the
+        // acceleration back on exactly the input it was disabled for.
+        const notched = px === 0 && Math.abs(ang) >= 120
+        let stride = 1
+        if (notched) {
+            root._wheelBurst = (sinceLast < 180)
+                ? Math.min(root._wheelBurst + 1, 24) : 0
+            stride = Math.min(root.maxWheelStride, 1 + Math.floor(root._wheelBurst / 3))
+        } else {
+            root._wheelBurst = 0
+        }
+        // The accumulator now counts WHOLE WALLPAPERS (1.0 = one), not raw
+        // wheel units, because the two input kinds no longer share a unit.
+        root._wheelAccum += steps
+        while (Math.abs(root._wheelAccum) >= 1) {
+            const back = root._wheelAccum > 0
+            root._wheelAccum += back ? -1 : 1
+            root.stepActive(back ? -stride : stride)
+        }
+    }
+
+    function setActive(i) {
+        if (root.filtered.length === 0) return
+        root.activeIndex = Math.max(0, Math.min(i, root.filtered.length - 1))
+    }
+    function stepActive(delta) {
+        root.setActive(root.activeIndex + delta)
+    }
+
+    // Force a Reddit listing sort ("" = back to the auto-cycle). Called from
+    // skwd's own chips and, via WallpaperHub.sortPicked, from the launcher's.
+    function applySort(id) {
+        WallpaperHub.forcedSort = id
+        skwdSaveDebounce.restart()
+        // Reset this sub's counters so the next sync runs against the newly
+        // chosen sort instead of resuming the old one's pagination.
+        if (id !== "") {
+            const sub = (root.query || "wallpapers").trim().replace(/^r\//i, "").toLowerCase()
+            const sm = Object.assign({}, root.redditSortBySub)
+            delete sm[sub]
+            root.redditSortBySub = sm
+        }
+        if (!redditSyncProc.busy) root.syncReddit()
+    }
+
+    Connections {
+        target: WallpaperHub
+        enabled: !root.embedded
+        function onNavigate(sub) {
+            WallpaperHub.source = "reddit"
+            root.query = sub
+            // Picked in the launcher's dropdown → a real sub, safe to fetch.
+            root.querySubConfirmed = true
+        }
+        function onCarouselStep(delta) {
+            root.stepActive(delta)
+        }
+        function onReload() { root.refresh() }
+        function onSortPicked(id) { root.applySort(id) }
+        function onApplyFocused() {
+            if (root.activeIndex >= 0 && root.activeIndex < root.filtered.length)
+                root.applyWallpaper(root.filtered[root.activeIndex])
+        }
+    }
 
     // ── Auto-pagination ───────────────────────────────────────────────
     // When the user scrolls / arrows past 80 % of the loaded list,
@@ -854,7 +1286,21 @@ Item {
         const headroomOk = (n - activeIndex) <= prefetchHeadroom
         if (!ratioOk && !headroomOk) return
         if (activeSource === "wallhaven") loadMoreWallhaven()
-        else if (activeSource === "reddit" || activeSource === "videos") loadMoreReddit()
+        else if (activeSource === "reddit" || activeSource === "videos") {
+            // Before hitting the network, check whether the cap is what's
+            // holding us back — a sub with 800 cached files shouldn't stop at
+            // the first 400. Grow the page and re-scan disk first.
+            if (root.wallpapers.length >= root.scanLimit) {
+                // One page at a time: scrolling fast past the end used to fire
+                // a fresh disk scan on every step, each one a find + md5sum
+                // over hundreds of files.
+                if (redditScanProc.running) return
+                root.scanLimit += root.scanPageSize
+                root.runScan(false)
+                return
+            }
+            loadMoreReddit()
+        }
     }
     // Tracks the previous filtered length so onFilteredChanged can detect
     // "did we actually grow?". Used to chain-fire pagination on Reddit
@@ -907,6 +1353,13 @@ Item {
         ]
         if (local) {
             arr.push({ separator: true })
+            arr.push({ icon: WallpaperHub.isFavorite(md.path) ? "favorite" : "favorite_border",
+                       label: WallpaperHub.isFavorite(md.path) ? "Remove from favourites" : "Add to favourites",
+                       onTriggered: () => WallpaperHub.toggleFavorite(md.path) })
+            // KIO's standalone properties dialog — the same one Dolphin shows,
+            // without launching Dolphin.
+            arr.push({ icon: "info", label: "Properties…",
+                       onTriggered: () => Quickshell.execDetached(["kioclient", "openProperties", md.path]) })
             arr.push({ icon: "content_copy", label: "Copy path",
                        onTriggered: () => Quickshell.execDetached(["wl-copy", "--", md.path]) })
             arr.push({ icon: "folder",       label: "Show in files",
@@ -953,9 +1406,28 @@ Item {
     Item {
         anchors.fill: parent
 
-        // Floating pill toolbar at top
+        // Wheel anywhere over skwd steps the carousel — over the cards, the
+        // info panel, the empty space around them. The carousel's own handlers
+        // accept first, so this never double-steps.
+        WheelHandler {
+            orientation: Qt.Vertical
+            acceptedDevices: PointerDevice.AllDevices
+            onWheel: event => root.wheelScroll(event, Qt.Vertical)
+        }
+        WheelHandler {
+            orientation: Qt.Horizontal
+            acceptedDevices: PointerDevice.AllDevices
+            onWheel: event => root.wheelScroll(event, Qt.Horizontal)
+        }
+
+        // Floating pill toolbar at top.
+        // The launcher's search bar IS this bar — when the launcher is up it
+        // owns the controls, and this one stays out of the way instead of
+        // being a second copy on screen. It only appears as a fallback if
+        // skwd somehow ends up open without the launcher.
         Rectangle {
             id: toolbar
+            visible: !GlobalStates.overviewOpen
             anchors.top: parent.top
             anchors.horizontalCenter: parent.horizontalCenter
             anchors.topMargin: 14
@@ -980,63 +1452,12 @@ Item {
                 anchors.centerIn: parent
                 spacing: 8
 
-                // Source switcher (Local / Wallhaven / Reddit) — rendered as small icon pills
-                Repeater {
-                    model: root.sources
-                    delegate: Rectangle {
-                        required property var modelData
-                        readonly property bool active: root.activeSource === modelData.id
-                        Layout.alignment: Qt.AlignVCenter
-                        implicitWidth: 26; implicitHeight: 26
-                        radius: height / 2
-                        color: active
-                            ? Appearance.colors.colSecondaryContainer
-                            : (srcHov.hovered ? Appearance.colors.colLayer2Base : "transparent")
-                        Behavior on color { ColorAnimation { duration: 140 } }
-                        HoverHandler { id: srcHov }
-                        TapHandler { onTapped: root.activeSource = modelData.id }
-
-                        MaterialSymbol {
-                            anchors.centerIn: parent
-                            text: modelData.icon
-                            iconSize: 14
-                            color: parent.active
-                                ? Appearance.m3colors.m3onSecondaryContainer
-                                : Appearance.colors.colOnLayer1
-                        }
-                    }
-                }
-
-                Rectangle { Layout.preferredWidth: 1; Layout.preferredHeight: 18; color: Appearance.colors.colLayer0Border }
-
-                // Media-type tabs: ALL / PIC / VID / WE
-                Repeater {
-                    model: root.mediaTypes
-                    delegate: Rectangle {
-                        required property var modelData
-                        readonly property bool active: root.activeMediaType === modelData.id
-                        Layout.alignment: Qt.AlignVCenter
-                        implicitHeight: 24
-                        implicitWidth: typeLabel.implicitWidth + 14
-                        radius: 4
-                        color: active
-                            ? Appearance.m3colors.m3primary
-                            : (typeHov.hovered ? Appearance.colors.colLayer2Base : "transparent")
-                        Behavior on color { ColorAnimation { duration: 140 } }
-                        HoverHandler { id: typeHov }
-                        TapHandler { onTapped: root.activeMediaType = modelData.id }
-                        StyledText {
-                            id: typeLabel
-                            anchors.centerIn: parent
-                            text: modelData.label
-                            font.pixelSize: 10
-                            font.weight: Font.Medium
-                            font.letterSpacing: 0.5
-                            color: parent.active
-                                ? Appearance.colors.colOnPrimary
-                                : Appearance.colors.colOnLayer1
-                        }
-                    }
+                // Shared with the launcher's search bar — one definition in
+                // WallpaperControls, one state in WallpaperHub, so this IS
+                // the launcher bar rather than a second copy of it.
+                WallpaperControls {
+                    Layout.alignment: Qt.AlignVCenter
+                    compact: true
                 }
 
                 Rectangle { Layout.preferredWidth: 1; Layout.preferredHeight: 18; color: Appearance.colors.colLayer0Border }
@@ -1065,77 +1486,16 @@ Item {
                     }
                 }
 
-                // Favorites toggle
-                Rectangle {
+                // Colour filter — same component as the launcher bar.
+                WallpaperHueSelector {
                     Layout.alignment: Qt.AlignVCenter
-                    implicitWidth: 26; implicitHeight: 26
-                    radius: height / 2
-                    color: root.favoritesOnly
-                        ? Qt.alpha(Appearance.m3colors.m3primary, 0.18)
-                        : (favHov.hovered ? Appearance.colors.colLayer2Base : "transparent")
-                    Behavior on color { ColorAnimation { duration: 140 } }
-                    HoverHandler { id: favHov }
-                    TapHandler { onTapped: root.favoritesOnly = !root.favoritesOnly }
-                    MaterialSymbol {
-                        anchors.centerIn: parent
-                        text: root.favoritesOnly ? "favorite" : "favorite_border"
-                        iconSize: 14
-                        color: root.favoritesOnly
-                            ? Appearance.m3colors.m3primary
-                            : Appearance.colors.colOnLayer1
-                    }
-                }
-
-                Rectangle { Layout.preferredWidth: 1; Layout.preferredHeight: 18; color: Appearance.colors.colLayer0Border }
-
-                // Hue swatches — quick-pick row in the toolbar. Tap to
-                // add the hue to the active Wallhaven `colors=` filter and
-                // re-search. Multi-select; the same swatch tapped again
-                // removes it.
-                Row {
-                    Layout.alignment: Qt.AlignVCenter
-                    spacing: 2
+                    compact: true
                     visible: root.activeSource === "wallhaven"
-                    Repeater {
-                        model: root.hues
-                        delegate: Rectangle {
-                            required property var modelData
-                            readonly property bool active:
-                                root.whColors.split(",").indexOf(modelData.wh) >= 0
-                            anchors.verticalCenter: parent.verticalCenter
-                            width: 14; height: active ? 22 : 16
-                            radius: 3
-                            color: Qt.color(modelData.swatch)
-                            border.width: active ? 2 : 0
-                            border.color: Appearance.m3colors.m3onSurface
-                            Behavior on height { NumberAnimation { duration: 120 } }
-                            HoverHandler { id: hueHov }
-                            TapHandler { onTapped: root.toggleColor(modelData.wh) }
-                            scale: hueHov.hovered ? 1.15 : 1
-                            Behavior on scale { NumberAnimation { duration: 100 } }
-                        }
-                    }
                 }
 
                 Rectangle { Layout.preferredWidth: 1; Layout.preferredHeight: 18; color: Appearance.colors.colLayer0Border }
 
-                // Refresh / Tune / Settings / Count
-                Rectangle {
-                    Layout.alignment: Qt.AlignVCenter
-                    implicitWidth: 26; implicitHeight: 26
-                    radius: height / 2
-                    color: refreshHov.hovered ? Appearance.colors.colLayer2Base : "transparent"
-                    HoverHandler { id: refreshHov }
-                    TapHandler { onTapped: root.refresh() }
-
-                    MaterialSymbol {
-                        anchors.centerIn: parent
-                        text: "refresh"
-                        iconSize: 14
-                        color: Appearance.colors.colOnLayer1
-                    }
-                }
-
+                // Tune / Settings / Count
                 Rectangle {
                     Layout.alignment: Qt.AlignVCenter
                     implicitWidth: 26; implicitHeight: 26
@@ -1169,29 +1529,6 @@ Item {
                         text: "filter_list"
                         iconSize: 14
                         color: root.whFilterOpen
-                            ? Appearance.m3colors.m3primary
-                            : Appearance.colors.colOnLayer1
-                    }
-                }
-
-                // Reddit filter button — same pattern as Wallhaven's, opens
-                // the sort/listing override panel.
-                Rectangle {
-                    visible: root.activeSource === "reddit" || root.activeSource === "videos"
-                    Layout.alignment: Qt.AlignVCenter
-                    implicitWidth: 26; implicitHeight: 26
-                    radius: height / 2
-                    color: root.redditFilterOpen
-                        ? Qt.alpha(Appearance.m3colors.m3primary, 0.18)
-                        : (redFiltHov.hovered ? Appearance.colors.colLayer2Base : "transparent")
-                    Behavior on color { ColorAnimation { duration: 140 } }
-                    HoverHandler { id: redFiltHov }
-                    TapHandler { onTapped: root.redditFilterOpen = !root.redditFilterOpen }
-                    MaterialSymbol {
-                        anchors.centerIn: parent
-                        text: "filter_list"
-                        iconSize: 14
-                        color: root.redditFilterOpen
                             ? Appearance.m3colors.m3primary
                             : Appearance.colors.colOnLayer1
                     }
@@ -1479,9 +1816,9 @@ Item {
                             border.width: on ? 2 : 0
                             border.color: Appearance.m3colors.m3onSurface
                             Behavior on border.width { NumberAnimation { duration: 140 } }
-                            scale: on ? 1.15 : (hueHov.hovered ? 1.08 : 1)
+                            scale: on ? 1.15 : (whHov.hovered ? 1.08 : 1)
                             Behavior on scale { NumberAnimation { duration: 160; easing.type: Easing.OutCubic } }
-                            HoverHandler { id: hueHov }
+                            HoverHandler { id: whHov }
                             TapHandler { onTapped: root.toggleColor(modelData.wh) }
                             // Tiny check mark when selected.
                             MaterialSymbol {
@@ -1500,7 +1837,7 @@ Item {
                         color: Appearance.colors.colLayer2Base
                         border.width: 1
                         border.color: Appearance.colors.colLayer0Border
-                        TapHandler { onTapped: { root.whColors = ""; root.refresh() } }
+                        TapHandler { onTapped: WallpaperHub.colors = "" }
                         MaterialSymbol {
                             anchors.centerIn: parent
                             text: "close"; iconSize: 12
@@ -1532,7 +1869,7 @@ Item {
                                 root.whTopRange   = "1M"
                                 root.whRatio      = ""
                                 root.whAtleast    = ""
-                                root.whColors     = ""
+                                WallpaperHub.colors = ""
                                 root.refresh()
                             }
                         }
@@ -1560,8 +1897,11 @@ Item {
         // ── Reddit filters panel ─────────────────────────────────────
         Rectangle {
             id: redditFilters
+            // Hidden while the launcher is open — it draws the same chips in
+            // its dropdown, and two copies on screen would just fight.
             visible: (root.activeSource === "reddit" || root.activeSource === "videos")
                      && root.redditFilterOpen
+                     && !root.embedded && !GlobalStates.overviewOpen
             anchors.top: toolbar.bottom
             anchors.topMargin: 4
             anchors.horizontalCenter: parent.horizontalCenter
@@ -1589,43 +1929,23 @@ Item {
                     Layout.preferredWidth: Math.min(440, toolbar.width - 48)
                     spacing: 4
                     Repeater {
-                        // "Auto" plus every sort defined in redditSorts.
-                        model: [{ id: "", label: "AUTO" }].concat(
-                            root.redditSorts.map(s => ({
-                                id: s.path + s.q,
-                                // Compact label: HOT, TOP·all, TOP·1y, NEW, RIS, CTL·all
-                                label: (s.path === "top" ? "TOP·" + s.q.replace("?t=", "") :
-                                        s.path === "controversial" ? "CTL·" + s.q.replace("?t=", "") :
-                                        s.path === "rising" ? "RIS" :
-                                        s.path.toUpperCase())
-                            })))
+                        // AUTO + every sort, labelled once in WallpaperHub.
+                        model: WallpaperHub.sortChips
                         delegate: Rectangle {
                             required property var modelData
                             readonly property bool on: root.redditForcedSort === modelData.id
-                            implicitWidth: lbl.implicitWidth + 14
-                            implicitHeight: 22
-                            radius: height / 2
+                            implicitWidth: lbl.implicitWidth + 16
+                            implicitHeight: 24
+                            // Button-shaped, matching the launcher's chips.
+                            radius: Appearance.rounding.verysmall
                             color: on
                                 ? Appearance.m3colors.m3primary
-                                : (sHov.hovered ? Appearance.colors.colLayer2Base : "transparent")
+                                : (sHov.hovered ? Appearance.colors.colLayer2Hover
+                                                : Appearance.colors.colLayer2Base)
                             border.width: on ? 0 : 1
                             border.color: Appearance.colors.colLayer0Border
                             HoverHandler { id: sHov }
-                            TapHandler {
-                                onTapped: {
-                                    root.redditForcedSort = modelData.id
-                                    // Reset all per-sub counters so the next
-                                    // sync runs against the freshly-chosen sort.
-                                    if (modelData.id !== "") {
-                                        const sub = (root.query || "wallpapers")
-                                            .trim().replace(/^r\//i, "").toLowerCase()
-                                        const sm = Object.assign({}, root.redditSortBySub)
-                                        delete sm[sub]
-                                        root.redditSortBySub = sm
-                                    }
-                                    if (!redditSyncProc.busy) root.syncReddit()
-                                }
-                            }
+                            TapHandler { onTapped: root.applySort(modelData.id) }
                             StyledText {
                                 id: lbl
                                 anchors.centerIn: parent
@@ -1647,10 +1967,10 @@ Item {
         Item {
             id: carouselArea
             anchors.horizontalCenter: parent.horizontalCenter
-            anchors.verticalCenter: parent.verticalCenter
-            anchors.verticalCenterOffset: 30
+            anchors.top: toolbar.bottom
+            anchors.topMargin: 26
             width: Math.min(parent.width - 80, 1400)
-            height: Math.min(parent.height * 0.55, 360)
+            height: 330
             visible: root.viewLayout === "carousel"
 
             ListView {
@@ -1666,12 +1986,20 @@ Item {
                 spacing: 8
                 clip: true
                 cacheBuffer: 400  // was 1200 — keeps ~1 card off-screen each side
-                preferredHighlightBegin: width / 2 - 220
-                preferredHighlightEnd:   width / 2 + 220
+                // Half-width of the active card's slot (content + skew + pad),
+                // so the centering band tracks the same geometry the delegate
+                // reserves — the active card stays centered as it grows.
+                readonly property real _activeHalf: (440 + 0.18 * (height * 0.78) + 12) / 2
+                preferredHighlightBegin: width / 2 - _activeHalf
+                preferredHighlightEnd:   width / 2 + _activeHalf
                 highlightRangeMode: ListView.StrictlyEnforceRange
                 highlightFollowsCurrentItem: true
                 snapMode: ListView.SnapOneItem
                 keyNavigationWraps: false
+                // Jumping many items at once shouldn't crawl across every card
+                // in between: a fixed short slide, not a fixed pixel speed.
+                highlightMoveVelocity: -1
+                highlightMoveDuration: 130
                 // Two-way binding without the snap-back loop:
                 // - on model growth, ListView briefly resets currentIndex
                 //   to 0 internally before settling, which previously wrote
@@ -1682,10 +2010,12 @@ Item {
                     if (_syncingFromRoot) return
                     if (currentIndex !== root.activeIndex && currentIndex >= 0)
                         root.activeIndex = currentIndex
-                    // Kick off client-side palette extraction for items
-                    // without a Wallhaven-provided palette (Reddit/local).
-                    if (currentIndex >= 0 && currentIndex < root.filtered.length)
-                        root._ensurePaletteFor(root.filtered[currentIndex])
+                    // Kick off client-side palette extraction + metadata
+                    // read for items without a Wallhaven-provided palette
+                    // (Reddit/local).
+                    if (currentIndex >= 0 && currentIndex < root.filtered.length) {
+                        focusSettle.restart()
+                    }
                 }
                 Connections {
                     target: root
@@ -1713,53 +2043,78 @@ Item {
                 flickDeceleration: 800
                 maximumFlickVelocity: 6000
 
-                // Touchpad / wheel → kinetic flick.  Each wheel event
-                // contributes to a velocity accumulator; when a brief
-                // gap appears in the wheel stream we hand the
-                // accumulated velocity to Flickable.flick(), which then
-                // decelerates naturally — scroll keeps gliding after
-                // the user lifts their fingers like on a phone.
+                // ── Wheel → step the carousel ─────────────────────────
+                // A WheelHandler only ever looks at ONE axis (orientation,
+                // default Vertical), so a single handler silently ignored the
+                // other wheel — hence "I can only scroll in one direction".
+                // Two handlers, one per axis: the vertical (middle) wheel and
+                // a horizontal/tilt wheel both drive the same horizontal step.
+                //
+                // Stepping goes through root.activeIndex (clamped) rather than
+                // increment/decrementCurrentIndex so both directions behave
+                // identically and the detail panels follow along.
                 WheelHandler {
-                    id: carouselWheel
                     target: null
-                    acceptedDevices: PointerDevice.Mouse | PointerDevice.TouchPad
-                    property real velocityX: 0
-                    onWheel: (event) => {
-                        event.accepted = true
-                        const delta = event.angleDelta.y + event.angleDelta.x
-                        // 8 px / wheel-unit feels like a phone swipe.
-                        velocityX -= delta * 8
-                        flickGap.restart()
-                    }
+                    orientation: Qt.Vertical
+                    acceptedDevices: PointerDevice.AllDevices
+                    onWheel: event => root.wheelScroll(event, Qt.Vertical)
                 }
-                Timer {
-                    id: flickGap
-                    // Short window; once no new wheel events come in,
-                    // hand the accumulated velocity to Flickable.flick.
-                    interval: 60
-                    repeat: false
-                    onTriggered: {
-                        if (Math.abs(carouselWheel.velocityX) > 80)
-                            carousel.flick(carouselWheel.velocityX, 0)
-                        carouselWheel.velocityX = 0
+                WheelHandler {
+                    target: null
+                    orientation: Qt.Horizontal
+                    acceptedDevices: PointerDevice.AllDevices
+                    onWheel: event => root.wheelScroll(event, Qt.Horizontal)
+                }
+                // Middle-click and drag to pan through the wallpapers, with a
+                // closed-hand cursor while dragging.
+                DragHandler {
+                    id: panDrag
+                    target: null
+                    acceptedButtons: Qt.MiddleButton
+                    cursorShape: Qt.ClosedHandCursor
+                    property int startIndex: 0
+                    // One wallpaper per ~90 px dragged (either axis, so a
+                    // vertical drag pans the horizontal strip too).
+                    readonly property real pxPerItem: 90
+                    onActiveChanged: {
+                        // root, not carousel: the accumulator is declared on
+                        // root, so this cleared a property the ListView does
+                        // not have and the real leftover survived the drag.
+                        if (active) startIndex = root.activeIndex
+                        else root._wheelAccum = 0
+                    }
+                    onTranslationChanged: {
+                        if (!active) return
+                        const moved = translation.x + translation.y
+                        const target = startIndex - Math.round(moved / pxPerItem)
+                        root.setActive(target)
                     }
                 }
 
                 delegate: Item {
                     required property var modelData
                     required property int index
-                    width: 120
+                    readonly property bool active: index === carousel.currentIndex
+                    // The slot has to RESERVE the space the content actually
+                    // occupies, or the 440-wide active card overflows its old
+                    // fixed 120 slot and covers its neighbours. Content width
+                    // plus the parallelogram's horizontal skew spread
+                    // (0.18 · frameHeight) plus a little breathing room.
+                    readonly property real frameHeight: carousel.height * 0.78
+                    readonly property real skewPad: 0.18 * frameHeight
+                    width: (active ? 440 : 110) + skewPad + 12
                     height: carousel.height
-                    z: index === carousel.currentIndex ? 10 : 1
+                    z: active ? 10 : 1
+                    Behavior on width { NumberAnimation { duration: 220; easing.type: Easing.OutCubic } }
 
                     // (Colored aura blob removed at user request — was three
                     // overlapping circles behind the focused parallelogram.)
 
                     Item {
                         anchors.centerIn: parent
-                        readonly property bool active: parent.index === carousel.currentIndex
+                        readonly property bool active: parent.active
                         width: active ? 440 : 110
-                        height: carousel.height * 0.78
+                        height: parent.frameHeight
                         Behavior on width { NumberAnimation { duration: 220; easing.type: Easing.OutCubic } }
 
                         // Parallelogram via skew — image fills the frame and skews with it
@@ -1791,7 +2146,10 @@ Item {
                                 source: modelDataRef.thumb
                                 fillMode: Image.PreserveAspectCrop
                                 asynchronous: true
-                                cache: false
+                                // Thumbs are small now (≤1280px), so caching them
+                                // avoids a full re-decode every time a card scrolls
+                                // back into view.
+                                cache: true
                                 smooth: true
                                 // Carousel tiles are larger than grid — give
                                 // them more pixels but still cap below 4K.
@@ -1860,6 +2218,30 @@ Item {
                             }
                         }
 
+                        // Favourite toggle — top-right of the focused card.
+                        // Without this the favourites filter had no way to
+                        // ever have anything in it.
+                        Rectangle {
+                            id: favBtn
+                            visible: index === carousel.currentIndex
+                            anchors.top: parent.top
+                            anchors.right: parent.right
+                            anchors.margins: 6
+                            width: 26; height: 26; radius: 13
+                            readonly property bool on: WallpaperHub.isFavorite(modelData?.path ?? "")
+                            color: Qt.alpha("black", favHov.hovered ? 0.75 : 0.5)
+                            HoverHandler { id: favHov }
+                            TapHandler {
+                                onTapped: WallpaperHub.toggleFavorite(modelData?.path ?? "")
+                            }
+                            MaterialSymbol {
+                                anchors.centerIn: parent
+                                text: favBtn.on ? "favorite" : "favorite_border"
+                                iconSize: 15
+                                color: favBtn.on ? Appearance.m3colors.m3error : "white"
+                            }
+                        }
+
                         // PIC badge bottom-right
                         Rectangle {
                             anchors.bottom: parent.bottom
@@ -1898,6 +2280,17 @@ Item {
                             onTapped: {
                                 if (parent.active) root.applyWallpaper(parent.parent.modelData)
                                 else carousel.currentIndex = parent.parent.index
+                            }
+                        }
+                        // Middle-click → apply this one straight away, without
+                        // having to focus it first.
+                        TapHandler {
+                            acceptedButtons: Qt.MiddleButton
+                            onTapped: {
+                                const md = parent.parent.modelData
+                                if (!md) return
+                                carousel.currentIndex = parent.parent.index
+                                root.applyWallpaper(md)
                             }
                         }
                         // Right-click → context menu (apply / adjust / copy).
@@ -2050,13 +2443,16 @@ Item {
                         // pulsing dot — keeps the grid feeling alive without
                         // hijacking attention. Auto-hides on Ready or Error.
                         Rectangle {
+                            id: gridLoadingDot
                             anchors.centerIn: parent
                             width: 10; height: 10; radius: 5
                             visible: gridImg.status === Image.Loading
                             color: Appearance.m3colors.m3primary
                             opacity: 0.55
                             SequentialAnimation on scale {
-                                running: parent.visible
+                                // An animation's `parent` is null — this used to
+                                // log a TypeError on every evaluation.
+                                running: gridLoadingDot.visible
                                 loops: Animation.Infinite
                                 NumberAnimation { from: 0.6; to: 1.2; duration: 700; easing.type: Easing.InOutQuad }
                                 NumberAnimation { from: 1.2; to: 0.6; duration: 700; easing.type: Easing.InOutQuad }
@@ -2207,54 +2603,429 @@ Item {
             }
         }
 
-        // Search input (bottom, only for wallhaven / reddit)
-        Rectangle {
-            anchors.bottom: parent.bottom
+        // ── Detail row: metadata | search | post ─────────────────────
+        // Three equal-height panels in one centered row BELOW the carousel:
+        // the focused image's metadata (left), the search field with its
+        // completion entries beneath it (middle), and the focused post's
+        // swipeable images with dot indicators (right). Each has its own
+        // background; they share the same height and gap.
+        Item {
+            id: detailRow
+            readonly property var md: (root.viewLayout === "carousel"
+                && root.activeIndex >= 0 && root.activeIndex < root.filtered.length)
+                ? root.filtered[root.activeIndex] : null
+            readonly property var meta: root.metaFor(md)
+            onMdChanged: if (md) focusSettle.restart()
+            readonly property bool hasSearch: root.activeSource !== "local"
+            // Sized to the launcher's type scale — the old 232/9px
+            // panels read as fine print next to the bar above them.
+            readonly property real panelH: 286
+
+            visible: root.viewLayout === "carousel"
+                     && (root.filtered.length > 0 || md !== null)
             anchors.horizontalCenter: parent.horizontalCenter
-            anchors.bottomMargin: 8
-            visible: root.activeSource !== "local"
-            implicitHeight: 28
-            implicitWidth: 280
-            radius: height / 2
-            color: Appearance.colors.colLayer1Base
-            border.width: 1
-            border.color: searchInput.activeFocus
-                ? Appearance.m3colors.m3primary
-                : Appearance.colors.colLayer0Border
-            RowLayout {
-                anchors.fill: parent
-                anchors.leftMargin: 10
-                anchors.rightMargin: 10
-                spacing: 6
-                MaterialSymbol {
-                    text: "search"
-                    iconSize: 12
-                    color: Appearance.colors.colSubtext
+            anchors.bottom: parent.bottom
+            anchors.bottomMargin: 14
+            implicitHeight: panelH
+
+            // Slide-down entrance: the search row drops in from above and
+            // fades in each time skwd opens (the content reloads per open).
+            property real slideY: -46
+            opacity: 0
+            transform: Translate { y: detailRow.slideY }
+            Component.onCompleted: entranceAnim.start()
+            ParallelAnimation {
+                id: entranceAnim
+                NumberAnimation {
+                    target: detailRow; property: "slideY"
+                    from: -46; to: 0; duration: 440; easing.type: Easing.OutCubic
                 }
-                TextInput {
-                    id: searchInput
-                    Layout.fillWidth: true
-                    color: Appearance.colors.colOnLayer1
-                    font.pixelSize: 11
-                    selectByMouse: true
-                    text: root.query
-                    onTextChanged: root.query = text
-                    Keys.onReturnPressed: {
-                        // On the Reddit tab, Enter triggers a gallery-dl
-                        // fetch for r/<typed>. Other tabs just refresh.
-                        if (root.activeSource === "reddit") root.syncReddit()
-                        else                                root.refresh()
+                NumberAnimation {
+                    target: detailRow; property: "opacity"
+                    from: 0; to: 1; duration: 300; easing.type: Easing.OutCubic
+                }
+            }
+
+            readonly property var rows: {
+                const m = detailRow.md
+                if (!m) return []
+                const meta = detailRow.meta
+                const local = (m.path || "").startsWith("/")
+                return [
+                    { k: qsTr("Title"),      v: m.title || "—" },
+                    { k: qsTr("Source"),     v: (m.source || "—")
+                        + (m.subreddit ? "  ·  r/" + m.subreddit : "") },
+                    { k: qsTr("Type"),       v: (m.kind || "pic").toUpperCase() },
+                    { k: qsTr("Resolution"), v: meta && meta.dims ? meta.dims
+                        : (local ? "…" : qsTr("(remote)")) },
+                    { k: qsTr("Format"),     v: meta && meta.format ? meta.format
+                        : (local ? "…" : "—") },
+                    { k: qsTr("Size"),       v: meta ? root.formatBytes(meta.bytes)
+                        : (local ? "…" : "—") },
+                    { k: qsTr("ID"),         v: m.id || "—" },
+                    { k: qsTr("Path"),       v: m.path || "—" },
+                ]
+            }
+
+            Row {
+                anchors.horizontalCenter: parent.horizontalCenter
+                spacing: root.pairGap
+
+                // 1 ── METADATA ─────────────────────────────────────────
+                Rectangle {
+                    width: 330
+                    height: detailRow.panelH
+                    radius: Appearance.rounding.normal
+                    color: Appearance.colors.colLayer0
+                    border.width: 1
+                    border.color: Appearance.colors.colLayer0Border
+                    clip: true
+
+                    // Right-click the metadata for the same menu the cards
+                    // have — including the KIO properties dialog.
+                    TapHandler {
+                        acceptedButtons: Qt.RightButton
+                        onTapped: (eventPoint) => {
+                            const md = detailRow.md
+                            if (!md) return
+                            const g = parent.mapToItem(root, eventPoint.position.x, eventPoint.position.y)
+                            skwdCtxMenu.popup(g.x, g.y, root.menuForCarouselItem(md))
+                        }
                     }
-                    Keys.onEscapePressed: root.close()
-                    Text {
+
+                    Column {
                         anchors.fill: parent
-                        verticalAlignment: Text.AlignVCenter
+                        anchors.margins: 16
+                        spacing: 6
+                        StyledText {
+                            text: qsTr("IMAGE INFO")
+                            font.pixelSize: Appearance.font.pixelSize.smaller
+                            font.weight: Font.Bold
+                            font.letterSpacing: 1.2
+                            color: Appearance.colors.colPrimary
+                        }
+                        Rectangle {
+                            width: parent.width; height: 1
+                            color: Appearance.colors.colLayer0Border
+                        }
+                        Repeater {
+                            model: detailRow.rows
+                            delegate: RowLayout {
+                                required property var modelData
+                                width: parent.width
+                                spacing: 8
+                                StyledText {
+                                    text: modelData.k
+                                    font.pixelSize: Appearance.font.pixelSize.smaller
+                                    color: Appearance.colors.colSubtext
+                                    Layout.preferredWidth: 82
+                                    Layout.alignment: Qt.AlignTop
+                                }
+                                StyledText {
+                                    text: modelData.v
+                                    font.pixelSize: Appearance.font.pixelSize.smaller
+                                    font.weight: Font.Medium
+                                    color: Appearance.colors.colOnLayer1
+                                    elide: Text.ElideMiddle
+                                    maximumLineCount: 2
+                                    wrapMode: Text.WrapAnywhere
+                                    Layout.fillWidth: true
+                                }
+                            }
+                        }
+                        StyledText {
+                            width: parent.width
+                            visible: detailRow.md === null
+                            text: qsTr("Focus an image in the carousel.")
+                            font.pixelSize: Appearance.font.pixelSize.smaller
+                            color: Appearance.colors.colSubtext
+                            wrapMode: Text.WordWrap
+                        }
+                    }
+                }
+
+                // 2 ── SEARCH + entries ─────────────────────────────────
+                Rectangle {
+                    id: searchPanel
+                    width: 360
+                    height: detailRow.panelH
+                    // Hidden while the launcher is open — the launcher's bar
+                    // owns search then (its subreddit dropdown replaces this).
+                    visible: detailRow.hasSearch && !root.embedded && !GlobalStates.overviewOpen
+                    radius: Appearance.rounding.normal
+                    color: Appearance.colors.colLayer0
+                    border.width: 1
+                    border.color: Appearance.colors.colLayer0Border
+                    clip: true
+
+                    StyledText {
+                        id: searchHdr
+                        anchors.top: parent.top
+                        anchors.left: parent.left
+                        anchors.right: parent.right
+                        anchors.margins: 12
+                        text: qsTr("SEARCH")
+                        font.pixelSize: Appearance.font.pixelSize.smaller
+                        font.weight: Font.Bold
+                        font.letterSpacing: 1.2
+                        color: Appearance.colors.colPrimary
+                    }
+
+                    ToolbarTextField {
+                        id: searchPill
+                        anchors.top: searchHdr.bottom
+                        anchors.left: parent.left
+                        anchors.right: parent.right
+                        anchors.topMargin: 8
+                        anchors.leftMargin: 12
+                        anchors.rightMargin: 12
+                        font.pixelSize: Appearance.font.pixelSize.small
+                        placeholderText: root.activeSource === "reddit"
+                            ? qsTr("Search or type a subreddit…")
+                            : qsTr("Search wallhaven…")
+
+                        // Two-way sync with root.query, guarded to avoid a loop
+                        // and to reflect programmatic changes (restore, pick).
+                        text: root.query
+                        onTextChanged: if (root.query !== text) root.query = text
+                        Connections {
+                            target: root
+                            function onQueryChanged() {
+                                if (searchPill.text !== root.query) searchPill.text = root.query
+                            }
+                        }
+
+                        onAccepted: {
+                            if (root.completionsOpen && root.completionIndex >= 0) {
+                                root.applyCompletion(root.completionIndex)
+                            } else if (root.activeSource === "reddit") {
+                                root.completionsOpen = false
+                                root.syncReddit()
+                            } else {
+                                root.refresh()
+                            }
+                        }
+                        Keys.onPressed: event => {
+                            const open = root.completionsOpen && root.redditCompletions.length > 0
+                            if (event.key === Qt.Key_Down && open) {
+                                root.completionIndex =
+                                    (root.completionIndex + 1) % root.redditCompletions.length
+                                event.accepted = true
+                            } else if (event.key === Qt.Key_Up && open) {
+                                const n = root.redditCompletions.length
+                                root.completionIndex = (root.completionIndex - 1 + n) % n
+                                event.accepted = true
+                            } else if (event.key === Qt.Key_Escape) {
+                                if (root.completionsOpen) root.completionsOpen = false
+                                else root.close()
+                                event.accepted = true
+                            } else {
+                                event.accepted = false
+                            }
+                        }
+                    }
+
+                    // Completion entries, inline below the search field.
+                    ListView {
+                        id: completionList
+                        anchors.top: searchPill.bottom
+                        anchors.left: parent.left
+                        anchors.right: parent.right
+                        anchors.bottom: parent.bottom
+                        anchors.topMargin: 8
+                        anchors.leftMargin: 8
+                        anchors.rightMargin: 8
+                        anchors.bottomMargin: 8
+                        visible: root.activeSource === "reddit"
+                            && root.completionsOpen && root.redditCompletions.length > 0
+                        clip: true
+                        model: root.redditCompletions
+                        delegate: Rectangle {
+                            id: compRow
+                            required property var modelData
+                            required property int index
+                            readonly property bool current: index === root.completionIndex
+                            width: completionList.width
+                            height: 30
+                            radius: Appearance.rounding.small
+                            color: current || rowHov.hovered
+                                ? Appearance.colors.colLayer2Hover
+                                : "transparent"
+                            HoverHandler {
+                                id: rowHov
+                                onHoveredChanged: if (hovered) root.completionIndex = compRow.index
+                            }
+                            TapHandler { onTapped: root.applyCompletion(compRow.index) }
+
+                            RowLayout {
+                                anchors.fill: parent
+                                anchors.leftMargin: 8
+                                anchors.rightMargin: 8
+                                spacing: 6
+                                MaterialSymbol {
+                                    text: "tag"
+                                    iconSize: 13
+                                    color: Appearance.colors.colSubtext
+                                    Layout.alignment: Qt.AlignVCenter
+                                }
+                                StyledText {
+                                    text: compRow.modelData.name
+                                    font.pixelSize: Appearance.font.pixelSize.smaller
+                                    font.weight: Font.DemiBold
+                                    color: Appearance.colors.colOnLayer1
+                                    elide: Text.ElideRight
+                                    Layout.fillWidth: true
+                                    Layout.alignment: Qt.AlignVCenter
+                                }
+                                Rectangle {
+                                    visible: compRow.modelData.nsfw
+                                    Layout.alignment: Qt.AlignVCenter
+                                    implicitHeight: 15
+                                    implicitWidth: nsfwLabel.implicitWidth + 8
+                                    radius: 4
+                                    color: Qt.alpha(Appearance.m3colors.m3error, 0.18)
+                                    StyledText {
+                                        id: nsfwLabel
+                                        anchors.centerIn: parent
+                                        text: "18+"
+                                        font.pixelSize: 8
+                                        font.weight: Font.Bold
+                                        font.letterSpacing: 0.5
+                                        color: Appearance.m3colors.m3error
+                                    }
+                                }
+                                StyledText {
+                                    text: root.formatSubs(compRow.modelData.subs)
+                                    font.pixelSize: 10
+                                    color: Appearance.colors.colSubtext
+                                    Layout.alignment: Qt.AlignVCenter
+                                }
+                            }
+                        }
+                    }
+
+                    // Hint when there are no entries to show.
+                    StyledText {
+                        anchors.top: searchPill.bottom
+                        anchors.left: parent.left
+                        anchors.right: parent.right
+                        anchors.topMargin: 14
+                        anchors.leftMargin: 12
+                        anchors.rightMargin: 12
+                        visible: !completionList.visible
                         text: root.activeSource === "reddit"
-                            ? qsTr("filter or type r/sub + Enter to fetch…")
-                            : qsTr("search wallhaven…")
+                            ? qsTr("Type a subreddit — matches appear here.")
+                            : qsTr("Type to search wallhaven, Enter to run.")
+                        font.pixelSize: 10
                         color: Appearance.colors.colSubtext
-                        font: parent.font
-                        visible: parent.text.length === 0
+                        wrapMode: Text.WordWrap
+                        horizontalAlignment: Text.AlignHCenter
+                    }
+                }
+
+                // 3 ── POST (swipeable + dots) ──────────────────────────
+                Item {
+                    id: postPanel
+                    width: 400
+                    height: detailRow.panelH
+                    readonly property var md: detailRow.md
+                    readonly property var images: {
+                        const m = postPanel.md
+                        if (!m) return []
+                        if (Array.isArray(m.gallery) && m.gallery.length > 0) return m.gallery
+                        const one = m.full || m.thumb || ""
+                        return one.length ? [one] : []
+                    }
+
+                    Rectangle {
+                        anchors.fill: parent
+                        radius: Appearance.rounding.normal
+                        color: Appearance.colors.colLayer0
+                        border.width: 1
+                        border.color: Appearance.colors.colLayer0Border
+                        clip: true
+
+                        Column {
+                            anchors.fill: parent
+                            anchors.margins: 14
+                            spacing: 10
+
+                            StyledText {
+                                text: postPanel.images.length > 1
+                                    ? qsTr("POST · %1 images").arg(postPanel.images.length)
+                                    : qsTr("POST")
+                                font.pixelSize: Appearance.font.pixelSize.smaller
+                                font.weight: Font.Bold
+                                font.letterSpacing: 1.2
+                                color: Appearance.colors.colPrimary
+                            }
+
+                            StyledText {
+                                width: parent.width
+                                height: parent.height - 42
+                                visible: postPanel.images.length === 0
+                                text: qsTr("Focus an image to see its post")
+                                font.pixelSize: Appearance.font.pixelSize.smaller
+                                color: Appearance.colors.colSubtext
+                                horizontalAlignment: Text.AlignHCenter
+                                verticalAlignment: Text.AlignVCenter
+                                wrapMode: Text.WordWrap
+                            }
+
+                            ListView {
+                                id: postView
+                                visible: postPanel.images.length > 0
+                                width: parent.width
+                                height: parent.height - 42
+                                orientation: ListView.Horizontal
+                                snapMode: ListView.SnapOneItem
+                                highlightRangeMode: ListView.StrictlyEnforceRange
+                                boundsBehavior: Flickable.StopAtBounds
+                                clip: true
+                                model: postPanel.images
+                                Connections {
+                                    target: postPanel
+                                    function onMdChanged() { postView.currentIndex = 0 }
+                                }
+                                delegate: Rectangle {
+                                    required property var modelData
+                                    width: postView.width
+                                    height: postView.height
+                                    radius: Appearance.rounding.small
+                                    color: Appearance.colors.colLayer2
+                                    clip: true
+                                    Image {
+                                        anchors.fill: parent
+                                        source: modelData
+                                        fillMode: Image.PreserveAspectFit
+                                        asynchronous: true
+                                        cache: true
+                                        sourceSize.width: 640
+                                    }
+                                }
+                            }
+
+                            Row {
+                                anchors.horizontalCenter: parent.horizontalCenter
+                                spacing: 5
+                                visible: postPanel.images.length > 1
+                                Repeater {
+                                    model: postPanel.images.length
+                                    delegate: Rectangle {
+                                        required property int index
+                                        readonly property bool current: index === postView.currentIndex
+                                        width: current ? 16 : 6
+                                        height: 6
+                                        radius: 3
+                                        color: current ? Appearance.colors.colPrimary
+                                                       : Appearance.colors.colLayer2
+                                        Behavior on width { NumberAnimation { duration: 150; easing.type: Easing.OutCubic } }
+                                        Behavior on color { ColorAnimation { duration: 130 } }
+                                        TapHandler { onTapped: postView.currentIndex = index }
+                                    }
+                                }
+                            }
+                        }
                     }
                 }
             }
