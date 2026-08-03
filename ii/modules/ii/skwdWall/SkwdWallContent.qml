@@ -1072,9 +1072,33 @@ Item {
     /// this used to add (x + y) on each of them, counting a drifting swipe
     /// twice. Each handler now contributes only its own axis, so the total is
     /// still x + y but each component lands exactly once.
+    // Signature of the last event consumed, to drop duplicate deliveries.
+    property string _lastWheelSig: ""
+
     function wheelScroll(event, axis) {
         event.accepted = true
         const now = Date.now()
+
+        // There are TWO sets of handlers: one on the carousel, one on the
+        // whole skwd area, which is its ANCESTOR. A comment there claimed the
+        // carousel "accepts first, so this never double-steps" — but a
+        // WheelHandler takes no exclusive grab, and event.accepted does not
+        // stop handlers on ancestor items. Every wheel event over the carousel
+        // was therefore counted twice, which is the uneven stepping: scroll
+        // over a card and you move 2, scroll over the empty margin and you
+        // move 1.
+        // Keyed on the deltas alone and cleared on the next event-loop pass,
+        // NOT on a millisecond timestamp: both handlers run synchronously
+        // within one delivery, so a same-tick repeat is always the duplicate,
+        // while a genuine repeat of identical deltas arrives on a later tick
+        // and is still counted.
+        const sig = axis + ":" + event.angleDelta.x + "," + event.angleDelta.y
+                  + ":" + event.pixelDelta.x + "," + event.pixelDelta.y
+        if (sig === root._lastWheelSig)
+            return
+        root._lastWheelSig = sig
+        Qt.callLater(() => root._lastWheelSig = "")
+
         if (now - root._lastWheelMs > root.wheelIdleMs)
             root._wheelAccum = 0
 

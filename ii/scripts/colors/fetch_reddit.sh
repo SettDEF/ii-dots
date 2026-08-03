@@ -96,9 +96,14 @@ echo "AFTER=${NEXT_AFTER}"
 #   carousel fills fast instead of stalling on multi-MB originals. GIFs keep
 #   their original url (previews would kill the animation).
 TARGET_W=${SKWD_TARGET_W:-2560}
-# DASH rung to prefer for v.redd.it video. 1080 is several times the
-# bytes of 720 for a browsing carousel; override if you want originals.
-VIDEO_H=${SKWD_VIDEO_H:-720}
+# DASH rung to prefer for v.redd.it video.
+#
+# 480, not the 1080 that fallback_url advertises. A card cannot appear until
+# its file is fully on disk, so the download size IS the time-to-listed — and
+# 1080 is roughly 6x the bytes of 480 for a thumbnail-sized carousel card.
+# Raise it (SKWD_VIDEO_H=720 or 1080) if you care more about the quality of
+# the one you eventually set as wallpaper than about how fast the list fills.
+VIDEO_H=${SKWD_VIDEO_H:-480}
 TASKS=$(printf '%s' "$JSON" | jq -r --argjson tw "$TARGET_W" --argjson vh "$VIDEO_H" '
     def is_gif(u): (u | test("\\.gif(?:\\?|$)"; "i"));
     def is_image_url(u):
