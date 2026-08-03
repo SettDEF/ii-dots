@@ -96,12 +96,25 @@ echo "AFTER=${NEXT_AFTER}"
 #   carousel fills fast instead of stalling on multi-MB originals. GIFs keep
 #   their original url (previews would kill the animation).
 TARGET_W=${SKWD_TARGET_W:-2560}
-TASKS=$(printf '%s' "$JSON" | jq -r --argjson tw "$TARGET_W" '
+# DASH rung to prefer for v.redd.it video. 1080 is several times the
+# bytes of 720 for a browsing carousel; override if you want originals.
+VIDEO_H=${SKWD_VIDEO_H:-720}
+TASKS=$(printf '%s' "$JSON" | jq -r --argjson tw "$TARGET_W" --argjson vh "$VIDEO_H" '
     def is_gif(u): (u | test("\\.gif(?:\\?|$)"; "i"));
     def is_image_url(u):
         (u | test("\\.(?:jpe?g|png|webp|gif|bmp)(?:\\?|$)"; "i"));
     def is_video_url(u):
         (u | test("\\.(?:mp4|webm|m4v|mov)(?:\\?|$)"; "i"));
+
+    # v.redd.it serves a DASH ladder (…/DASH_96|220|360|480|720|1080.mp4) and
+    # fallback_url usually points at the TOP rung. For a browsing carousel that
+    # is several times the bytes for no visible gain, and it was the difference
+    # between a video arriving and timing out. Step it down to $vh; the caller
+    # keeps the original as a fallback in case that rung does not exist.
+    def prefer_rung(u; vh):
+        if (u | test("/DASH_[0-9]+\\.mp4"; "i"))
+        then (u | sub("/DASH_[0-9]+\\.mp4"; "/DASH_" + (vh|tostring) + ".mp4"; "i"))
+        else u end;
 
     # Reddit hosts video in a few places depending on how the post was made.
     # Taking the first that exists, most-specific first. fallback_url is the
@@ -163,7 +176,8 @@ TASKS=$(printf '%s' "$JSON" | jq -r --argjson tw "$TARGET_W" '
             # download the thumbnail and call the post handled. This branch
             # not existing at all is why the Videos tab could never grow --
             # every v.redd.it post fell through to `empty`.
-            { url: video_url(p), kind: "vid" }
+            (video_url(p)) as $v
+            | { url: prefer_rung($v; $vh), alt: $v, kind: "vid" }
         elif (is_image_url(p.url // "") or (p.post_hint // "") == "image") then
             # An actual image post: prefer the capped preview, fall back to
             # the raw original only when there is no preview ladder. Gating
@@ -178,7 +192,7 @@ TASKS=$(printf '%s' "$JSON" | jq -r --argjson tw "$TARGET_W" '
     | .data as $p
     | (post_to_url($p; $tw)) as $m
     | select($m != null and $m.url != null and $m.url != "")
-    | "\($m.url)\t\($m.kind)\t\($p.id)\t\($p.title // "untitled")"
+    | "\($m.url)\t\($m.alt // "")\t\($m.kind)\t\($p.id)\t\($p.title // "untitled")"
 ' 2>/dev/null)
 
 [ -z "$TASKS" ] && exit 0
@@ -191,7 +205,7 @@ TASKS=$(printf '%s' "$JSON" | jq -r --argjson tw "$TARGET_W" '
 # path would misname (and then mis-validate) every preview.
 export OUT_DIR REDDIT_UA
 printf '%s\n' "$TASKS" \
-  | while IFS=$'\t' read -r url kind id title; do
+  | while IFS=$'\t' read -r url alt kind id title; do
         [ -z "$url" ] && continue
         safe_title=$(printf '%s' "$title" \
             | tr -d '\r\n' \
@@ -200,12 +214,14 @@ printf '%s\n' "$TASKS" \
             | sed 's/[[:space:]]*$//')
         # Skip if ANY extension of this id is already on disk.
         if ls "$OUT_DIR/${id} "* >/dev/null 2>&1; then continue; fi
-        printf '%s\t%s\t%s\t%s\n' "$url" "$kind" "$id" "$safe_title"
+        printf '%s\t%s\t%s\t%s\t%s\n' "$url" "$alt" "$kind" "$id" "$safe_title"
     done \
   | xargs -P 6 -I{} bash -c '
         line="{}"
         url="${line%%	*}"
         rest="${line#*	}"
+        alt="${rest%%	*}"
+        rest="${rest#*	}"
         kind="${rest%%	*}"
         rest="${rest#*	}"
         id="${rest%%	*}"
@@ -221,12 +237,20 @@ printf '%s\n' "$TASKS" \
             max_time=20; max_bytes=$((20*1024*1024))
         fi
         tmp="$OUT_DIR/.${id}.part"
-        if ! curl --silent --show-error --location --max-time "$max_time" --fail \
-                  --remove-on-error --max-filesize "$max_bytes" \
-                  -A "$REDDIT_UA" \
-                  -o "$tmp" "$url"; then
-            rm -f "$tmp"
-            exit 0
+        fetch() {
+            curl --silent --show-error --location --max-time "$max_time" --fail \
+                 --remove-on-error --max-filesize "$max_bytes" \
+                 -A "$REDDIT_UA" -o "$tmp" "$1"
+        }
+        # The preferred DASH rung may not exist for every post, so fall back to
+        # the url reddit actually advertised rather than losing the video.
+        if ! fetch "$url"; then
+            if [ -n "$alt" ] && [ "$alt" != "$url" ] && fetch "$alt"; then
+                :
+            else
+                rm -f "$tmp"
+                exit 0
+            fi
         fi
         # Reject tiny responses (HTML error pages, captchas, empties).
         size=$(stat -c%s "$tmp" 2>/dev/null || echo 0)

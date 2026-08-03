@@ -922,6 +922,9 @@ Item {
         // New query/source → back to the first page of the disk scan.
         root.scanLimit = root.scanPageSize
         root.lastScanTime = 0
+        // New sub/source: the Videos chain starts over, otherwise a sub that
+        // exhausted the budget leaves the next one unable to page at all.
+        root._vidChainTries = 0
         root.whPage = 1
         root.whHasMore = true
         root.whLoadingMore = false
@@ -1220,6 +1223,27 @@ Item {
     // fires loadMore, the new items arrive, but activeIndex doesn't move
     // so onActiveIndexChanged never re-fires and the chain dies.
     property int _lastFilteredLen: 0
+
+    // ── Keeping the chain alive on the Videos tab ─────────────────────
+    // The chain below pumps on `filtered`, which on the Videos tab is
+    // video-only. A page of 100 Reddit posts commonly contains NO video: it
+    // grows `wallpapers` but leaves `filtered` byte-identical, so no change
+    // signal fires and pagination stops dead. That is why the tab loaded a
+    // handful of items and then nothing, however far you scrolled.
+    //
+    // So pump on the unfiltered list too, and keep pulling while the visible
+    // video count is still sparse. Bounded: without a ceiling a sub with no
+    // videos at all would page until it exhausted every sort.
+    property int _vidChainTries: 0
+    readonly property int maxVidChainTries: 15
+    onWallpapersChanged: {
+        if (root.activeSource !== "videos") return
+        if (root.filtered.length >= 24) { root._vidChainTries = 0; return }
+        if (root._vidChainTries >= root.maxVidChainTries) return
+        root._vidChainTries++
+        root.loadMoreReddit()
+    }
+
     onFilteredChanged: {
         const n = root.filtered.length
         const grew = n > _lastFilteredLen
