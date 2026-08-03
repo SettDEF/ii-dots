@@ -1967,12 +1967,23 @@ Item {
                 property bool _syncingFromRoot: false
                 Component.onCompleted: currentIndex = root.activeIndex
                 onCurrentIndexChanged: {
-                    if (_syncingFromRoot) return
-                    if (currentIndex !== root.activeIndex && currentIndex >= 0)
+                    // The _syncingFromRoot guard must cover ONLY the write-back
+                    // to root.activeIndex. It used to `return` from the whole
+                    // handler, which also skipped focusSettle — and every
+                    // wheel/keyboard step arrives through exactly that path
+                    // (wheelScroll → stepActive → setActive → activeIndex →
+                    // Connections → currentIndex). So the carousel moved while
+                    // the info/palette panels kept showing the previous item.
+                    // Dragging and tapping set currentIndex directly, without
+                    // the flag, which is why it looked intermittent rather
+                    // than broken.
+                    if (!_syncingFromRoot
+                            && currentIndex !== root.activeIndex
+                            && currentIndex >= 0)
                         root.activeIndex = currentIndex
                     // Kick off client-side palette extraction + metadata
                     // read for items without a Wallhaven-provided palette
-                    // (Reddit/local).
+                    // (Reddit/local). Runs however the index changed.
                     if (currentIndex >= 0 && currentIndex < root.filtered.length) {
                         focusSettle.restart()
                     }
