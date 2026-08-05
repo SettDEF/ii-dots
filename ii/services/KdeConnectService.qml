@@ -176,20 +176,40 @@ Singleton {
         id: listProc
         // Output one line per device: "id|name|type|reachable|trusted"
         // Then for reachable devices we also fetch battery + charging.
+        // Device facts come from D-BUS, not from parsing `kdeconnect-cli
+        // --list-devices` prose. That parse was wrong three ways at once and the
+        // dialog rendered as an empty box because of it:
+        //
+        //   - Xperia 1 IV: 5277af5b470e43149beac7b60bb3fc1a on 192.168.178.50 via LAN (reachable)
+        //
+        //  * The id was read as everything between ": " and " (", i.e.
+        //    "5277af5b… on 192.168.178.50 via LAN". Every downstream call passes
+        //    this id back to kdeconnect-cli/qdbus, so they all addressed a device
+        //    that does not exist.
+        //  * trusted was `index(flags,"paired")>0`, but this build prints only
+        //    "(reachable)". So trusted was always false, reachableDevices was
+        //    always empty, firstDevice was null — while devices.length was 1, so
+        //    the "no devices" state hid too. A titled, empty dialog.
+        //  * "paired" is a SUBSTRING of "unpaired", so that test would also have
+        //    called an explicitly unpaired device trusted.
+        //
+        // The text simply does not carry pairing state on this build: this phone
+        // prints "(reachable)" while org.kde.kdeconnect.device.isPaired is FALSE.
+        // Guessing from flags cannot be made correct, so ask the daemon. --id-only
+        // gives clean ids with nothing to parse, and each property is read
+        // straight off the device object.
         command: ["bash", "-c",
-            `kdeconnect-cli --list-devices 2>/dev/null | awk '` +
-            `/^- /{ ` +
-            `  line=$0; ` +
-            `  sub(/^- /, "", line); ` +
-            `  if (match(line, /: /)) { name=substr(line,1,RSTART-1); rest=substr(line,RSTART+2); ` +
-            `    if (match(rest, / \\(/)) { id=substr(rest,1,RSTART-1); flags=substr(rest,RSTART+2); ` +
-            `      gsub(/\\)/, "", flags); ` +
-            `      reach=index(flags,"reachable")>0?"1":"0"; ` +
-            `      trust=index(flags,"paired")>0?"1":"0"; ` +
-            `      printf "%s|%s|phone|%s|%s\\n", id, name, reach, trust ` +
-            `    } ` +
-            `  } ` +
-            `}'`
+            `for id in $(kdeconnect-cli --list-devices --id-only 2>/dev/null); do ` +
+            `  d=/modules/kdeconnect/devices/$id; ` +
+            `  n=$(qdbus org.kde.kdeconnect $d org.kde.kdeconnect.device.name 2>/dev/null); ` +
+            `  t=$(qdbus org.kde.kdeconnect $d org.kde.kdeconnect.device.type 2>/dev/null); ` +
+            `  r=$(qdbus org.kde.kdeconnect $d org.kde.kdeconnect.device.isReachable 2>/dev/null); ` +
+            `  p=$(qdbus org.kde.kdeconnect $d org.kde.kdeconnect.device.isPaired 2>/dev/null); ` +
+            `  [ -z "$n" ] && continue; ` +
+            `  printf '%s|%s|%s|%s|%s\\n' "$id" "$n" "\${t:-phone}" ` +
+            `    "$([ "$r" = true ] && echo 1 || echo 0)" ` +
+            `    "$([ "$p" = true ] && echo 1 || echo 0)"; ` +
+            `done`
         ]
         stdout: StdioCollector {
             onStreamFinished: {

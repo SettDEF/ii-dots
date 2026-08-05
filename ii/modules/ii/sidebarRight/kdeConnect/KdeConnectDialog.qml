@@ -19,11 +19,21 @@ WindowDialog {
     }
     WindowDialogSeparator {}
 
-    // Empty state
+    // Empty state.
+    //
+    // Keyed on "no device we can actually act on", NOT on devices.length === 0.
+    // With the old test, a device that was listed but filtered out by
+    // reachableDevices hid this block AND the summary card below it, and the
+    // dialog rendered as nothing but a title and a separator. Whatever else is
+    // wrong, there is now always something on screen explaining it.
     ColumnLayout {
+        id: emptyState
         Layout.fillWidth: true; Layout.alignment: Qt.AlignHCenter
         spacing: 8
-        visible: KdeConnectService.devices.length === 0
+        visible: root.device === null
+
+        readonly property bool anyListed: KdeConnectService.devices.length > 0
+        readonly property bool anyPaired: KdeConnectService.devices.some(d => d.trusted)
 
         MaterialSymbol {
             Layout.alignment: Qt.AlignHCenter
@@ -32,38 +42,51 @@ WindowDialog {
         }
         StyledText {
             Layout.alignment: Qt.AlignHCenter
-            text: Translation.tr("No devices paired")
+            // Distinguishes the three real cases, because "No devices paired" in
+            // front of a paired-but-unreachable phone sends you off re-pairing
+            // something that was never unpaired.
+            text: !emptyState.anyListed ? Translation.tr("No devices paired")
+                : !emptyState.anyPaired ? Translation.tr("Device not paired")
+                : Translation.tr("Device unreachable")
             font.pixelSize: Appearance.font.pixelSize.normal
         }
-        StyledText {
-            Layout.alignment: Qt.AlignHCenter
+        // Shared paragraph style, like every other dialog in the sidebar, rather
+        // than a locally-styled StyledText that drifts from them.
+        WindowDialogParagraph {
             Layout.fillWidth: true
-            text: Translation.tr("Open the KDE Connect app on your phone and pair to this device.")
-            font.pixelSize: Appearance.font.pixelSize.smaller
-            color: Appearance.colors.colSubtext
-            wrapMode: Text.WordWrap
             horizontalAlignment: Text.AlignHCenter
+            text: !emptyState.anyListed
+                ? Translation.tr("Open the KDE Connect app on your phone and pair to this device.")
+                : !emptyState.anyPaired
+                ? Translation.tr("%1 was found on the network but is not paired. Press Pair here, then accept the request on the phone.")
+                    .arg(KdeConnectService.devices[0]?.name ?? "")
+                : Translation.tr("%1 is paired but not responding. Check that both devices are on the same network and the app is running on the phone.")
+                    .arg(KdeConnectService.devices[0]?.name ?? "")
         }
-        Rectangle {
-            Layout.alignment: Qt.AlignHCenter
-            implicitWidth: refreshRow.implicitWidth + 24
-            implicitHeight: 36
-            radius: 18
-            color: refreshHov.hovered ? Appearance.m3colors.m3surfaceContainerHighest : Appearance.m3colors.m3surfaceContainerHigh
-            HoverHandler { id: refreshHov }
-            TapHandler { onTapped: KdeConnectService.refreshDevices() }
-            Row {
-                id: refreshRow
-                anchors.centerIn: parent; spacing: 6
-                MaterialSymbol {
-                    anchors.verticalCenter: parent.verticalCenter
-                    text: "refresh"; iconSize: Appearance.font.pixelSize.small
-                    color: Appearance.m3colors.m3onSurface
-                }
-                StyledText {
-                    anchors.verticalCenter: parent.verticalCenter
-                    text: Translation.tr("Refresh")
-                    color: Appearance.m3colors.m3onSurface
+        // Shared button row, same as the other dialogs. Order is deliberate:
+        // the least-committal action sits left and the one that actually
+        // resolves the state sits right, where these dialogs put their primary.
+        WindowDialogButtonRow {
+            Layout.fillWidth: true
+            Layout.topMargin: 4
+
+            DialogButton {
+                buttonText: Translation.tr("Open KDE Connect")
+                onClicked: KdeConnectService.openCli()
+            }
+            DialogButton {
+                buttonText: Translation.tr("Refresh")
+                onClicked: KdeConnectService.refreshDevices()
+            }
+            // Pair is the actual fix when a phone is visible but untrusted.
+            // Without it the dialog could only tell you to go and do it
+            // somewhere else.
+            DialogButton {
+                visible: emptyState.anyListed && !emptyState.anyPaired
+                buttonText: Translation.tr("Pair")
+                onClicked: {
+                    const d = KdeConnectService.devices.find(x => !x.trusted)
+                    if (d) KdeConnectService.pair(d.id)
                 }
             }
         }
