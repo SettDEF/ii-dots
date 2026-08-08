@@ -17,21 +17,11 @@ WindowDialog {
     id: root
     backgroundHeight: 600
 
-    property string filterText: ""
     readonly property bool isDiscovering: Bluetooth.defaultAdapter?.discovering ?? false
 
-    readonly property var shownDevices: {
-        const q = root.filterText.trim().toLowerCase();
-        let list = BluetoothStatus.friendlyDeviceList ?? [];
-        if (q.length > 0) {
-            list = list.filter(d => {
-                if (!d) return false;
-                const name = (d.name ?? d.alias ?? "").toLowerCase();
-                return name.indexOf(q) >= 0;
-            });
-        }
-        return list;
-    }
+    // No text filter: the header reads as a title and nothing else, and a
+    // paired-device list is short enough to scan by eye.
+    readonly property var shownDevices: BluetoothStatus.friendlyDeviceList ?? []
 
     // Discovery ran only when the scan button was pressed. With the button gone,
     // opening the dialog starts it and closing stops it again — discovery is not
@@ -45,17 +35,6 @@ WindowDialog {
         text: Translation.tr("Bluetooth devices")
     }
 
-    // Own row, full width — it shared the title's line with the scan button
-    // before and had almost nothing left. Shown only once the list is long
-    // enough to be worth filtering, keyed on the UNFILTERED count so typing a
-    // query cannot make the field disappear from under the cursor.
-    PillTextField {
-        Layout.fillWidth: true
-        visible: (BluetoothStatus.friendlyDeviceList?.length ?? 0) > 5 || root.filterText.length > 0
-        placeholderText: Translation.tr("Filter by name…")
-        text: root.filterText
-        onTextChanged: root.filterText = text
-    }
     WindowDialogSeparator {
         visible: !(Bluetooth.defaultAdapter?.discovering ?? false)
     }
@@ -101,7 +80,7 @@ WindowDialog {
             Layout.alignment: Qt.AlignHCenter
             text: root.isDiscovering
                   ? Translation.tr("Make sure your device is in pairing mode")
-                  : Translation.tr("Try clearing your filter, or reopen this dialog to scan again")
+                  : Translation.tr("Reopen this dialog to scan again")
             font.pixelSize: Appearance.font.pixelSize.smaller
             color: Appearance.colors.colSubtext
         }

@@ -42,6 +42,12 @@ Rectangle {
     property alias text: input.text
     property alias inputItem: input          // expose so callers can forceActiveFocus
     property real pillWidth: 220
+    /// Colour of the notch the floated label punches through the outline. It has
+    /// to match whatever is actually BEHIND the pill, and only the caller knows
+    /// that. It was hardcoded to colLayer0, which is right on a bar or a panel
+    /// but wrong inside a dialog — there it painted a dark block across a lighter
+    /// surface, so the label appeared to sit on a broken black background.
+    property color notchColor: Appearance.colors.colLayer0
 
     signal accepted()
     signal cleared()
@@ -110,13 +116,23 @@ Rectangle {
         id: floatingLabel
         text: root.placeholderText
         font.family: Appearance.font.family.main
-        font.pixelSize: root.floated
-            ? Appearance.font.pixelSize.smaller
-            : Appearance.font.pixelSize.small
+        // Font size is FIXED at the floated (small) size; the size change is done
+        // with `scale` instead. Animating font.pixelSize re-lays out the text every
+        // frame, which changes implicitHeight — and since `y` is derived from
+        // implicitHeight, the y animation kept being retargeted mid-flight, so the
+        // label rubber-banded/stuttered instead of sliding cleanly.
+        font.pixelSize: Appearance.font.pixelSize.smaller
+        // Origin = left edge, vertically centred: scaling grows to the right and
+        // symmetrically about the centre line, so x/y stay meaningful.
+        transformOrigin: Item.Left
+        scale: root.floated
+            ? 1.0
+            : (Appearance.font.pixelSize.small / Appearance.font.pixelSize.smaller)
         color: root.floated ? Appearance.colors.colPrimary : Appearance.colors.colSubtext
         // x: align with the input's text column. 36 = leftMargin + icon + spacing.
         x: root.floated ? 14
                         : (root.leadingIcon === "" ? 12 : 36)
+        // implicitHeight is constant now, so these targets don't move mid-animation.
         y: root.floated ? -(implicitHeight / 2)
                         : (root.height - implicitHeight) / 2
         visible: input.text.length === 0
@@ -125,15 +141,15 @@ Rectangle {
         Rectangle {
             anchors.fill: parent
             anchors.leftMargin: -4; anchors.rightMargin: -4
-            color: Appearance.colors.colLayer0
+            color: root.notchColor
             z: -1
             visible: root.floated
         }
 
-        Behavior on y              { NumberAnimation { duration: 160; easing.type: Easing.OutCubic } }
-        Behavior on x              { NumberAnimation { duration: 160; easing.type: Easing.OutCubic } }
-        Behavior on font.pixelSize { NumberAnimation { duration: 160; easing.type: Easing.OutCubic } }
-        Behavior on color          { ColorAnimation  { duration: 160 } }
+        Behavior on y     { NumberAnimation { duration: 160; easing.type: Easing.OutCubic } }
+        Behavior on x     { NumberAnimation { duration: 160; easing.type: Easing.OutCubic } }
+        Behavior on scale { NumberAnimation { duration: 160; easing.type: Easing.OutCubic } }
+        Behavior on color { ColorAnimation  { duration: 160 } }
     }
 
     // Click anywhere on the pill to focus.

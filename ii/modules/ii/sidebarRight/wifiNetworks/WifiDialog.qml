@@ -31,7 +31,6 @@ WindowDialog {
     Component.onDestruction: Network.detailsVisible = false
 
     // ── Filter & order ──────────────────────────────────────────────────
-    property string filterText: ""
     property bool hideOpen: false
     property bool savedOnly: false
     // "smart" is the default from the service: active first, then preferred,
@@ -40,10 +39,8 @@ WindowDialog {
     property string sortMode: "smart"
 
     readonly property var shownNetworks: {
-        const q = root.filterText.trim().toLowerCase();
         let list = (Network.friendlyWifiNetworks ?? []).filter(n => {
             if (!n) return false;
-            if (q.length > 0 && (n.ssid ?? "").toLowerCase().indexOf(q) < 0) return false;
             if (root.hideOpen && !(n.isSecure ?? false)) return false;
             if (root.savedOnly && !Network.isSaved(n.ssid)) return false;
             return true;
@@ -63,21 +60,9 @@ WindowDialog {
         text: Translation.tr("Connect to Wi-Fi")
     }
 
-    // The filter sits on its own row rather than sharing the title's line,
-    // where the title and the old rescan button squeezed it to a stub.
-    //
-    // Only shown once there are enough networks for filtering to be worth the
-    // row: on a list of three, a filter box is just clutter above the thing you
-    // were going to click anyway. Keyed on the UNFILTERED count (plus "still has
-    // text"), or typing a query that narrows the list past the threshold would
-    // pull the field out from under the cursor mid-word.
-    PillTextField {
-        Layout.fillWidth: true
-        visible: (Network.friendlyWifiNetworks?.length ?? 0) > 5 || root.filterText.length > 0
-        placeholderText: Translation.tr("Filter by name…")
-        text: root.filterText
-        onTextChanged: root.filterText = text
-    }
+    // No text filter here: the header stays a plain title. The Saved / Secured
+    // chips and the sort modes below already narrow the list, without a field
+    // competing with the title for the row.
     WindowDialogSeparator {
         visible: !Network.wifiScanning
     }
@@ -178,7 +163,7 @@ WindowDialog {
                 Layout.alignment: Qt.AlignHCenter
                 text: Network.wifiScanning
                       ? Translation.tr("Please wait while nearby access points are discovered")
-                      : Translation.tr("Try clearing your filter, or reopen this dialog to scan again")
+                      : Translation.tr("Try clearing the Saved / Secured filters, or reopen this dialog to scan again")
                 font.pixelSize: Appearance.font.pixelSize.smaller
                 color: Appearance.colors.colSubtext
             }
