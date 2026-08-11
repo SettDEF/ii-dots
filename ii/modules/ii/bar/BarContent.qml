@@ -13,6 +13,18 @@ import Quickshell.Io
 Item { // Bar content region
     id: root
 
+    // Tells InputMode whether the last pointer event came from a finger, a pen
+    // or a mouse. Its own docstring says it belongs in "always-visible surfaces
+    // (the bar)" — but it was never actually instantiated anywhere, so
+    // InputMode.mode sat on its "mouse" default forever and InputMode.isTouch
+    // was permanently false. Anything gated on touch input (TouchEdges) could
+    // therefore never switch on.
+    //
+    // Passive by construction: the HoverHandler does not consume events and the
+    // TapHandler uses DragThreshold, so it never fires and clicks pass through
+    // to the bar widgets underneath.
+    InputModeProbe {}
+
     property var screen: root.QsWindow.window?.screen
     property var brightnessMonitor: Brightness.getMonitorForScreen(screen)
     property real useShortenedForm: (Appearance.sizes.barHellaShortenScreenWidthThreshold >= screen?.width) ? 2 : (Appearance.sizes.barShortenScreenWidthThreshold >= screen?.width) ? 1 : 0

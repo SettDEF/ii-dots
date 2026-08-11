@@ -2,6 +2,7 @@ pragma ComponentBehavior: Bound
 
 import qs
 import qs.services
+import qs.modules.ii.display
 import qs.modules.common
 import qs.modules.common.widgets
 import qs.modules.common.widgets.widgetCanvas
@@ -240,6 +241,47 @@ Variants {
         Item {
             anchors.fill: parent
             clip: true
+
+            // Second InputMode reporter, alongside the one in the bar. The bar
+            // alone is too small a target: with only that, touching anywhere
+            // else left InputMode on "mouse", so the first edge swipe after
+            // using a mouse would silently do nothing. The desktop is the other
+            // always-present surface, so between them a finger is noticed
+            // wherever it lands outside a window. Passive — see the component.
+            InputModeProbe {}
+
+            // ── Wallpaper effect ────────────────────────────────────
+            // A pack effect running on the wallpaper itself. Sampling effects
+            // (the warps) get the wallpaper image directly as their source,
+            // so they distort the picture with no screen capture involved.
+            Loader {
+                id: bgEffect
+                anchors.fill: parent
+                z: 1
+                readonly property var fx:
+                    AppDisplay.effectByPath(Config.options.background.effect ?? "")
+                active: !!fx
+                sourceComponent: EffectRenderer {
+                    fx: bgEffect.fx
+                    rounding: 0
+                    // Warps read the wallpaper directly; overlay kinds ignore it.
+                    sourceItem: bgEffect.fx?.samples === true ? wallpaper : null
+                    // Merge the user's per-effect variable overrides on top of
+                    // the legacy single strength value. Empty map → renderer
+                    // falls back to each param's declared default.
+                    values: {
+                        let v = {};
+                        try {
+                            const all = JSON.parse(Config.options.background.effectParams || "{}");
+                            const mine = all[Config.options.background.effect ?? ""];
+                            if (mine) v = Object.assign(v, mine);
+                        } catch (e) {}
+                        const s = Config.options.background.effectStrength;
+                        if (s >= 0 && v.strength === undefined) v.strength = s;
+                        return Object.keys(v).length > 0 ? v : null;
+                    }
+                }
+            }
 
             // Wallpaper
             StyledImage {
@@ -614,3 +656,4 @@ Variants {
         }
     }
 }
+

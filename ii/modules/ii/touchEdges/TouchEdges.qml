@@ -106,7 +106,14 @@ Scope {
         readonly property bool _suppressed:
             GlobalStates.screenDrawOpen ||
             GlobalStates.screenDrawFullOpen
-        readonly property real bandSize: (side === "bottom" || _suppressed)
+        // "top" is zero-width like "bottom": its `anchors.top` is commented out
+        // below because anchoring it put the surface above windows, which means
+        // the window is UNANCHORED and the compositor places it wherever it
+        // likes. Giving an unanchored 360 px Overlay surface a live input band
+        // is how you lose clicks in the middle of the screen, so it takes no
+        // input until the anchoring is sorted out. The HUD still opens from its
+        // shortcut and from the bar.
+        readonly property real bandSize: (side === "bottom" || side === "top" || _suppressed)
             ? 0
             : (_edgeCovered ? 4 : 64)
         readonly property real bloomSize: 360    // visible region for glow
@@ -137,7 +144,20 @@ Scope {
 
         // Limit input to a thin band on the actual edge — the glow can
         // render across the rest of the window without grabbing clicks.
-        mask: Region { item: hitBand }
+        //
+        // And take NO input at all unless the last pointer event came from a
+        // finger or a pen. The docstring at the top of this file claimed this
+        // already happened ("input-transparent under mouse / pen"), but nothing
+        // implemented it: the band was live in every mode, so on a mouse these
+        // strips silently ate clicks in a 4-64 px column down both screen edges
+        // at Overlay layer. That is the single reason this module was left
+        // commented out rather than fixed.
+        //
+        // An empty Region is the "off" state — a null item would mean the whole
+        // surface, which is the opposite of what is wanted here.
+        mask: (InputMode.isTouch || InputMode.isPen) ? maskBand : maskNone
+        Region { id: maskNone }
+        Region { id: maskBand; item: hitBand }
 
         Item {
             id: hitBand

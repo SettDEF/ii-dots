@@ -6,6 +6,10 @@ import qs.modules.common
 import qs.modules.ii.background
 import qs.modules.ii.bar
 import qs.modules.ii.cheatsheet
+import qs.modules.ii.display
+import qs.modules.ii.statsHud
+import qs.modules.ii.audio
+import qs.modules.ii.walltune
 import qs.modules.ii.dock
 import qs.modules.ii.lock
 import qs.modules.ii.mediaControls
@@ -16,6 +20,7 @@ import qs.modules.ii.onScreenTouchpad
 import qs.modules.ii.overview
 import qs.modules.ii.polkit
 import qs.modules.ii.regionSelector
+import qs.modules.ii.rog
 import qs.modules.ii.screenCorners
 import qs.modules.ii.sessionScreen
 import qs.modules.ii.sidebarLeft
@@ -28,13 +33,15 @@ import qs.modules.ii.connectivityPopup
 import qs.modules.ii.cornerPopup
 import qs.modules.ii.shelf
 import qs.modules.ii.keybindsHint
-import qs.modules.ii.walltune
 import qs.modules.ii.skwdWall
 import qs.modules.ii.wallpaperAdjuster
 import qs.modules.ii.desktopIcons
+import qs.modules.ii.mouseMenu
+import qs.modules.ii.kinetix
 import qs.modules.ii.screenDraw
 import qs.modules.ii.screenshotEditor
-// import qs.modules.ii.touchEdges
+import qs.modules.ii.mouseMenu
+import qs.modules.ii.touchEdges
 // import qs.modules.ii.touchGestures
 
 Scope {
@@ -93,9 +100,12 @@ Scope {
         component: ConnectivityPopup {}
     }
     PanelLoader { component: KeybindsHint {} }
-    // Touch-only edge swipe handles. Invisible & input-transparent under
-    // mouse / pen — only renders when InputMode.isTouch.
-    // PanelLoader { component: TouchEdges {} }
+    // Touch-only edge swipe handles. The "input-transparent under mouse / pen"
+    // claim is now actually TRUE: TouchEdges masks its input region to an empty
+    // Region unless InputMode reports a finger or a pen. Before, nothing
+    // implemented that and the bands ate mouse clicks down both screen edges,
+    // which is why this was commented out rather than fixed.
+    PanelLoader { component: TouchEdges {} }
     // Fullscreen multi-finger / corner gestures — tablet mode only,
     // because its input region covers the whole screen and would block
     // mouse hover otherwise.
@@ -122,8 +132,19 @@ Scope {
     LazyPanelLoader { isOpen: GlobalStates.kbPickerOpen;          idleMs: 30 * 1000; component: KeyboardLayoutPicker {} }
     LazyPanelLoader { isOpen: GlobalStates.kbSettingsOpen;        idleMs: 30 * 1000; component: KeyboardSettings {} }
     LazyPanelLoader { isOpen: GlobalStates.wallTuneOpen;          idleMs: 30 * 1000; component: WallTune {} }
+    LazyPanelLoader { isOpen: GlobalStates.rogPowerOpen;          idleMs: 30 * 1000; component: RogPower {} }
     PanelLoader { component: SkwdWall {} }
     LazyPanelLoader { isOpen: GlobalStates.wallpaperAdjusterOpen; idleMs: 30 * 1000; component: WallpaperAdjuster {} }
+    PanelLoader { component: MouseMenu {} }
+    PanelLoader { component: KinetiX {} }
+    PanelLoader { component: DisplaySettings {} }
+    PanelLoader { component: StatsHud {} }
+    PanelLoader { component: StatsHudSettings {} }
+    PanelLoader { component: AudioSettings {} }
+    PanelLoader { component: WallEffectPanel {} }
+    // Window-scope per-app effects: click-through surfaces over app windows.
+    PanelLoader { component: AppDisplayOverlays {} }
+    LazyPanelLoader { isOpen: GlobalStates.gestureMenuOpen;           idleMs: 30 * 1000; component: GestureMenu {} }
     // Shelf is rendered inline by Bar.qml — no standalone PanelLoader needed.
     LazyPanelLoader {
         isOpen: GlobalStates.screenDrawFullOpen
@@ -134,3 +155,5 @@ Scope {
     // PanelWindow inside is still gated on screenshotEditorOpen.
     PanelLoader { component: ScreenshotEditor {} }
 }
+
+
