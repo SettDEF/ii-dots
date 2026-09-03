@@ -30,12 +30,26 @@ Scope {
         // visible rounded rect still grows via its own height animation;
         // the `mask` region tracks `mainCol` so input/visibility match
         // what's actually drawn.
-        implicitHeight: panelWindow._maxHeight + 2
-        readonly property int _maxHeight: PlayerService.players.length > 0
+        property string tab: "media"
+        // Latch: the Files view stays loaded after its first visit.
+        property bool filesEverOpened: false
+        onTabChanged: if (tab === "files") filesEverOpened = true
+        readonly property int _tabsHeight: 40
+        readonly property int _mediaHeight: PlayerService.players.length > 0
             ? (Appearance.sizes.mediaControlsHeight
                 + (PlayerService.players.length > 1 ? playerCard.stripHeight : 0)
                 + playerCard.optionsHeight)
             : 72   // "no active player" fallback rect
+        // Floor only has to clear the "Nothing playing" placeholder; the list
+        // itself reports what it needs. A larger floor left dead space now
+        // that internal streams are filtered out and the list is short.
+        readonly property int _audioHeight: Math.max(76, audioLoader.item?.contentHeight ?? 76)
+        readonly property int _filesHeight: filesLoader.item?.contentHeight ?? 232
+        // Surface height follows the active tab. Tab switches are user actions
+        // (not per-frame), so an occasional resize here is fine.
+        readonly property int _bodyHeight: tab === "media" ? _mediaHeight
+            : tab === "sources" ? _audioHeight : _filesHeight
+        implicitHeight: _tabsHeight + _bodyHeight + 8
         color: "transparent"
         WlrLayershell.namespace: "quickshell:cornerPopup"
 
@@ -59,16 +73,73 @@ Scope {
             function onDismissed() { GlobalStates.cornerPopupOpen = false }
         }
 
-        ColumnLayout {
+        // One surface for the whole popup. The tab bar lives inside it rather
+        // than floating above as its own pill, so this reads as a single
+        // window with tabs instead of two stacked cards.
+        Rectangle {
             id: mainCol
             width: parent.width
             y: 2
-            spacing: 8
+            height: parent.height - 4
+            radius: root.popupRounding
+            color: Appearance.colors.colLayer0
+            clip: true
+
+            ColumnLayout {
+                anchors.fill: parent
+                spacing: 0
+
+                PillTabBar {
+                    Layout.fillWidth: true
+                    Layout.topMargin: 4
+                    implicitHeight: 32
+                    tabs: [
+                        { id: "media",   icon: "music_note",  label: Translation.tr("Media") },
+                        { id: "sources", icon: "graphic_eq",  label: Translation.tr("Sources") },
+                        { id: "files",   icon: "folder_open", label: Translation.tr("Files") },
+                    ]
+                    current: panelWindow.tab
+                    onTabSelected: id => panelWindow.tab = id
+                }
+
+                // ── Audio sources tab ──────────────────────────────────────
+                Item {
+                    Layout.fillWidth: true
+                    Layout.fillHeight: true
+                    visible: panelWindow.tab === "sources"
+                    clip: true
+                    Loader {
+                        id: audioLoader
+                        anchors.fill: parent
+                        active: panelWindow.tab === "sources" || GlobalStates.cornerPopupOpen
+                        asynchronous: true
+                        sourceComponent: AudioSourcesView {}
+                    }
+                }
+
+                // ── Files tab ──────────────────────────────────────────────
+                Item {
+                    Layout.fillWidth: true
+                    Layout.fillHeight: true
+                    visible: panelWindow.tab === "files"
+                    clip: true
+                    Loader {
+                        id: filesLoader
+                        anchors.fill: parent
+                        // Latched via panelWindow so the view stays alive once
+                        // opened (navigation state survives tab switches).
+                        // Must NOT read its own `status` here — that is a
+                        // self-referential binding and breaks instantiation.
+                        active: panelWindow.filesEverOpened
+                        asynchronous: true
+                        sourceComponent: FilesView {}
+                    }
+                }
 
             // Player card + name/dots strip all in one rounded rect
             Rectangle {
                 id: playerCard
-                visible: PlayerService.players.length > 0
+                visible: panelWindow.tab === "media" && PlayerService.players.length > 0
                 implicitWidth: root.popupWidth
                 // Height is computed from the options panel's *current* height
                 // (which is itself animated). One animation, one source of
@@ -77,8 +148,9 @@ Scope {
                 implicitHeight: Appearance.sizes.mediaControlsHeight
                     + (PlayerService.players.length > 1 ? stripHeight : 0)
                     + optionsPanel.height
-                radius: root.popupRounding
-                color: Appearance.colors.colLayer0
+                // The shell already paints the background; this is just a
+                // positioning container for the player pieces.
+                color: "transparent"
                 clip: true
 
                 readonly property int stripHeight: 28
@@ -340,14 +412,10 @@ Scope {
             }
 
             // No player fallback
-            Rectangle {
-                visible: PlayerService.players.length === 0
+            Item {
+                visible: panelWindow.tab === "media" && PlayerService.players.length === 0
                 Layout.fillWidth: true
                 implicitHeight: 72
-                radius: root.popupRounding
-                color: Appearance.colors.colLayer0
-                border.width: 1
-                border.color: Appearance.colors.colLayer0Border
                 RowLayout {
                     anchors.centerIn: parent
                     spacing: 8
@@ -362,6 +430,7 @@ Scope {
                         font.pixelSize: Appearance.font.pixelSize.small
                     }
                 }
+            }
             }
         }
     }

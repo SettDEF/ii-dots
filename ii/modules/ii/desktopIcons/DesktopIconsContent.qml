@@ -25,7 +25,13 @@ Item {
     readonly property int cellSize: Math.max(56, Math.min(160, Config.options.desktop.icons.iconSize))
     readonly property int padding: 14
     readonly property int labelHeight: 28
+    // Horizontal pitch. The label is allowed to use this full width rather
+    // than just cellSize, which is why names elide far less than they did.
     readonly property int gridStep: cellSize + 24
+    // Vertical pitch MUST clear the label, not just the icon: a tile is
+    // cellSize + labelHeight tall, so stepping by cellSize + 28 left exactly
+    // zero gap and every label sat against the icon above it.
+    readonly property int gridStepY: cellSize + labelHeight + 16
     // ── Reserved-edge insets ───────────────────────────────────────────
     // The Background layer surface spans the full screen — including the
     // strip the bar / vertical bar / dock occupies — so icons would draw
@@ -35,8 +41,23 @@ Item {
     readonly property bool _barOnBottom: Config.options.bar.bottom === true
     readonly property bool _barIsVertical: Config.options.bar.vertical === true
     readonly property int _gap: Math.round(Appearance.sizes.hyprlandGapsOut)
-    readonly property int insetTop: (!_barIsVertical && !_barOnBottom)
-        ? Math.round(Appearance.sizes.barHeight) + _gap + padding : padding
+    // What the COMPOSITOR actually reserved, which is the only source that
+    // knows about layers this config did not create. Here MiniMeters reserves
+    // the top 68px and the bar sits below it, so the monitor reports 108 —
+    // while the bar-height calculation alone gives ~53 and puts the first row
+    // of icons underneath the bar.
+    //
+    // Index 1 is the top edge (verified against a top-only reservation of
+    // [0, 108, 0, 0]). Taken as a MAX with the config-derived value so a
+    // missing or differently-ordered `reserved` degrades to the old behaviour
+    // rather than dumping icons at the screen edge.
+    readonly property var _mon: (HyprlandData.monitors && HyprlandData.monitors.length > 0)
+        ? HyprlandData.monitors[0] : null
+    readonly property int _reservedTop:
+        (_mon && _mon.reserved && _mon.reserved.length > 1) ? Math.round(_mon.reserved[1]) : 0
+    readonly property int _barInsetTop: (!_barIsVertical && !_barOnBottom)
+        ? Math.round(Appearance.sizes.barHeight) + _gap : 0
+    readonly property int insetTop: Math.max(_reservedTop, _barInsetTop) + _gap + padding
     readonly property int insetBottom: ((!_barIsVertical && _barOnBottom)
         ? Math.round(Appearance.sizes.barHeight) + _gap : 0)
         + (Config.options.dock.enable ? Math.round((Config.options.dock.height ?? 70)
@@ -47,16 +68,36 @@ Item {
         ? Math.round(Appearance.sizes.verticalBarWidth) + _gap + padding : padding
     readonly property int insetRight: (_barIsVertical && _barOnBottom)
         ? Math.round(Appearance.sizes.verticalBarWidth) + _gap + padding : padding
+    // True while ANY tile is being dragged. A multi-selection moves through
+    // saved positions rather than under the cursor, so those tiles would
+    // animate and trail the one you are actually holding — the group has to
+    // move rigidly with it.
+    property bool anyDragging: false
+
     readonly property bool showHidden: Config.options.desktop.icons.showHidden
     readonly property bool useThumbs: Config.options.desktop.icons.thumbnails
     // FolderListModel.SortField: 0=Unsorted 1=Name 2=Time 3=Size 4=Type
+    // sortMode is "field" or "field:desc" — the direction rides along in the
+    // same string so no new config key is needed (unknown keys get dropped by
+    // the schema on reload).
+    readonly property string sortField: String(Config.options.desktop.icons.sortMode || "name").split(":")[0]
+    readonly property bool sortDesc: String(Config.options.desktop.icons.sortMode || "").endsWith(":desc")
     readonly property int sortFieldIdx: {
-        switch (Config.options.desktop.icons.sortMode) {
+        switch (root.sortField) {
             case "mtime": return 2
             case "size":  return 3
             case "type":  return 4
             default:      return 1
         }
+    }
+    // Third-level menu: direction for one field.
+    function _orderMenu(field) {
+        return [
+            { icon: "arrow_upward",   label: qsTr("Ascending"),
+              onTriggered: () => Config.options.desktop.icons.sortMode = field },
+            { icon: "arrow_downward", label: qsTr("Descending"),
+              onTriggered: () => Config.options.desktop.icons.sortMode = field + ":desc" },
+        ]
     }
 
     // ── Persisted icon positions ───────────────────────────────────────
@@ -77,20 +118,88 @@ Item {
         Config.options.desktop.icons.positions = JSON.stringify(iconPositions)
     }
     Component.onCompleted: _loadPositions()
+    // Changing sort doesn't change the file count, so nothing else would wake
+    // the layout timer. Safe to fire unconditionally: it re-flows only when the
+    // stored sort differs from the active one.
+    onSortFieldIdxChanged: persistLayoutTimer.restart()
     // No Connections on Config.options.desktop.icons.positions —
     // that handler caused the persistence-loss race. If the user resets
     // positions via Settings, they can reload Quickshell to pick it up.
 
     // Source of truth for the visible items.
-    FolderListModel {
+    // Directory listing — deliberately NOT FolderListModel. That model stat()s
+    // every entry from its own thread to decide isDir, and a symlink into an
+    // absent automount (~/Desktop holds several into /mnt/nuke9100) makes the
+    // stat block for the full autofs timeout: 15–30s per entry, retried every
+    // 30s forever. It happens inside Qt before any QML runs, so it cannot be
+    // capped or skipped — it stalled the whole shell.
+    //
+    // `find` without -L never dereferences, so an unavailable mount is never
+    // entered, and the timeout bounds it regardless. Same listing costs ~3ms.
+    QtObject {
         id: dirModel
-        folder: "file://" + (Quickshell.env("HOME") || "/home/caesar") + "/Desktop"
-        showDirs: true
-        showFiles: true
-        showHidden: root.showHidden
-        showDotAndDotDot: false
-        sortField: root.sortFieldIdx
-        sortReversed: false
+        readonly property string folder: (Quickshell.env("HOME") || "/home/caesar") + "/Desktop"
+        property var entries: []
+        readonly property int count: dirModel.entries.length
+        property bool ready: false
+        function get(index, role) {
+            const e = dirModel.entries[index];
+            return e === undefined ? undefined : e[role];
+        }
+        function refresh() {
+            listProc.running = false;
+            listProc.running = true;
+        }
+    }
+
+    Process {
+        id: listProc
+        command: ["timeout", "2", "find", dirModel.folder,
+                  "-maxdepth", "1", "-mindepth", "1",
+                  "-printf", "%y\\t%s\\t%T@\\t%f\\n"]
+        stdout: StdioCollector {
+            onStreamFinished: {
+                const list = [];
+                for (const line of text.split("\n")) {
+                    if (line.length === 0) continue;
+                    const parts = line.split("\t");
+                    if (parts.length < 4) continue;
+                    const name = parts.slice(3).join("\t");   // a name may contain a tab
+                    if (!root.showHidden && name.startsWith(".")) continue;
+                    const dot = name.lastIndexOf(".");
+                    list.push({
+                        fileName: name,
+                        filePath: dirModel.folder + "/" + name,
+                        fileUrl: "file://" + dirModel.folder + "/" + name,
+                        fileIsDir: parts[0] === "d",
+                        fileSize: parseInt(parts[1]) || 0,
+                        fileModified: parseFloat(parts[2]) || 0,
+                        suffix: dot > 0 ? name.slice(dot + 1).toLowerCase() : ""
+                    });
+                }
+                // 1 Name · 2 Time · 3 Size · 4 Type, matching the old sortField.
+                list.sort((a, b) => {
+                    if (a.fileIsDir !== b.fileIsDir) return a.fileIsDir ? -1 : 1;
+                    let r = 0;
+                    if (root.sortFieldIdx === 2) r = a.fileModified - b.fileModified;
+                    else if (root.sortFieldIdx === 3) r = a.fileSize - b.fileSize;
+                    else if (root.sortFieldIdx === 4) r = a.suffix.localeCompare(b.suffix);
+                    if (r === 0) r = a.fileName.localeCompare(b.fileName, undefined, { numeric: true });
+                    return r;
+                });
+                dirModel.entries = list;
+                dirModel.ready = true;
+            }
+        }
+    }
+
+    // find is one-shot, so poll for changes. A listing is ~3ms.
+    Timer {
+        interval: 4000
+        running: true
+        repeat: true
+        triggeredOnStart: true
+        onTriggered: dirModel.refresh()
     }
 
     // Safe area — everything (icons, click handlers) lives inside this
@@ -103,6 +212,23 @@ Item {
         anchors.leftMargin:   root.insetLeft
         anchors.rightMargin:  root.insetRight
 
+        // The insets move the CONTAINER, not the tiles — their x/y are
+        // relative to it and never change — so the per-tile Behaviors cannot
+        // smooth this. When the sticky top window appears or disappears and
+        // the reserved area changes, the whole grid has to glide itself.
+        Behavior on anchors.topMargin {
+            NumberAnimation { duration: 220; easing.type: Easing.OutCubic }
+        }
+        Behavior on anchors.bottomMargin {
+            NumberAnimation { duration: 220; easing.type: Easing.OutCubic }
+        }
+        Behavior on anchors.leftMargin {
+            NumberAnimation { duration: 220; easing.type: Easing.OutCubic }
+        }
+        Behavior on anchors.rightMargin {
+            NumberAnimation { duration: 220; easing.type: Easing.OutCubic }
+        }
+
         // Empty-space handler: plain click clears selection, right-click
         // opens the folder menu, left-press+drag draws the rubberband.
         // z: -1 so per-tile MouseAreas (added later by the Repeater) win
@@ -112,6 +238,16 @@ Item {
             anchors.fill: parent
             acceptedButtons: Qt.LeftButton | Qt.RightButton
             hoverEnabled: true
+            // Touch has no right button, so without this the desktop menu
+            // does not exist on a tablet at all.
+            pressAndHoldInterval: 450
+            onPressAndHold: (m) => {
+                if (m.button !== Qt.LeftButton || emptyClickArea._dragging) return
+                ctx.popup(m.x + root.insetLeft,
+                          m.y + root.insetTop,
+                          root._emptyMenu())
+                m.accepted = true
+            }
             z: -1
             property real _sx: 0
             property real _sy: 0
@@ -260,14 +396,18 @@ Item {
     // (10–100 items). Tiles register themselves via _tileBounds on
     // create / position change.
     property var _tileBounds: ({})   // path → {x, y, w, h}
+    // Mutated IN PLACE rather than copy-on-write. These fire from every
+    // tile's onXChanged/onYChanged, so during a drag or an animated snap that
+    // was a full map copy per tile per frame — ~24 tiles x 60fps x 2 axes,
+    // each copying a 24-entry object, plus a property-change notification
+    // each time. Nothing binds to _tileBounds reactively; it is only read
+    // inside _rubberbandRecompute() and the group-drag loop, both of which
+    // run on demand and see the current values anyway.
     function _registerTile(path, x, y, w, h) {
-        const m = Object.assign({}, _tileBounds)
-        m[path] = { x: x, y: y, w: w, h: h }
-        _tileBounds = m
+        _tileBounds[path] = { x: x, y: y, w: w, h: h }
     }
     function _unregisterTile(path) {
-        if (!_tileBounds[path]) return
-        const m = Object.assign({}, _tileBounds); delete m[path]; _tileBounds = m
+        delete _tileBounds[path]
     }
     function _rubberbandRecompute() {
         const rx = _rubberbandX, ry = _rubberbandY
@@ -415,18 +555,54 @@ Item {
             { icon: "refresh",           label: qsTr("Refresh"),
               onTriggered: () => root._refresh() },
             { separator: true },
-            { icon: "sort_by_alpha",     label: qsTr("Sort: Name"),
-              onTriggered: () => Config.options.desktop.icons.sortMode = "name" },
-            { icon: "schedule",          label: qsTr("Sort: Modified"),
-              onTriggered: () => Config.options.desktop.icons.sortMode = "mtime" },
-            { icon: "data_usage",        label: qsTr("Sort: Size"),
-              onTriggered: () => Config.options.desktop.icons.sortMode = "size" },
+            // Sort by → field → order. The order level is the third panel:
+            // picking a field keeps the current direction, and each field can
+            // be given an explicit direction without leaving the menu.
+            { icon: "sort", label: qsTr("Sort by"), submenu: [
+                { icon: "sort_by_alpha", label: qsTr("Name"),     submenu: root._orderMenu("name") },
+                { icon: "schedule",      label: qsTr("Modified"), submenu: root._orderMenu("mtime") },
+                { icon: "data_usage",    label: qsTr("Size"),     submenu: root._orderMenu("size") },
+                { icon: "category",      label: qsTr("Type"),     submenu: root._orderMenu("type") },
+            ]},
             { separator: true },
             { icon: "grid_view",         label: qsTr("Realign to grid"),
               onTriggered: () => { root.iconPositions = {}; root._savePositions() } },
+            { icon: "widgets",           label: qsTr("Widgets"),
+              submenu: root._widgetsMenu() },
             { icon: "wallpaper",         label: qsTr("Change wallpaper…"),
               onTriggered: () => GlobalStates.skwdWallOpen = true },
         ]
+    }
+
+    // Desktop widget toggles. The menu takes plain items rather than
+    // checkboxes, so the icon carries the on/off state.
+    readonly property var _widgetList: [
+        { key: "clock",       icon: "schedule",          label: qsTr("Clock") },
+        { key: "weather",     icon: "partly_cloudy_day", label: qsTr("Weather") },
+        { key: "calendar",    icon: "calendar_month",    label: qsTr("Calendar") },
+        { key: "worldClock",  icon: "public",            label: qsTr("World clock") },
+        { key: "resources",   icon: "monitor_heart",     label: qsTr("Resources") },
+        { key: "timers",      icon: "timer",             label: qsTr("Timers") },
+        { key: "todo",        icon: "add_task",          label: qsTr("To-Do") },
+        { key: "userCard",    icon: "person",            label: qsTr("User card") },
+        { key: "visualizer",  icon: "graphic_eq",        label: qsTr("Visualizer") },
+        { key: "customImage", icon: "image",             label: qsTr("Image") },
+    ]
+
+    function _widgetsMenu() {
+        const w = Config.options.background.widgets
+        const items = root._widgetList.map(e => ({
+            icon: w[e.key].enable ? "check_box" : "check_box_outline_blank",
+            label: e.label,
+            onTriggered: () => w[e.key].enable = !w[e.key].enable
+        }))
+        items.push({ separator: true })
+        items.push({
+            icon: Config.options.background.widgetsLocked ? "lock" : "lock_open",
+            label: qsTr("Lock positions"),
+            onTriggered: () => Config.options.background.widgetsLocked = !Config.options.background.widgetsLocked
+        })
+        return items
     }
 
     // ── File operations (shelled out) ──────────────────────────────────
@@ -491,11 +667,7 @@ Item {
         _sh(`d=${root._q(dest)}; i=1; n="New file.txt"; while [ -e "$d/$n" ]; do n="New file ($i).txt"; i=$((i+1)); done; touch "$d/$n"`)
     }
     function _refresh() {
-        // FolderListModel doesn't expose an explicit refresh; rebinding the
-        // folder URL forces a re-scan.
-        const f = dirModel.folder
-        dirModel.folder = ""
-        dirModel.folder = f
+        dirModel.refresh()
     }
     function _properties(path) {
         // Hand off to a desktop properties dialog if installed.
@@ -598,25 +770,42 @@ Item {
     // ── Icon grid ──────────────────────────────────────────────────────
     Repeater {
         parent: safeArea
-        model: dirModel
+        model: ScriptModel { values: dirModel.entries }
         delegate: Item {
             id: tile
-            required property int    index
-            required property string fileName
-            required property string filePath
-            required property bool   fileIsDir
-            required property var    fileModified
-            required property int    fileSize
+            required property int index
+            required property var modelData
+            // Aliases keep every existing reference below unchanged.
+            readonly property string fileName:     tile.modelData.fileName
+            readonly property string filePath:     tile.modelData.filePath
+            readonly property bool   fileIsDir:    tile.modelData.fileIsDir
+            readonly property var    fileModified: tile.modelData.fileModified
+            readonly property int    fileSize:     tile.modelData.fileSize
 
             // Snap to grid by index unless we have a saved position.
             // Coordinates are RELATIVE to safeArea so changing the bar
             // position doesn't break saved layouts.
             readonly property var savedPos: root.iconPositions[fileName]
             property real px: savedPos ? savedPos.x : ((index % root._cols) * root.gridStep)
-            property real py: savedPos ? savedPos.y : (Math.floor(index / root._cols) * (root.gridStep + 4))
+            property real py: savedPos ? savedPos.y : (Math.floor(index / root._cols) * root.gridStepY)
             x: px
             y: py
-            width:  root.cellSize
+
+            // Corrections — snap-to-grid on drop, a re-flow after the reserved
+            // area changes, a column count change on resize — used to jump.
+            // Animate them, but ONLY when the tile is not under the finger:
+            // a Behavior during a drag makes the icon lag the cursor, which
+            // reads as the desktop being slow rather than smooth.
+            Behavior on x {
+                enabled: !root.anyDragging
+                NumberAnimation { duration: 140; easing.type: Easing.OutCubic }
+            }
+            Behavior on y {
+                enabled: !root.anyDragging
+                NumberAnimation { duration: 140; easing.type: Easing.OutCubic }
+            }
+
+            width:  root.gridStep - 8
             height: root.cellSize + root.labelHeight
 
             readonly property bool selected: root._isSelected(filePath)
@@ -753,6 +942,10 @@ Item {
                 property real _grabbedX: 0
                 property real _grabbedY: 0
                 property bool _dragged: false
+                Connections {
+                    target: tileMa.drag
+                    function onActiveChanged() { root.anyDragging = tileMa.drag.active }
+                }
                 // Snapshot of every selected tile's start position when the
                 // drag begins. Lets us move the whole selection together by
                 // the same delta as the dragged tile.
@@ -833,7 +1026,7 @@ Item {
                         const dy = tile.y - _grabbedY
                         // Snap the dragged tile to grid.
                         const sx = Math.max(0, Math.round(tile.x / root.gridStep) * root.gridStep)
-                        const sy = Math.max(0, Math.round(tile.y / (root.gridStep + 4)) * (root.gridStep + 4))
+                        const sy = Math.max(0, Math.round(tile.y / root.gridStepY) * root.gridStepY)
                         tile.px = sx
                         tile.py = sy
                         const mp = Object.assign({}, root.iconPositions)
@@ -862,6 +1055,24 @@ Item {
                         root._savePositions()
                     }
                     _dragGroupStart = {}
+                    m.accepted = true
+                }
+                // Same as the empty area, plus a drag guard: dragging an
+                // icon starts with a press that dwells, and a menu popping up
+                // mid-move would be worse than no menu at all.
+                pressAndHoldInterval: 450
+                onPressAndHold: (m) => {
+                    if (m.button !== Qt.LeftButton) return
+                    if (_dragged || drag.active) return
+                    if (!root._isSelected(tile.filePath)) root._selectOnly(tile.filePath)
+                    _dragged = true   // suppress the click that follows
+                    ctx.popup(tile.x + m.x + root.insetLeft,
+                              tile.y + m.y + root.insetTop,
+                              root._iconMenu({
+                                  name: tile.fileName,
+                                  path: tile.filePath,
+                                  isDir: tile.fileIsDir
+                              }))
                     m.accepted = true
                 }
                 onClicked: (m) => {
@@ -897,6 +1108,58 @@ Item {
     // Auto-grid: how many columns fit horizontally inside the safe area.
     readonly property int _cols: Math.max(1, Math.floor(safeArea.width / gridStep))
 
+    // Give every icon a saved position: pinned ones keep theirs, the rest get
+    // the next free cell. That both stops auto-placed tiles landing on a cell a
+    // pinned one owns, and makes the layout stable across refreshes.
+    // Positions for files that no longer exist are left alone but reserve
+    // nothing, so ghosts don't hold empty gaps.
+    Timer {
+        id: persistLayoutTimer
+        interval: 900   // a refresh emits many countChanged in a burst
+        repeat: false
+        onTriggered: {
+            if (!dirModel.ready || dirModel.count === 0)
+                return;
+            // Re-flow when the sort mode differs from the one this layout was
+            // built with. A saved position beats model order, so without this a
+            // "Sort by" did nothing at all. Stored as a reserved key inside the
+            // positions blob — it can never collide with a real file name.
+            const wantSort = Config.options.desktop.icons.sortMode || "name";
+            let next = Object.assign({}, root.iconPositions);
+            if (next.__sort !== wantSort)
+                next = { __sort: wantSort };
+            const taken = {};
+            const unplaced = [];
+            for (let i = 0; i < dirModel.count; ++i) {
+                const n = dirModel.get(i, "fileName");
+                if (!n) continue;
+                const p = next[n];
+                if (p) taken[Math.round(p.y / root.gridStepY) + "," + Math.round(p.x / root.gridStep)] = true;
+                else unplaced.push(n);
+            }
+            if (unplaced.length === 0) return;
+            let cursor = 0;
+            for (const n of unplaced) {
+                let r, c;
+                do {
+                    r = Math.floor(cursor / root._cols);
+                    c = cursor % root._cols;
+                    cursor++;
+                } while (taken[r + "," + c]);
+                taken[r + "," + c] = true;
+                next[n] = { x: c * root.gridStep, y: r * root.gridStepY };
+            }
+            root.iconPositions = next;
+            root._savePositions();
+        }
+    }
+
+    Connections {
+        target: dirModel
+        function onCountChanged() { persistLayoutTimer.restart() }
+        function onReadyChanged() { if (dirModel.ready) persistLayoutTimer.restart() }
+    }
+
     // ── Context menu surface (above everything in this content) ───────
     PopupContextMenu { id: ctx }
 
@@ -930,3 +1193,11 @@ Item {
         }
     }
 }
+
+
+
+
+
+
+
+

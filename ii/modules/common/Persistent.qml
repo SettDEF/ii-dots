@@ -112,6 +112,14 @@ Singleton {
                 property bool inhibit: false
             }
 
+            property JsonObject audio: JsonObject {
+                // appKey -> volume (0..1) for apps that are open but not
+                // currently streaming. JSON-encoded because JsonObject cannot
+                // hold dynamic keys. Applied to the app's stream as soon as
+                // one appears.
+                property string appVolumes: "{}"
+            }
+
             property JsonObject touchpad: JsonObject {
                 property bool hasCustomPos: false
                 property real x: 0

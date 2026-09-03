@@ -30,9 +30,33 @@ Singleton {
     function correctType(node, isSink) {
         return (node.isSink === isSink) && node.audio
     }
+    // A stream belongs to a real application only if the user launched it.
+    // Filter-chain plumbing (the HUD equalizer's effect_output.*) and the
+    // shell's own playback otherwise show up in every mixer as "HUD
+    // Equalizer" / "Qml Runtime", where their volume means nothing.
+    // Matched against node.name, which — unlike node.properties — is populated
+    // without a PwObjectTracker. Filtering on properties here emptied every
+    // mixer, because nothing tracks these nodes until a row is built for them.
+    readonly property var _internalBinaries: ["qml", "quickshell", "qs"]
+    function isApplicationStream(node) {
+        const name = String(node?.name ?? "")
+        // Filter-chain plumbing, e.g. the HUD equalizer's effect_output.hud-eq.
+        if (/^effect_(input|output)\./.test(name))
+            return false
+        // The shell's own playback.
+        if (name === "Qml Runtime")
+            return false
+        const binary = String(node?.properties?.["application.process.binary"] ?? "")
+        if (binary.length > 0 && root._internalBinaries.includes(binary))
+            return false
+        // Anything else is a real app. Unknown/untracked nodes are KEPT — a
+        // missing property must never blank the list.
+        return true
+    }
     function appNodes(isSink) {
         return Pipewire.nodes.values.filter((node) => { // Should be list<PwNode> but it breaks ScriptModel
             return root.correctType(node, isSink) && node.isStream
+                && root.isApplicationStream(node)
         })
     }
     function devices(isSink) {

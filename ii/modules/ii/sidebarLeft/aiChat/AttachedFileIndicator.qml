@@ -31,7 +31,9 @@ Rectangle {
 
     Process {
         id: fileTypeProc
-        command: ["file", "-b", "--mime-type", filePath]
+        // Capped: `file` follows symlinks and hangs for the full autofs timeout
+        // on a link into an absent mount. See DirectoryIcon.qml.
+        command: ["timeout", "1", "file", "-b", "--mime-type", filePath]
         stdout: StdioCollector {
             onStreamFinished: {
                 root.mimeType = this.text;
