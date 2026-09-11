@@ -93,14 +93,22 @@ Item {
         target: Hyprland
         function onFocusedWorkspaceChanged() {
             root.updateWorkspaceData()
-            root.switchFlashActive = true
-            switchFlashTimer.restart()
+            if (Config.options.bar.workspaces.switchFlash) {
+                root.switchFlashActive = true
+                switchFlashTimer.restart()
+            }
         }
     }
     onCurrentGroupChanged: updateWorkspaceData()
 
     // ── Hover ─────────────────────────────────────────────────────────────────
     property bool isHovered: false
+    // Pointer x inside the island, used to work out WHICH slot is under the
+    // cursor. Deliberately not a HoverHandler on each slot: slotsRow is drawn
+    // on top of islandBg as a SIBLING, so a handler on a slot consumes the
+    // hover and islandBg never sees it — which silently killed the row's
+    // expand-to-10 entirely. One handler, and the slots do the arithmetic.
+    readonly property real hoverX: islandHover.point.position.x
 
     // ── Recording detection ───────────────────────────────────────────────────
     property bool micRecording: false
@@ -145,32 +153,20 @@ Item {
         running: true
         repeat: true
         onTriggered: {
-            micCheckProc.exec({ command: ["bash", "-c", "pactl list source-outputs | awk 'BEGIN{RS=\"Source Output\"} /Corked: no/ && !/MiniMeters/' | wc -l"] })
+            // cava reads the output monitor, not the mic — the bar's own
+            // visualiser would otherwise light REC as if you were recording.
+            micCheckProc.exec({ command: ["bash", "-c", "pactl list source-outputs | awk 'BEGIN{RS=\"Source Output\"} /Corked: no/ && !/MiniMeters/ && !/cava/' | wc -l"] })
             screenRecordProc.exec({ command: ["bash", "-c", "pgrep -x wf-recorder"] })
         }
     }
 
     // ── Roman numeral flash ───────────────────────────────────────────────────
     readonly property var romanNumerals: ["I","II","III","IV","V","VI","VII","VIII","IX","X"]
-    property bool showNumerals: false
+    // The periodic numeral flash is gone. It fired every 9s for 1s across every
+    // slot, so the bar changed on its own with nothing having happened — motion
+    // in peripheral vision that carried no information. Numbers now appear only
+    // when asked for: hover a slot, or on an actual workspace switch.
     property bool switchFlashActive: false
-
-    Timer {
-        id: periodicFlashTimer
-        interval: 9000
-        running: true
-        repeat: true
-        onTriggered: {
-            root.showNumerals = true
-            numeralHideTimer.restart()
-        }
-    }
-    Timer {
-        id: numeralHideTimer
-        interval: 1000
-        repeat: false
-        onTriggered: root.showNumerals = false
-    }
     Timer {
         id: switchFlashTimer
         interval: 1000
@@ -252,9 +248,20 @@ Item {
         onTriggered: root._ctxHoverSticky = false
     }
 
+    // A pomodoro counts as "in progress" while it is running OR paused
+    // part-way through a lap. Sitting idle at the full lap duration is not a
+    // session, so the island stays out of the way until you actually start one.
+    readonly property bool pomodoroActive: TimerService.pomodoroRunning
+        || TimerService.pomodoroSecondsLeft !== TimerService.pomodoroLapDuration
+
     property string contextMode: {
         if (Notifications.popupList.length > 0 && !Notifications.popupInhibited) return "notification"
+        // Hovering still gets you the media controls, so music is never more
+        // than a pointer away even mid-session.
         if (_currentTrack.length > 0 && _ctxHoverSticky) return "media-controls"
+        // Above passive media: if you started a timer you want to see it, and
+        // a track title you already know is the cheaper thing to give up.
+        if (root.pomodoroActive) return "pomodoro"
         if (_currentTrack.length > 0 && (_trackJustChanged || _nearEnd)) return "media-expanded"
         if (_currentTrack.length > 0 && _wavyShowing) return "media-wavy"
         if (_currentTrack.length > 0) return "media-collapsed"
@@ -273,7 +280,7 @@ Item {
     readonly property real btnW:           28   // workspace slot width
     readonly property real padH:            6   // island horizontal padding
     readonly property real indMargin:       2   // active indicator inset
-    readonly property real recW:           58   // recording indicator width
+    readonly property real recW:           72   // chip + separator + padding
 
     // ── Slot / active-indicator shape ──────────────────────────────────────
     // Driven by Config.options.bar.workspaces.shape. Centralised here so the
@@ -314,13 +321,27 @@ Item {
     // visible-right = 2 + padH = 8 == visible-left of first workspace
     // (padH + indMargin = 8).
     readonly property real ctxCollapsedW: 24
+    // 14 bars × (2 dot + 4 gap), + the icon's 27 lead and 6 tail.
+    readonly property real ctxSpectrumW: Config.options.bar.showVisualizer ? 84 + 27 + 6 : ctxCollapsedW
     readonly property real ctxExpandedW:  27 + Math.min(ctxTextMeasure.implicitWidth, 180) + 8
     readonly property real ctxTotalW: {
         if (contextMode === "none") return 0
-        if (contextMode === "media-collapsed") return ctxCollapsedW
+        if (contextMode === "media-collapsed") return ctxSpectrumW
         if (contextMode === "media-wavy")     return 120
         if (contextMode === "media-controls") return 120
+        if (contextMode === "pomodoro")       return ctxPomodoroW
         return ctxExpandedW
+    }
+
+    // ring(20) + gap(6) + readout + right padding(6)
+    readonly property real ctxPomodoroW: 20 + 6 + Math.ceil(pomoTextMeasure.implicitWidth) + 6
+
+    Text {
+        id: pomoTextMeasure
+        visible: false
+        font.pixelSize: Appearance.font.pixelSize.small
+        font.family: Appearance.font.family.numbers
+        text: "00:00"
     }
 
     // Hidden text measurer for dynamic context slot width
@@ -377,11 +398,11 @@ Item {
                 ? event.angleDelta.y
                 : event.pixelDelta.y * 4
             if (accum <= -notch) {
-                Hyprland.dispatch("workspace r+1")
+                HyprDispatch.run("workspace r+1")
                 accum = 0
                 wsWheelCooldown.restart()
             } else if (accum >= notch) {
-                Hyprland.dispatch("workspace r-1")
+                HyprDispatch.run("workspace r-1")
                 accum = 0
                 wsWheelCooldown.restart()
             }
@@ -395,10 +416,21 @@ Item {
     }
     MouseArea {
         anchors.fill: parent
-        acceptedButtons: Qt.BackButton
+        // Right-click is listed here as the FALLBACK way to the settings menu.
+        // "Media controls" is itself one of the menu's toggles, so switching it
+        // off collapses contextSlot to zero width and takes the primary
+        // right-click target with it -- leaving no way back to the menu that
+        // turned it off. This MouseArea sits below the pills, so it only ever
+        // sees presses on bare island: the padding around the row and the empty
+        // strip the context slot vacates.
+        acceptedButtons: Qt.BackButton | Qt.RightButton
         onPressed: event => {
             if (event.button === Qt.BackButton)
-                Hyprland.dispatch("togglespecialworkspace")
+                HyprDispatch.run("togglespecialworkspace")
+            else if (event.button === Qt.RightButton) {
+                const pt = mapToItem(wsMenu.parent, event.x, event.y)
+                wsMenu.popup(pt.x, pt.y, root.buildMenuItems())
+            }
         }
     }
 
@@ -412,6 +444,7 @@ Item {
         border.color: Appearance.colors.colLayer0Border
 
         HoverHandler {
+            id: islandHover
             onHoveredChanged: root.isHovered = hovered
         }
 
@@ -437,9 +470,20 @@ Item {
             leftMargin: 2
             verticalCenter: parent.verticalCenter
         }
-        width: 120
+        // Only as wide as the slot actually LOOKS, until the cursor is really
+        // on it. A flat 120 meant ~100px of invisible, full-height hit area
+        // sitting over empty island next to a 22px button — so the play button
+        // lit up and the slot expanded while the cursor was still out between
+        // the workspace pills, with nothing on screen to explain why.
+        //
+        // Once genuinely hovered it grows to 120 and _ctxHoverSticky holds it
+        // there through the 90ms hysteresis, which is the case this probe was
+        // built for: keeping the EXPANDED controls reachable while the slot
+        // animates. That still works — you just have to touch the button first.
+        width: root._ctxHoverSticky ? 120 : Math.max(root.ctxTotalW, 28)
+        Behavior on width { NumberAnimation { duration: 120; easing.type: Easing.OutCubic } }
         height: islandBg.height
-        visible: root.contextMode !== "none"
+        visible: Config.options.bar.workspaces.showMediaContext && root.contextMode !== "none"
         z: 5
         HoverHandler { id: ctxSlotHover }
     }
@@ -447,6 +491,7 @@ Item {
     // ── Context slot: right side of island ───────────────────────────────────
     Item {
         id: contextSlot
+        visible: Config.options.bar.workspaces.showMediaContext
         // Tight gap to slotsRow — the workspace circles already have
         // their own internal padding so an extra 6 px island-pad here
         // doubled up visually. Drop to 2 px so the media icon sits
@@ -456,6 +501,24 @@ Item {
         height: islandBg.height
         clip: true
         Behavior on width { NumberAnimation { duration: 300; easing.type: Easing.OutCubic } }
+
+        // Plain right-click opens the workspaces settings menu.
+        //
+        // The menu cannot live on a plain right-click on the PILLS: there it is
+        // the overview, which is muscle memory and taking it away was already
+        // the wrong call once. This slot carries no such binding, so it can host
+        // the menu with no modifier -- and it is the element the menu is mostly
+        // about (visualiser, media controls) anyway. Ctrl+right-click on a pill
+        // still works.
+        TapHandler {
+            acceptedButtons: Qt.RightButton
+            gesturePolicy: TapHandler.ReleaseWithinBounds
+            onTapped: eventPoint => {
+                const pt = contextSlot.mapToItem(wsMenu.parent,
+                                                 eventPoint.position.x, eventPoint.position.y)
+                wsMenu.popup(pt.x, pt.y, root.buildMenuItems())
+            }
+        }
 
         // Hover probe lives OUTSIDE the clipped contextSlot so its full
         // 120 px width keeps receiving hover events even when the slot
@@ -505,15 +568,101 @@ Item {
             }
 
             TapHandler {
+                margin: Appearance.sizes.touchSlop
                 onTapped: GlobalStates.cornerPopupOpen = !GlobalStates.cornerPopupOpen
             }
 
-            HoverHandler { id: mediaCircleHover }
+            HoverHandler { margin: Appearance.sizes.touchSlop; id: mediaCircleHover }
             Rectangle {
                 anchors.fill: parent; radius: parent.radius
                 color: "white"
                 opacity: mediaCircleHover.hovered ? 0.12 : 0
                 Behavior on opacity { NumberAnimation { duration: 120 } }
+            }
+        }
+
+        // ── Pomodoro ────────────────────────────────────────────────────
+        // Ring + MM:SS. Left-click toggles pause/resume, right-click resets,
+        // so the timer is fully drivable from the bar without opening the
+        // sidebar. Same TimerService the sidebar widget uses — one source of
+        // truth, so the two never disagree.
+        Item {
+            id: pomodoroCtx
+            anchors {
+                left: parent.left; leftMargin: 2
+                right: parent.right; rightMargin: 6
+                verticalCenter: parent.verticalCenter
+            }
+            height: 22
+            opacity: root.contextMode === "pomodoro" ? 1 : 0
+            Behavior on opacity { NumberAnimation { duration: 180 } }
+            visible: opacity > 0
+
+            readonly property color phaseColor: TimerService.pomodoroBreak
+                ? Appearance.m3colors.m3tertiary
+                : Appearance.m3colors.m3primary
+
+            HoverHandler { id: pomoHover; cursorShape: Qt.PointingHandCursor }
+            TapHandler {
+                acceptedButtons: Qt.LeftButton
+                onTapped: TimerService.togglePomodoro()
+            }
+            TapHandler {
+                acceptedButtons: Qt.RightButton
+                onTapped: TimerService.resetPomodoro()
+            }
+
+            CircularProgress {
+                id: pomoRing
+                anchors { left: parent.left; verticalCenter: parent.verticalCenter }
+                implicitSize: 20
+                lineWidth: 3
+                // Guard the divide: lapDuration is 0 for a beat on config reload.
+                value: TimerService.pomodoroLapDuration > 0
+                    ? 1 - (TimerService.pomodoroSecondsLeft / TimerService.pomodoroLapDuration)
+                    : 0
+                colPrimary: pomodoroCtx.phaseColor
+                colSecondary: ColorUtils.transparentize(pomodoroCtx.phaseColor, 0.75)
+
+                MaterialSymbol {
+                    anchors.centerIn: parent
+                    // Paused mid-lap reads as a play affordance, which is what
+                    // clicking will do.
+                    text: TimerService.pomodoroRunning
+                        ? (TimerService.pomodoroBreak ? "coffee" : "timer")
+                        : "play_arrow"
+                    iconSize: 11
+                    color: pomodoroCtx.phaseColor
+                }
+            }
+
+            StyledText {
+                anchors {
+                    left: pomoRing.right; leftMargin: 6
+                    right: parent.right
+                    verticalCenter: parent.verticalCenter
+                }
+                font.pixelSize: Appearance.font.pixelSize.small
+                font.family: Appearance.font.family.numbers
+                color: pomodoroCtx.phaseColor
+                elide: Text.ElideRight
+                text: {
+                    const left = Math.max(0, TimerService.pomodoroSecondsLeft)
+                    const m = Math.floor(left / 60).toString().padStart(2, "0")
+                    const sec = Math.floor(left % 60).toString().padStart(2, "0")
+                    return `${m}:${sec}`
+                }
+            }
+
+            StyledToolTip {
+                visible: pomoHover.hovered
+                text: {
+                    const phase = TimerService.pomodoroLongBreak ? Translation.tr("Long break")
+                        : TimerService.pomodoroBreak ? Translation.tr("Break") : Translation.tr("Focus")
+                    const action = TimerService.pomodoroRunning ? Translation.tr("click to pause")
+                                                                : Translation.tr("click to resume")
+                    return `${phase} · ${Translation.tr("cycle")} ${TimerService.pomodoroCycle + 1}\n${action}, ${Translation.tr("right-click to reset")}`
+                }
             }
         }
 
@@ -545,7 +694,8 @@ Item {
                 verticalCenter: parent.verticalCenter
             }
             height: 12
-            opacity: root.contextMode === "media-wavy" ? 1 : 0
+            // Spectrum takes this slot when enabled.
+            opacity: root.contextMode === "media-wavy" && !Config.options.bar.showVisualizer ? 1 : 0
             Behavior on opacity { NumberAnimation { duration: 180 } }
             visible: opacity > 0
 
@@ -575,10 +725,42 @@ Item {
                     return parent.width * Math.min(p.position / p.length, 1)
                 }
                 Behavior on width { NumberAnimation { duration: 1000; easing.type: Easing.Linear } }
-                FrameAnimation {
-                    running: mediaWavyBar.visible
+                // Flow the wave at ~30fps instead of every screen refresh.
+                // Was a FrameAnimation firing 60–144×/s, repainting this
+                // CPU-rasterized Canvas nonstop on the always-visible bar —
+                // a real idle-battery drain. 30fps looks identically smooth.
+                // Also only flow while actually playing; a paused track sits still.
+                Timer {
+                    interval: 33
+                    repeat: true
+                    running: mediaWavyBar.visible && MprisController.isPlaying
                     onTriggered: wavyPlayed.requestPaint()
                 }
+            }
+        }
+
+        // Cava spectrum — the wavy line's slot, opt-in. Loader, not
+        // `visible`, so `off` builds nothing.
+        Loader {
+            anchors {
+                left: parent.left; leftMargin: 27
+                right: parent.right; rightMargin: 6
+                verticalCenter: parent.verticalCenter
+            }
+            height: 12
+            active: Config.options.bar.showVisualizer
+            // Collapsed too, not just the 2 s wavy window — otherwise it
+            // would flash past once a track and never be seen.
+            opacity: (root.contextMode === "media-wavy"
+                   || root.contextMode === "media-collapsed") ? 1 : 0
+            Behavior on opacity { NumberAnimation { duration: 180 } }
+            visible: opacity > 0
+
+            sourceComponent: Visualizer {
+                barCount: 14
+                dotSize: 2
+                dotSpacing: 4
+                maxBarHeight: 12
             }
         }
 
@@ -690,23 +872,39 @@ Item {
             anchors { left: parent.left; leftMargin: root.padH; verticalCenter: parent.verticalCenter }
             spacing: root.padH
 
+            // Same height and radius as a workspace slot. Tinted, not solid —
+            // matugen's errorContainer at full strength shouts over the pills.
             Rectangle {
-                width: 7; height: 7; radius: 3.5
-                color: Appearance.m3colors.m3error
-                anchors.verticalCenter: parent.verticalCenter
-                SequentialAnimation on opacity {
-                    running: root.isRecording
-                    loops: Animation.Infinite
-                    NumberAnimation { to: 0.2; duration: 700 }
-                    NumberAnimation { to: 1.0; duration: 700 }
+                implicitWidth: 52
+                implicitHeight: root.btnW - root.indMargin * 2
+                radius: root.slotRadius
+                color: ColorUtils.transparentize(Appearance.colors.colErrorContainer, 0.4)
+
+                Row {
+                    anchors.centerIn: parent
+                    spacing: 5
+
+                    Rectangle {
+                        width: 7; height: 7; radius: 3.5
+                        color: Appearance.colors.colError
+                        anchors.verticalCenter: parent.verticalCenter
+                        SequentialAnimation on opacity {
+                            running: root.isRecording
+                            loops: Animation.Infinite
+                            NumberAnimation { to: 0.2; duration: 700 }
+                            NumberAnimation { to: 1.0; duration: 700 }
+                        }
+                    }
+                    StyledText {
+                        text: "REC"
+                        font.pixelSize: Appearance.font.pixelSize.small
+                        font.weight: Font.Medium
+                        color: Appearance.colors.colError
+                        anchors.verticalCenter: parent.verticalCenter
+                    }
                 }
             }
-            StyledText {
-                text: "REC"
-                font.pixelSize: Appearance.font.pixelSize.small
-                color: Appearance.m3colors.m3error
-                anchors.verticalCenter: parent.verticalCenter
-            }
+
             Rectangle {
                 width: 2; height: 14
                 radius: 1
@@ -771,10 +969,32 @@ Item {
                 property bool   occupied:  root.workspaceOccupied[index] ?? false
                 property bool   isActive:  index === root.activeIdxInGroup
                 property bool   slotVis:   occupied || isActive || root.isHovered
-                property bool   showNum:   root.showNumerals || (root.switchFlashActive && isActive) || (root.isHovered && occupied)
+                // Hover reveals every slot's number, not just occupied ones —
+                // otherwise the widget can tell you WHAT is running but never
+                // WHERE, and an empty slot stays anonymous.
+                //
+                // iconFailed is the important one: a slot with a known class but
+                // an icon that never loads used to draw NOTHING. The icon hides
+                // on `status !== Image.Ready`, and the dot hides because hasIcon
+                // is true — so the slot rendered as a blank pill. Hyprland
+                // truncates long classes ("com.bitwig.BitwigStudi", missing the
+                // final "o"), which never resolves, so this fires in practice.
+                // Only the slot under the cursor, not every slot in the row.
+                // root.isHovered still expands the row so empty slots become
+                // hoverable at all -- it just no longer numbers all of them.
+                property bool   showNum:   Config.options.bar.workspaces.alwaysShowNumbers
+                    || (root.switchFlashActive && isActive)
+                    || pointerOver
+                    || iconFailed
                 property bool   renaming:  false
                 property string wsName:    root.workspaceNames[index] ?? ""
                 property int    winCount:  root.workspaceWindowCounts[index] ?? 0
+
+                // islandBg fills root, so its pointer x shares root's x axis;
+                // the slot's own left edge in that space is slotsRow.x + x.
+                readonly property bool pointerOver: root.isHovered
+                    && root.hoverX >= slotsRow.x + x
+                    && root.hoverX <  slotsRow.x + x + width
 
                 property var    biggestWindow: HyprlandData.biggestWindowForWorkspace(wsId)
                 // Only resolve icon when class is known — avoids showing the image-missing fallback
@@ -782,10 +1002,36 @@ Item {
                 property string iconSrc: hasIcon
                     ? Quickshell.iconPath(AppSearch.guessIcon(biggestWindow.class), "image-missing")
                     : ""
+                // Did the icon lookup actually give up?
+                //
+                // NOT Image.status: iconSrc passes "image-missing" as the
+                // fallback, so the URL is always loadable and status is never
+                // Error -- it just renders a placeholder glyph. And guessIcon()
+                // ends in a fuzzy pass that "always answers with something", so
+                // a miss usually becomes a wrong-but-real icon rather than
+                // nothing. The two genuine give-up values are the sentinels
+                // guessIcon returns when even fuzzy fails, and iconPath()'s
+                // check=true overload, which returns "" for a missing icon
+                // instead of a placeholder URL.
+                readonly property string iconGuess: hasIcon ? AppSearch.guessIcon(biggestWindow.class) : ""
+                readonly property bool iconFailed: occupied && hasIcon
+                    && (iconGuess === "image-missing"
+                        || iconGuess === "application-x-executable"
+                        || Quickshell.iconPath(iconGuess, true) === "")
 
                 implicitWidth:  slotVis ? root.btnW : 0
                 implicitHeight: root.btnW
                 clip: true
+
+                // Fade in step with the width.
+                //
+                // The slot animates 0 -> btnW over 300ms with clip:true, so a
+                // half-open slot used to be REVEALED by a hard clip edge — a
+                // sharp-edged vertical sliver of a dot or pill, which is what
+                // shows up between elements while the row expands. Tying
+                // opacity to how open the slot is turns that into a fade, so
+                // there is never a crisp partial edge on screen.
+                opacity: Math.min(1, implicitWidth / root.btnW)
 
                 Behavior on implicitWidth {
                     NumberAnimation { duration: 300; easing.type: Easing.OutCubic }
@@ -815,7 +1061,9 @@ Item {
                     anchors.centerIn: parent
                     width:  root.btnW
                     height: root.btnW
-                    opacity: (slot.occupied && slot.hasIcon && slotIcon.status === Image.Ready && !slot.showNum && !slot.renaming) ? 1 : 0
+                    opacity: (Config.options.bar.workspaces.showAppIcons
+                        && slot.occupied && slot.hasIcon && slotIcon.status === Image.Ready
+                        && !slot.showNum && !slot.renaming) ? 1 : 0
                     visible: opacity > 0
                     Behavior on opacity { NumberAnimation { duration: 180 } }
 
@@ -933,7 +1181,19 @@ Item {
                         text: {
                             if (slot.wsName && slot.wsName !== String(slot.wsId))
                                 return slot.wsName
-                            return root.romanNumerals[index] ?? String(index + 1)
+                            // Derive from wsId, not index: out-of-group slots are
+                            // appended after the group, so index+1 named them wrong
+                            // (ws 61 showed as "VII").
+                            const w = Config.options.bar.workspaces
+                            const off = slot.wsId - root.groupStart
+                            const inGroup = off >= 0 && off < root.workspacesPerGroup
+                            // numberMap is the user's own glyph list; it can be
+                            // shorter than the group, so fall through when it is.
+                            if (w.useNerdFont && inGroup && (w.numberMap?.length ?? 0) > off)
+                                return w.numberMap[off]
+                            if (w.romanNumerals && inGroup)
+                                return root.romanNumerals[off] ?? String(slot.wsId)
+                            return String(slot.wsId)
                         }
                         font.pixelSize: Appearance.font.pixelSize.small
                         font.family: Appearance.font.family.numbers
@@ -957,7 +1217,7 @@ Item {
                     selectByMouse: true
                     onAccepted: {
                         const t = text.trim()
-                        if (t !== "") Hyprland.dispatch(`renameworkspace ${slot.wsId} ${t}`)
+                        if (t !== "") HyprDispatch.run(`renameworkspace ${slot.wsId} ${t}`)
                         slot.renaming = false
                     }
                     Keys.onEscapePressed: slot.renaming = false
@@ -970,20 +1230,79 @@ Item {
                     anchors.fill: parent
                     acceptedButtons: Qt.LeftButton | Qt.MiddleButton | Qt.RightButton
 
+                    // Left-click switches, but a hair late so a double-click
+                    // (which renames) can cancel it — otherwise the first press
+                    // of the double-click already yanked you to that workspace.
+                    Timer {
+                        id: switchTimer
+                        interval: 180
+                        onTriggered: HyprDispatch.run(`workspace ${slot.wsId}`)
+                    }
                     onPressed: event => {
                         if (slot.renaming) return
                         if (event.button === Qt.LeftButton)
-                            Hyprland.dispatch(`workspace ${slot.wsId}`)
+                            switchTimer.restart()
                         else if (event.button === Qt.MiddleButton)
-                            Hyprland.dispatch(`movetoworkspace ${slot.wsId}`)
-                        else if (event.button === Qt.RightButton)
-                            GlobalStates.overviewOpen = !GlobalStates.overviewOpen
+                            HyprDispatch.run(`movetoworkspace ${slot.wsId}`)
+                        else if (event.button === Qt.RightButton) {
+                            // Plain right-click keeps opening the overview — taking
+                            // that away for a settings menu was the wrong trade, it
+                            // is the muscle-memory action on these pills.
+                            //
+                            // Ctrl, not Super: SUPER + mouse:273 is bound to
+                            // window-resize in hyprland/keybinds.lua, so Hyprland
+                            // would swallow it before the shell ever saw the press.
+                            if (event.modifiers & Qt.ControlModifier) {
+                                const pt = slot.mapToItem(wsMenu.parent, event.x, event.y)
+                                wsMenu.popup(pt.x, pt.y, root.buildMenuItems())
+                            } else {
+                                GlobalStates.overviewOpen = !GlobalStates.overviewOpen
+                            }
+                        }
                     }
                     onDoubleClicked: {
+                        switchTimer.stop()   // cancel the pending switch — rename only
                         if (root.isHovered) slot.renaming = true
                     }
                 }
             }
+        }
+    }
+
+    // ── Context menu ─────────────────────────────────────────────────────────
+    // Every switch here is a Config option, so it persists and stays editable
+    // by hand; the menu is just a faster way to reach them. Checkbox state is
+    // carried in the icon because PopupContextMenu items are {icon,label,fn}.
+    function buildMenuItems() {
+        const c = Config.options.bar
+        const w = c.workspaces
+        const chk = v => v ? "check_box" : "check_box_outline_blank"
+        return [
+            { icon: chk(c.showVisualizer),    label: qsTr("Audio visualiser"),
+              onTriggered: () => c.showVisualizer = !c.showVisualizer },
+            { icon: chk(w.showAppIcons),      label: qsTr("App icons"),
+              onTriggered: () => w.showAppIcons = !w.showAppIcons },
+            { icon: chk(w.monochromeIcons),   label: qsTr("Monochrome icons"),
+              onTriggered: () => w.monochromeIcons = !w.monochromeIcons },
+            { icon: chk(w.alwaysShowNumbers), label: qsTr("Always show numbers"),
+              onTriggered: () => w.alwaysShowNumbers = !w.alwaysShowNumbers },
+            { icon: chk(w.romanNumerals),     label: qsTr("Roman numerals"),
+              onTriggered: () => w.romanNumerals = !w.romanNumerals },
+            { icon: chk(w.switchFlash),       label: qsTr("Switch animation"),
+              onTriggered: () => w.switchFlash = !w.switchFlash },
+            { icon: chk(w.showMediaContext),  label: qsTr("Media controls"),
+              onTriggered: () => w.showMediaContext = !w.showMediaContext }
+        ]
+    }
+
+    PopupContextMenu {
+        id: wsMenu
+        // Re-parent to the window root or the bar clips it: the island is only
+        // ~32px tall and the menu is far taller. Same walk PanelPositioner does.
+        Component.onCompleted: {
+            let p = parent
+            while (p && p.parent) p = p.parent
+            if (p) wsMenu.parent = p
         }
     }
 

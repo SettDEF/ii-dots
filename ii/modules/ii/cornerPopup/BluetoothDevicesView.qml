@@ -28,14 +28,16 @@ Rectangle {
     // tweens in this widget down to instant by setting it to 0.
     readonly property real animMs: Appearance.animDur(220)
 
+    // A BLE round trip is expensive, so JblBattery polls slowly on its own.
+    // Nudging it when the panel opens means an on-screen reading is fresh
+    // without raising the background rate.
+    onVisibleChanged: if (visible) JblBattery.refresh(false)
+
     radius: isSidebar ? Appearance.rounding.large : popupRounding
     color: isSidebar ? Appearance.colors.colLayer1 : Appearance.colors.colLayer0
     border.width: isSidebar ? 0 : 1
     border.color: Appearance.colors.colLayer0Border
     implicitHeight: body.implicitHeight + outerPad + outerBottomPad
-    Behavior on implicitHeight {
-        NumberAnimation { duration: animMs; easing.type: Easing.OutCubic }
-    }
 
     // ── Helpers ─────────────────────────────────────────────────────────────
     function _kind(d) {
@@ -117,14 +119,25 @@ Rectangle {
                 readonly property string kind: root._kind(modelData)
                 readonly property string addr: modelData?.address ?? ""
                 readonly property string devName: modelData?.name ?? "?"
-                readonly property int    bat:  Math.round(modelData?.batteryPercentage ?? -1)
+                // Quickshell.Bluetooth exposes `battery` as a 0..1 double plus a
+                // `batteryAvailable` flag — there is no `batteryPercentage`, so
+                // this always read undefined -> -1 and the readout below could
+                // never appear. batteryAvailable is what gates it: 0.0 is a
+                // legitimate reading (flat), absent is not.
+                readonly property int    bat:  (modelData?.batteryAvailable ?? false)
+                    ? Math.round((modelData?.battery ?? 0) * 100)
+                    : (JblBattery.isSupported(devName) ? JblBattery.percent : -1)
+                // True when the number came from the Harman protocol rather than
+                // BlueZ, so the UI can say where it came from instead of quietly
+                // implying BlueZ grew support it does not have.
+                readonly property bool batFromHarman:
+                    !(modelData?.batteryAvailable ?? false)
+                    && JblBattery.isSupported(devName)
+                    && JblBattery.percent >= 0
                 property bool expanded: false
 
                 Layout.fillWidth: true
                 implicitHeight: cardCol.implicitHeight + root.cardPad * 2
-                Behavior on implicitHeight {
-                    NumberAnimation { duration: root.animMs; easing.type: Easing.OutCubic }
-                }
                 clip: true
                 radius: Appearance.rounding.normal
                 color: cardHov.hovered
@@ -184,6 +197,7 @@ Rectangle {
                                 StyledText {
                                     visible: card.bat >= 0
                                     text: "·  " + card.bat + "%"
+                                           + (card.batFromHarman && JblBattery.busy ? " …" : "")
                                     font.pixelSize: 9
                                     color: card.bat <= 20
                                         ? Appearance.m3colors.m3error
@@ -225,10 +239,20 @@ Rectangle {
                 Component {
                     id: mouseCtrls
                     ColumnLayout {
+                        id: mc
                         spacing: 10
+
+                        // The MX Master already has a daemon publishing its
+                        // settings to /dev/shm; asking solaar again means a
+                        // multi-second HID++ round-trip over the very
+                        // Bluetooth link the mouse is using. Any OTHER mouse
+                        // still goes through solaar, since nothing else
+                        // publishes for it.
+                        readonly property bool viaLogiTune:
+                            LogiTune.available && card.devName.indexOf(LogiTune.deviceLabel) >= 0
+
                         property int    dpi:        1000
                         property int    smartShift: 10
-                        property string ratchet:    "Ratcheted"
 
                         Process {
                             id: readCfg
@@ -236,16 +260,25 @@ Rectangle {
                                 for (const ln of text.split("\n")) {
                                     const m = ln.match(/^([a-z-]+)\s*=\s*(.+)$/)
                                     if (!m) continue
-                                    if (m[1] === "dpi")            parent.parent.dpi = parseInt(m[2]) || 1000
-                                    else if (m[1] === "smart-shift")    parent.parent.smartShift = parseInt(m[2]) || 10
-                                    else if (m[1] === "scroll-ratchet") parent.parent.ratchet = m[2].trim()
+                                    if (m[1] === "dpi")              mc.dpi = parseInt(m[2]) || 1000
+                                    else if (m[1] === "smart-shift") mc.smartShift = parseInt(m[2]) || 10
                                 }
                             }}
                         }
                         Component.onCompleted: {
+                            if (mc.viaLogiTune) return;   // already have it, instantly
                             readCfg.command = ["bash", "-c",
-                                `solaar config '${card.devName.replace(/'/g, "'\\''")}' 2>/dev/null | grep -E '^(dpi|smart-shift|scroll-ratchet)\\s*='`]
+                                `solaar config '${card.devName.replace(/'/g, "'\\''")}' 2>/dev/null | grep -E '^(dpi|smart-shift)\\s*='`]
                             readCfg.running = true
+                        }
+
+                        // Shared with the Pointer panel — one widget, one set
+                        // of facts, so the two can never disagree.
+                        PointerDeviceInfo {
+                            Layout.fillWidth: true
+                            visible: mc.viaLogiTune
+                            address: card.addr
+                            transport: qsTr("Bluetooth")
                         }
 
                         SliderRow {
@@ -254,10 +287,18 @@ Rectangle {
                             StyledSlider {
                                 id: dpiSlider
                                 Layout.fillWidth: true
-                                from: 200; to: 4000; stepSize: 50
-                                value: parent.parent.dpi
-                                onPressedChanged: if (!pressed)
-                                    root._runShell(`solaar config '${card.devName.replace(/'/g, "'\\''")}' dpi ${Math.round(value)}`)
+                                // The 3S sensor goes to 8000; the old ceiling
+                                // of 4000 pinned the slider at max and
+                                // misreported anything above it.
+                                from: mc.viaLogiTune ? LogiTune.minDpi : 200
+                                to:   mc.viaLogiTune ? LogiTune.maxDpi : 4000
+                                stepSize: mc.viaLogiTune ? LogiTune.step : 50
+                                value: mc.viaLogiTune
+                                    ? (LogiTune.dpi > 0 ? LogiTune.dpi : 1000) : mc.dpi
+                                onPressedChanged: if (!pressed) {
+                                    if (mc.viaLogiTune) LogiTune.setDpi(Math.round(value))
+                                    else root._runShell(`solaar config '${card.devName.replace(/'/g, "'\\''")}' dpi ${Math.round(value)}`)
+                                }
                             }
                         }
                         SliderRow {
@@ -267,9 +308,11 @@ Rectangle {
                                 id: ssSlider
                                 Layout.fillWidth: true
                                 from: 1; to: 50; stepSize: 1
-                                value: parent.parent.smartShift
-                                onPressedChanged: if (!pressed)
-                                    root._runShell(`solaar config '${card.devName.replace(/'/g, "'\\''")}' smart-shift ${Math.round(value)}`)
+                                value: mc.viaLogiTune ? LogiTune.smartShiftThreshold : mc.smartShift
+                                onPressedChanged: if (!pressed) {
+                                    if (mc.viaLogiTune) LogiTune.setSmartShiftThreshold(Math.round(value))
+                                    else root._runShell(`solaar config '${card.devName.replace(/'/g, "'\\''")}' smart-shift ${Math.round(value)}`)
+                                }
                             }
                         }
 
@@ -280,12 +323,28 @@ Rectangle {
                                 Layout.fillWidth: true
                                 iconText: "all_inclusive"
                                 label: qsTr("Free-spin")
-                                onActivated:
-                                    root._runShell(`solaar config '${card.devName.replace(/'/g, "'\\''")}' scroll-ratchet Free-Spinning`)
+                                onActivated: {
+                                    if (mc.viaLogiTune) LogiTune.setSmartShift("freespin")
+                                    else root._runShell(`solaar config '${card.devName.replace(/'/g, "'\\''")}' scroll-ratchet Free-Spinning`)
+                                }
                             }
+                            ChipPill {
+                                iconText: "mouse"
+                                label: qsTr("Pointer")
+                                visible: mc.viaLogiTune
+                                // The curve lives in the Pointer panel; this is
+                                // the link between "which device" and "how it moves".
+                                onActivated: GlobalStates.kinetixOpen = true
+                            }
+                            // Solaar only as a fallback. logitune-cli drives this
+                            // mouse (it shells out to solaar itself), so for the
+                            // MX Master the Pointer panel is the right place to
+                            // go — the GUI is a second, slower way to the same
+                            // HID++ calls, and it is another resident process.
                             ChipPill {
                                 iconText: "settings"
                                 label: qsTr("Solaar")
+                                visible: !mc.viaLogiTune
                                 onActivated: Quickshell.execDetached(["solaar"])
                             }
                         }
@@ -380,7 +439,7 @@ Rectangle {
                       : Appearance.colors.colLayer3)
             : "transparent"
         Behavior on color { ColorAnimation { duration: Appearance.animDur(120) } }
-        HoverHandler { id: hov }
+        HoverHandler { margin: Appearance.sizes.touchSlop; id: hov }
         TapHandler   { onTapped: parent.activated() }
         MaterialSymbol {
             anchors.centerIn: parent
