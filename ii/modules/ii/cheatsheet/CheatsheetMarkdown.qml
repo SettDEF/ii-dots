@@ -5,6 +5,7 @@
 //   - Last opened file + folder root persisted across reloads.
 import qs
 import qs.modules.common
+import qs.modules.common.functions
 import qs.modules.common.widgets
 import QtQuick
 import QtQuick.Controls
@@ -241,6 +242,10 @@ Item {
     property string searchQuery: ""
     property var matchPositions: []
     property int matchIndex: -1
+    // Bumped whenever the highlight rectangles need recomputing. They are
+    // derived from positionToRectangle(), which is not a bindable property, so
+    // nothing re-evaluates them on its own when the document reflows.
+    property int highlightRevision: 0
 
     function _runSearch() {
         root.matchPositions = []
@@ -262,6 +267,7 @@ Item {
             if (out.length > 500) break   // pathological queries stay responsive
         }
         root.matchPositions = out
+        root.highlightRevision++
         if (out.length > 0) root._gotoMatch(0)
     }
 
@@ -271,7 +277,9 @@ Item {
         // Wrap around in both directions.
         root.matchIndex = ((i % n) + n) % n
         const pos = root.matchPositions[root.matchIndex]
-        renderArea.select(pos, pos + root.searchQuery.length)
+        // Deliberately not select(): the highlight is drawn now, and grabbing
+        // the selection on every match step clobbered whatever the user had
+        // selected by hand.
         renderArea.cursorPosition = pos
         const r = renderArea.cursorRectangle
         if (renderScroll && renderScroll.contentItem) {
@@ -436,6 +444,55 @@ Item {
                 text: activeFile.text() ?? ""
                 // Anchors scroll in-document; everything else goes to xdg-open.
                 onLinkActivated: link => root._followLink(link)
+                // Search highlighting.
+                //
+                // Drawn rather than selected: TextEdit can only carry ONE
+                // selection, so selecting the current match is all the built-in
+                // machinery can show, and every other hit stays invisible. These
+                // sit at z:-1 so the glyphs paint over them and stay readable,
+                // and they are in content coordinates, so scrolling costs
+                // nothing — they only recompute when the query or layout moves.
+                Repeater {
+                    model: root.searchQuery.length >= 2 ? root.matchPositions : []
+                    delegate: Rectangle {
+                        required property int modelData
+                        required property int index
+
+                        // Depend on highlightRevision so a reflow (new file,
+                        // resize) re-runs positionToRectangle.
+                        readonly property rect r0: {
+                            root.highlightRevision;
+                            return renderArea.positionToRectangle(modelData)
+                        }
+                        readonly property rect r1: {
+                            root.highlightRevision;
+                            return renderArea.positionToRectangle(modelData + root.searchQuery.length)
+                        }
+                        // A match broken across a wrapped line would need one rect
+                        // per line; rather than draw a wrong single box, skip it —
+                        // the scroll-to still lands on it.
+                        readonly property bool sameLine: Math.abs(r1.y - r0.y) < 1
+
+                        visible: sameLine && width > 0
+                        z: -1
+                        x: r0.x
+                        y: r0.y
+                        width: Math.max(0, r1.x - r0.x)
+                        height: Math.max(r0.height, 2)
+                        radius: 3
+                        color: index === root.matchIndex
+                            ? Appearance.colors.colSecondaryContainer
+                            : ColorUtils.transparentize(Appearance.colors.colPrimary, 0.78)
+                        border.width: index === root.matchIndex ? 1 : 0
+                        border.color: Appearance.colors.colPrimary
+                    }
+                }
+
+                // Recompute the boxes when the text reflows under them.
+                onTextChanged: root.highlightRevision++
+                onWidthChanged: root.highlightRevision++
+                onContentHeightChanged: root.highlightRevision++
+
                 // Hand cursor over hyperlinks.
                 MouseArea {
                     anchors.fill: parent
