@@ -9,6 +9,7 @@ DialogListItem {
     required property var device
     property bool expanded: false
     pointingHandCursor: !expanded
+    readonly property bool isConnecting: root.device?.connecting ?? false
 
     onClicked: expanded = !expanded
     altAction: () => expanded = !expanded
@@ -51,9 +52,20 @@ DialogListItem {
                     elide: Text.ElideRight
                     text: {
                         if (!root.device?.paired) return "";
-                        let statusText = root.device?.connected ? Translation.tr("Connected") : Translation.tr("Paired");
-                        if (!root.device?.batteryAvailable) return statusText;
-                        statusText += ` • ${Math.round(root.device?.battery * 100)}%`;
+                        const name = root.device?.name ?? "";
+                        // A JBL on the USB-C cable is not "Paired" in any useful
+                        // sense — the cable IS the connection, and the speaker
+                        // drops its Bluetooth link when plugged in.
+                        const onUsb = JblBattery.usbConnected && JblBattery.isSupported(name);
+                        let statusText = root.device?.connected ? Translation.tr("Connected")
+                                       : onUsb ? Translation.tr("USB")
+                                       : Translation.tr("Paired");
+                        if (root.device?.batteryAvailable)
+                            return statusText + ` • ${Math.round(root.device?.battery * 100)}%`;
+                        // BlueZ never publishes Battery1 for these speakers; the
+                        // number comes from Harman's own BLE control service.
+                        if (JblBattery.isSupported(name) && JblBattery.percent >= 0)
+                            return statusText + ` • ${JblBattery.percent}%`;
                         return statusText;
                     }
                 }
@@ -77,7 +89,11 @@ DialogListItem {
                 Layout.fillWidth: true
             }
             PrimaryActionButton {
-                buttonText: root.device?.connected ? Translation.tr("Disconnect") : Translation.tr("Connect")
+                loading: root.isConnecting
+                enabled: !root.isConnecting
+                buttonText: root.isConnecting
+                            ? (root.device?.connected ? Translation.tr("Disconnecting…") : Translation.tr("Connecting…"))
+                            : (root.device?.connected ? Translation.tr("Disconnect") : Translation.tr("Connect"))
 
                 onClicked: {
                     if (root.device?.connected) {

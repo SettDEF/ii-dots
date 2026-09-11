@@ -28,7 +28,13 @@ WindowDialog {
     // free: it transmits continuously in the same 2.4GHz band the Wi-Fi radio
     // shares on this machine, so leaving it running after the dialog closes
     // would cost battery and airtime for a list nobody is looking at.
-    Component.onCompleted: if (Bluetooth.defaultAdapter) Bluetooth.defaultAdapter.discovering = true
+    Component.onCompleted: {
+        if (Bluetooth.defaultAdapter) Bluetooth.defaultAdapter.discovering = true
+        // Speakers whose battery only exists behind Harman's BLE control service
+        // are polled slowly in the background; opening the list is the moment a
+        // fresh number is actually worth the BLE round trip.
+        JblBattery.refresh(false)
+    }
     Component.onDestruction: if (Bluetooth.defaultAdapter) Bluetooth.defaultAdapter.discovering = false
 
     WindowDialogTitle {

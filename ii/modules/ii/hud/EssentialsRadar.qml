@@ -1,5 +1,4 @@
 import qs
-import qs.services
 import qs.modules.common
 import qs.modules.common.widgets
 import qs.modules.common.functions
@@ -350,6 +349,10 @@ Item {
                 if (root.isWifi) return Network.networkStrength > 0 ? Network.networkStrength + "%" : "—"
                 if (root.btDevice && root.btDevice.batteryAvailable)
                     return Math.round(root.btDevice.battery * 100) + "%"
+                // BlueZ publishes no Battery1 for JBL speakers; that number only
+                // exists behind Harman's own BLE control service.
+                if (JblBattery.isSupported(root.btDevice?.name ?? "") && JblBattery.percent >= 0)
+                    return JblBattery.percent + "%"
                 return "—"
             }
             small: root.isWifi ? qsTr("Signal") : qsTr("Battery")
@@ -463,7 +466,7 @@ Item {
                             anchors.fill: parent
                             anchors.margins: 4
                             radius: 11
-                            visible: !modeBtn.sel && modeBtnHov.hovered
+                            visible: !modeBtn.sel && (modeBtnHov.hovered || Appearance.touchUi)
                             color: Appearance.colors.colLayer1Hover
                             opacity: 0.55
                             Behavior on opacity { NumberAnimation { duration: 140 } }
