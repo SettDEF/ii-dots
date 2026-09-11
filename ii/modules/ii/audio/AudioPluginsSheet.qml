@@ -353,25 +353,34 @@ Rectangle {
                                     }
                                 }
 
+                                // A plain Column, not a ColumnLayout.
+                                //
+                                // A ColumnLayout inside a Flickable is given no height by
+                                // anything, so its implicitHeight stayed 0, contentHeight went
+                                // to 0, and this list rendered zero pixels tall - which is why
+                                // there was nothing to click. Column is a positioner: it sizes
+                                // itself from its children.
                                 StyledFlickable {
                                     Layout.fillWidth: true
-                                    implicitHeight: Math.min(contentHeight, 170)
+                                    Layout.preferredHeight: Math.min(pickCol.height, 170)
                                     contentWidth: width
-                                    contentHeight: pickCol.implicitHeight
+                                    contentHeight: pickCol.height
                                     clip: true
                                     boundsBehavior: Flickable.StopAtBounds
-                                    ColumnLayout {
+
+                                    Column {
                                         id: pickCol
                                         width: parent.width
                                         spacing: 1
+
                                         Repeater {
                                             model: AudioPlugins.plugins.filter(pl =>
                                                 root.filter.length === 0
                                                 || pl.name.toLowerCase().includes(root.filter.toLowerCase()))
                                             delegate: Rectangle {
                                                 required property var modelData
-                                                Layout.fillWidth: true
-                                                implicitHeight: 24
+                                                width: pickCol.width
+                                                height: 24
                                                 radius: Appearance.rounding.small
                                                 color: pHov.hovered ? Appearance.colors.colLayer2Hover : "transparent"
                                                 HoverHandler { id: pHov; cursorShape: Qt.PointingHandCursor }
@@ -403,6 +412,15 @@ Rectangle {
                                             }
                                         }
                                     }
+                                }
+
+                                // Say so rather than showing an empty box.
+                                StyledText {
+                                    Layout.fillWidth: true
+                                    visible: AudioPlugins.plugins.length === 0
+                                    text: Translation.tr("No plugins found")
+                                    font.pixelSize: Appearance.font.pixelSize.smallest
+                                    color: Appearance.colors.colSubtext
                                 }
                             }
                         }

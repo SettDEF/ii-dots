@@ -38,6 +38,11 @@ Singleton {
     // These are the real locations on this machine - note ~/vst does not exist;
     // VST2 lives in ~/.vst (with the yabridge-generated .so files under it).
     readonly property string home: FileUtils.trimFileProtocol(Directories.home)
+    // Where the helper binaries live. This was referenced as root.binDir but only
+    // ever DECLARED in Devices.qml, so hostBin evaluated to the string
+    // "undefined/carla-host" - which is why the host probe failed and why a chain
+    // could never have started either.
+    readonly property string binDir: root.home + "/.local/bin"
     readonly property var searchPaths: ({
         "vst2": [root.home + "/.vst", "/usr/lib/vst"],
         "vst3": [root.home + "/.vst3", "/usr/lib/vst3"],
