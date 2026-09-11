@@ -60,18 +60,29 @@ Singleton {
     property bool hostAvailable: false
     property string hostError: ""
 
-    function checkHost() { hostProbe.running = true }
+    // The command is assigned HERE rather than left as a binding on the Process.
+    // As a binding it was evaluated whenever the engine felt like it, including
+    // before Directories.home had resolved - which produced a probe for
+    // "/.local/bin/carla-host", a failed test, and a permanent "not runnable"
+    // warning for a binary that runs perfectly from a shell.
+    function checkHost() {
+        if (hostProbe.running) return
+        const bin = root.hostBin
+        hostProbe.command = ["bash", "-c",
+            `test -x '${bin}' && '${bin}' --help >/dev/null 2>&1 && echo ok || echo missing`]
+        hostProbe.running = true
+    }
 
     Process {
         id: hostProbe
         // --help exits 0 only if the binary runs AND libcarla loaded.
-        command: ["bash", "-c", `test -x '${root.hostBin}' && '${root.hostBin}' --help >/dev/null 2>&1 `
-                              + `&& echo ok || echo missing`]
         stdout: StdioCollector {
             onStreamFinished: {
+                const ok = text.trim() === "ok"
                 root.hostChecked = true
-                root.hostAvailable = text.trim() === "ok"
-                root.hostError = root.hostAvailable ? "" : "carla-host not runnable"
+                root.hostAvailable = ok
+                root.hostError = ok ? "" : `carla-host not runnable at ${root.hostBin}`
+                if (!ok) console.log("[AudioPlugins] host probe failed:", root.hostBin, "->", text.trim())
             }
         }
     }

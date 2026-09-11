@@ -222,190 +222,182 @@ Rectangle {
                             }
                         }
 
-                        // Chain. Height is a plain binding and the content slides
-                        // in - an animated height here would resize the panel's
-                        // surface every frame, same as the sections behind it.
-                        Item {
+                        // Chain, shown when the profile is expanded.
+                        ColumnLayout {
+                            id: chainCol
+                            // Laid out by profCol directly. It used to sit in a
+                            // clipping Item whose height was driven by this
+                            // layout's implicitHeight - but a ColumnLayout nested
+                            // in a plain Item is never given a height, so it never
+                            // laid out, the wrapper stayed 0 tall, and tapping a
+                            // profile appeared to do nothing at all.
                             Layout.fillWidth: true
-                            clip: true
-                            implicitHeight: prof.open ? chainCol.implicitHeight : 0
-                            ColumnLayout {
-                                id: chainCol
-                                width: parent.width
-                                spacing: 2
-                                y: prof.open ? 0 : -chainCol.implicitHeight
-                                opacity: prof.open ? 1 : 0
-                                Behavior on y {
-                                    animation: Appearance.animation.elementMove.numberAnimation.createObject(this)
-                                }
-                                Behavior on opacity {
-                                    animation: Appearance.animation.elementMoveFast.numberAnimation.createObject(this)
-                                }
+                            visible: prof.open
+                            spacing: 2
 
-                                Repeater {
-                                    model: prof.modelData?.chain ?? []
-                                    delegate: RowLayout {
-                                        required property var modelData
-                                        required property int index
+                            Repeater {
+                                model: prof.modelData?.chain ?? []
+                                delegate: RowLayout {
+                                    required property var modelData
+                                    required property int index
+                                    Layout.fillWidth: true
+                                    Layout.leftMargin: 18
+                                    spacing: 7
+                                    StyledText {
+                                        text: (index + 1) + "."
+                                        font.pixelSize: Appearance.font.pixelSize.smallest
+                                        color: Appearance.colors.colSubtext
+                                    }
+                                    StyledText {
                                         Layout.fillWidth: true
-                                        Layout.leftMargin: 18
-                                        spacing: 7
-                                        StyledText {
-                                            text: (index + 1) + "."
-                                            font.pixelSize: Appearance.font.pixelSize.smallest
-                                            color: Appearance.colors.colSubtext
-                                        }
-                                        StyledText {
-                                            Layout.fillWidth: true
-                                            text: modelData?.name ?? ""
-                                            elide: Text.ElideRight
-                                            font.pixelSize: Appearance.font.pixelSize.smaller
-                                            color: Appearance.colors.colOnLayer1
-                                        }
-                                        // CLAP is shown but marked: this Carla
-                                        // build has no PLUGIN_CLAP, so it is
-                                        // skipped at launch rather than being
-                                        // allowed to fail the whole chain.
-                                        StyledText {
-                                            text: (modelData?.format ?? "").toUpperCase()
-                                            font.pixelSize: Appearance.font.pixelSize.smallest
-                                            color: modelData?.format === "clap"
-                                                ? Appearance.m3colors.m3error
-                                                : Appearance.colors.colSubtext
-                                        }
-                                        MaterialSymbol {
-                                            text: "close"; iconSize: 13
-                                            color: Appearance.colors.colSubtext
-                                            TapHandler {
-                                                onTapped: AudioPlugins.removeFromChain(prof.pid, index)
-                                            }
+                                        text: modelData?.name ?? ""
+                                        elide: Text.ElideRight
+                                        font.pixelSize: Appearance.font.pixelSize.smaller
+                                        color: Appearance.colors.colOnLayer1
+                                    }
+                                    // CLAP is shown but marked: this Carla
+                                    // build has no PLUGIN_CLAP, so it is
+                                    // skipped at launch rather than being
+                                    // allowed to fail the whole chain.
+                                    StyledText {
+                                        text: (modelData?.format ?? "").toUpperCase()
+                                        font.pixelSize: Appearance.font.pixelSize.smallest
+                                        color: modelData?.format === "clap"
+                                            ? Appearance.m3colors.m3error
+                                            : Appearance.colors.colSubtext
+                                    }
+                                    MaterialSymbol {
+                                        text: "close"; iconSize: 13
+                                        color: Appearance.colors.colSubtext
+                                        TapHandler {
+                                            onTapped: AudioPlugins.removeFromChain(prof.pid, index)
                                         }
                                     }
                                 }
+                            }
 
-                                StyledText {
-                                    visible: prof.chainLen === 0
-                                    Layout.leftMargin: 18
-                                    text: Translation.tr("Empty chain")
-                                    font.pixelSize: Appearance.font.pixelSize.smallest
-                                    color: Appearance.colors.colSubtext
+                            StyledText {
+                                visible: prof.chainLen === 0
+                                Layout.leftMargin: 18
+                                text: Translation.tr("Empty chain")
+                                font.pixelSize: Appearance.font.pixelSize.smallest
+                                color: Appearance.colors.colSubtext
+                            }
+
+                            Rectangle {
+                                Layout.fillWidth: true
+                                Layout.leftMargin: 18
+                                implicitHeight: 24
+                                radius: Appearance.rounding.small
+                                color: addHov.hovered ? Appearance.colors.colLayer2Hover : "transparent"
+                                HoverHandler { id: addHov; cursorShape: Qt.PointingHandCursor }
+                                TapHandler {
+                                    onTapped: {
+                                        root.pickerForId =
+                                            root.pickerForId === prof.pid ? "" : prof.pid
+                                        root.filter = ""
+                                    }
                                 }
+                                RowLayout {
+                                    anchors.fill: parent; spacing: 5
+                                    MaterialSymbol {
+                                        text: root.pickerForId === prof.pid ? "expand_less" : "add"
+                                        iconSize: 14
+                                        color: Appearance.colors.colPrimary
+                                    }
+                                    StyledText {
+                                        Layout.fillWidth: true
+                                        text: Translation.tr("Add plugin")
+                                        font.pixelSize: Appearance.font.pixelSize.smallest
+                                        color: Appearance.colors.colPrimary
+                                    }
+                                }
+                            }
+
+                            // Picker, with a filter - ninety entries is a
+                            // list, not a menu.
+                            ColumnLayout {
+                                Layout.fillWidth: true
+                                Layout.leftMargin: 18
+                                visible: root.pickerForId === prof.pid
+                                spacing: 3
 
                                 Rectangle {
                                     Layout.fillWidth: true
-                                    Layout.leftMargin: 18
-                                    implicitHeight: 24
-                                    radius: Appearance.rounding.small
-                                    color: addHov.hovered ? Appearance.colors.colLayer2Hover : "transparent"
-                                    HoverHandler { id: addHov; cursorShape: Qt.PointingHandCursor }
-                                    TapHandler {
-                                        onTapped: {
-                                            root.pickerForId =
-                                                root.pickerForId === prof.pid ? "" : prof.pid
-                                            root.filter = ""
-                                        }
-                                    }
+                                    implicitHeight: 26
+                                    radius: 13
+                                    color: Appearance.colors.colLayer2
+                                    border.width: 1
+                                    border.color: Appearance.colors.colLayer0Border
                                     RowLayout {
-                                        anchors.fill: parent; spacing: 5
+                                        anchors.fill: parent
+                                        anchors.leftMargin: 9; anchors.rightMargin: 9
+                                        spacing: 5
                                         MaterialSymbol {
-                                            text: root.pickerForId === prof.pid ? "expand_less" : "add"
-                                            iconSize: 14
-                                            color: Appearance.colors.colPrimary
+                                            text: "search"; iconSize: 13
+                                            color: Appearance.colors.colSubtext
                                         }
-                                        StyledText {
+                                        StyledTextInput {
+                                            id: filterInput
                                             Layout.fillWidth: true
-                                            text: Translation.tr("Add plugin")
                                             font.pixelSize: Appearance.font.pixelSize.smallest
-                                            color: Appearance.colors.colPrimary
+                                            onTextChanged: root.filter = text
+                                            StyledText {
+                                                anchors.verticalCenter: parent.verticalCenter
+                                                text: Translation.tr("Filter plugins…")
+                                                font.pixelSize: filterInput.font.pixelSize
+                                                color: Appearance.colors.colSubtext
+                                                visible: filterInput.text.length === 0
+                                            }
                                         }
                                     }
                                 }
 
-                                // Picker, with a filter - ninety entries is a
-                                // list, not a menu.
-                                ColumnLayout {
+                                StyledFlickable {
                                     Layout.fillWidth: true
-                                    Layout.leftMargin: 18
-                                    visible: root.pickerForId === prof.pid
-                                    spacing: 3
-
-                                    Rectangle {
-                                        Layout.fillWidth: true
-                                        implicitHeight: 26
-                                        radius: 13
-                                        color: Appearance.colors.colLayer2
-                                        border.width: 1
-                                        border.color: Appearance.colors.colLayer0Border
-                                        RowLayout {
-                                            anchors.fill: parent
-                                            anchors.leftMargin: 9; anchors.rightMargin: 9
-                                            spacing: 5
-                                            MaterialSymbol {
-                                                text: "search"; iconSize: 13
-                                                color: Appearance.colors.colSubtext
-                                            }
-                                            StyledTextInput {
-                                                id: filterInput
+                                    implicitHeight: Math.min(contentHeight, 170)
+                                    contentWidth: width
+                                    contentHeight: pickCol.implicitHeight
+                                    clip: true
+                                    boundsBehavior: Flickable.StopAtBounds
+                                    ColumnLayout {
+                                        id: pickCol
+                                        width: parent.width
+                                        spacing: 1
+                                        Repeater {
+                                            model: AudioPlugins.plugins.filter(pl =>
+                                                root.filter.length === 0
+                                                || pl.name.toLowerCase().includes(root.filter.toLowerCase()))
+                                            delegate: Rectangle {
+                                                required property var modelData
                                                 Layout.fillWidth: true
-                                                font.pixelSize: Appearance.font.pixelSize.smallest
-                                                onTextChanged: root.filter = text
-                                                StyledText {
-                                                    anchors.verticalCenter: parent.verticalCenter
-                                                    text: Translation.tr("Filter plugins…")
-                                                    font.pixelSize: filterInput.font.pixelSize
-                                                    color: Appearance.colors.colSubtext
-                                                    visible: filterInput.text.length === 0
-                                                }
-                                            }
-                                        }
-                                    }
-
-                                    StyledFlickable {
-                                        Layout.fillWidth: true
-                                        implicitHeight: Math.min(contentHeight, 170)
-                                        contentWidth: width
-                                        contentHeight: pickCol.implicitHeight
-                                        clip: true
-                                        boundsBehavior: Flickable.StopAtBounds
-                                        ColumnLayout {
-                                            id: pickCol
-                                            width: parent.width
-                                            spacing: 1
-                                            Repeater {
-                                                model: AudioPlugins.plugins.filter(pl =>
-                                                    root.filter.length === 0
-                                                    || pl.name.toLowerCase().includes(root.filter.toLowerCase()))
-                                                delegate: Rectangle {
-                                                    required property var modelData
-                                                    Layout.fillWidth: true
-                                                    implicitHeight: 24
-                                                    radius: Appearance.rounding.small
-                                                    color: pHov.hovered ? Appearance.colors.colLayer2Hover : "transparent"
-                                                    HoverHandler { id: pHov; cursorShape: Qt.PointingHandCursor }
-                                                    TapHandler {
-                                                        onTapped: {
-                                                            AudioPlugins.addToChain(prof.pid, modelData)
-                                                            root.pickerForId = ""
-                                                        }
+                                                implicitHeight: 24
+                                                radius: Appearance.rounding.small
+                                                color: pHov.hovered ? Appearance.colors.colLayer2Hover : "transparent"
+                                                HoverHandler { id: pHov; cursorShape: Qt.PointingHandCursor }
+                                                TapHandler {
+                                                    onTapped: {
+                                                        AudioPlugins.addToChain(prof.pid, modelData)
+                                                        root.pickerForId = ""
                                                     }
-                                                    RowLayout {
-                                                        anchors.fill: parent
-                                                        anchors.leftMargin: 7; anchors.rightMargin: 7
-                                                        spacing: 7
-                                                        StyledText {
-                                                            Layout.fillWidth: true
-                                                            text: modelData?.name ?? ""
-                                                            elide: Text.ElideRight
-                                                            font.pixelSize: Appearance.font.pixelSize.smallest
-                                                            color: Appearance.colors.colOnLayer1
-                                                        }
-                                                        StyledText {
-                                                            text: (modelData?.format ?? "").toUpperCase()
-                                                            font.pixelSize: Appearance.font.pixelSize.smallest
-                                                            color: modelData?.format === "clap"
-                                                                ? Appearance.m3colors.m3error
-                                                                : Appearance.colors.colSubtext
-                                                        }
+                                                }
+                                                RowLayout {
+                                                    anchors.fill: parent
+                                                    anchors.leftMargin: 7; anchors.rightMargin: 7
+                                                    spacing: 7
+                                                    StyledText {
+                                                        Layout.fillWidth: true
+                                                        text: modelData?.name ?? ""
+                                                        elide: Text.ElideRight
+                                                        font.pixelSize: Appearance.font.pixelSize.smallest
+                                                        color: Appearance.colors.colOnLayer1
+                                                    }
+                                                    StyledText {
+                                                        text: (modelData?.format ?? "").toUpperCase()
+                                                        font.pixelSize: Appearance.font.pixelSize.smallest
+                                                        color: modelData?.format === "clap"
+                                                            ? Appearance.m3colors.m3error
+                                                            : Appearance.colors.colSubtext
                                                     }
                                                 }
                                             }
