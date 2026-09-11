@@ -3,6 +3,7 @@ pragma ComponentBehavior: Bound
 
 import Quickshell
 import Quickshell.Io
+import Quickshell.Services.Pipewire
 import qs.modules.common
 import qs.modules.common.functions
 import QtQuick
@@ -32,6 +33,11 @@ Singleton {
     // the BlueZ device name, which is what BluetoothStatus exposes.
     readonly property var supportedNames: ["JBL Xtreme 5"]
 
+    // The same speaker over USB-C audio, matched on the PipeWire node name.
+    // node.name is populated without a PwObjectTracker (node.properties is not),
+    // which is why this matches on the name rather than anything richer.
+    readonly property var supportedNodeMatches: ["Harman_JBL_Xtreme"]
+
     property int  percent: -1
     property string firmware: ""
     property double lastUpdate: 0
@@ -45,8 +51,26 @@ Singleton {
     }
 
     // Don't poll a speaker that isn't there.
-    readonly property bool deviceConnected:
+    //
+    // BOTH transports count. Plugging the USB-C cable in drops the Bluetooth
+    // link, so gating on Bluetooth alone meant the reading froze exactly when
+    // the speaker was most connected. The battery is reachable either way: the
+    // control service is BLE, independent of which transport carries audio --
+    // and in fact the LE advert is easier to catch on USB, because the speaker
+    // only advertises while its Bluetooth link is down.
+    readonly property bool btConnected:
         BluetoothStatus.connectedDevices.some(d => root.isSupported(d?.name))
+
+    readonly property bool usbConnected: Pipewire.nodes.values.some(n => {
+        const name = String(n?.name ?? "")
+        return root.supportedNodeMatches.some(m => name.indexOf(m) !== -1)
+    })
+
+    readonly property bool deviceConnected: root.btConnected || root.usbConnected
+
+    /// "bluetooth" | "usb" | "" -- for UI that wants to say how it is attached.
+    readonly property string transport:
+        root.usbConnected ? "usb" : (root.btConnected ? "bluetooth" : "")
 
     function refresh(force) {
         if (root.busy || !root.deviceConnected) return

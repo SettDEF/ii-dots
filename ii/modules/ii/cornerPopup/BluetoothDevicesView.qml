@@ -33,6 +33,24 @@ Rectangle {
     // without raising the background rate.
     onVisibleChanged: if (visible) JblBattery.refresh(false)
 
+    // Devices to show. Normally just whatever Bluetooth reports as connected.
+    //
+    // The exception is a speaker on USB-C audio: plugging the cable in DROPS the
+    // Bluetooth link, so the card would vanish at exactly the moment the speaker
+    // is most in use, taking its battery readout with it. It is still the same
+    // paired device and the battery is still readable (the control service is
+    // BLE, independent of which transport carries audio), so keep it listed and
+    // mark how it is attached.
+    readonly property list<var> deviceRows: {
+        const rows = BluetoothStatus.connectedDevices.slice()
+        if (JblBattery.usbConnected && !JblBattery.btConnected) {
+            const d = BluetoothStatus.pairedButNotConnectedDevices
+                .find(x => JblBattery.isSupported(x?.name))
+            if (d) rows.push(d)
+        }
+        return rows
+    }
+
     radius: isSidebar ? Appearance.rounding.large : popupRounding
     color: isSidebar ? Appearance.colors.colLayer1 : Appearance.colors.colLayer0
     border.width: isSidebar ? 0 : 1
@@ -92,7 +110,7 @@ Rectangle {
                 color: Appearance.colors.colOnLayer1
             }
             StyledText {
-                text: BluetoothStatus.connectedDevices.length
+                text: root.deviceRows.length
                     + qsTr(" connected")
                 font.pixelSize: Appearance.font.pixelSize.smaller
                 color: Appearance.colors.colSubtext
@@ -109,7 +127,7 @@ Rectangle {
 
         // Device cards ------------------------------------------------------
         Repeater {
-            model: BluetoothStatus.connectedDevices
+            model: root.deviceRows
 
             delegate: Rectangle {
                 id: card
@@ -130,6 +148,8 @@ Rectangle {
                 // True when the number came from the Harman protocol rather than
                 // BlueZ, so the UI can say where it came from instead of quietly
                 // implying BlueZ grew support it does not have.
+                // On the list, but not over Bluetooth -- see deviceRows.
+                readonly property bool viaUsb: !(modelData?.connected ?? false)
                 readonly property bool batFromHarman:
                     !(modelData?.batteryAvailable ?? false)
                     && JblBattery.isSupported(devName)
@@ -194,6 +214,17 @@ Rectangle {
                                     font.pixelSize: 9
                                     color: Appearance.colors.colSubtext
                                 }
+                                // Say the row is on a cable. Without this the card
+                                // is indistinguishable from a Bluetooth one, while
+                                // the Bluetooth actions on it are gone -- which
+                                // reads as a bug rather than as a different link.
+                                StyledText {
+                                    visible: card.viaUsb
+                                    text: "·  USB"
+                                    font.pixelSize: 9
+                                    font.weight: Font.DemiBold
+                                    color: Appearance.colors.colPrimary
+                                }
                                 StyledText {
                                     visible: card.bat >= 0
                                     text: "·  " + card.bat + "%"
@@ -206,9 +237,12 @@ Rectangle {
                             }
                         }
 
-                        // Disconnect chip
+                        // Disconnect chip. Hidden on USB: there is no Bluetooth
+                        // link to drop, and offering one that silently does
+                        // nothing is worse than offering nothing.
                         ChipBtn {
                             id: discBtn
+                            visible: !card.viaUsb
                             iconText: "link_off"
                             danger: true
                             onActivated: card.modelData?.disconnect()
@@ -402,7 +436,7 @@ Rectangle {
 
         // Empty state -------------------------------------------------------
         Item {
-            visible: BluetoothStatus.connectedDevices.length === 0
+            visible: root.deviceRows.length === 0
             Layout.fillWidth: true
             implicitHeight: 56
             ColumnLayout {
