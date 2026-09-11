@@ -239,15 +239,24 @@ Singleton {
 
     readonly property var usbNodes: Pipewire.nodes.values.filter(n => root._usbKey(n?.name) !== "")
 
-    // description is only populated for tracked objects.
-    PwObjectTracker { objects: root.usbNodes }
+    // NO PwObjectTracker here, deliberately.
+    //
+    // Tracking these nodes populates node.description - but it also writes back
+    // into the PipeWire objects, which changes Pipewire.nodes, which re-runs the
+    // usbNodes filter, which hands the tracker a NEW array to track. Each half is
+    // cheap alone (measured: 11.3s startup either way) and together they cost 7
+    // seconds of startup and kept re-running afterwards (18.5s).
+    //
+    // The name is derived from node.name instead, which is populated without any
+    // tracker. Slightly less pretty than the description, and it costs nothing.
 
     readonly property var usbRows: {
         const byKey = ({})
         for (const n of root.usbNodes) {
             const k = root._usbKey(n.name)
             if (!k || byKey[k]) continue
-            const desc = String(n.description ?? "").trim()
+            // node.name is populated without a tracker; node.description is not.
+            const desc = ""
             // Fallback for an untracked node: turn the sysfs-ish id back into
             // something readable, e.g. "usb-Harman_JBL_Xtreme_5_GG1533-01".
             const fallback = k.replace(/^usb-/, "").replace(/_/g, " ").replace(/-\d+$/, "")
