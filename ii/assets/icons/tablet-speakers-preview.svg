@@ -1,0 +1,34 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="96" height="96" viewBox="0 0 96 96" fill="none">
+  <!-- Detachable tablet, drawn for a ROG Flow Z13: a slate in landscape with a
+       kickstand behind it and side-firing speakers on the left and right
+       edges. A clamshell laptop is the wrong picture for chassis_type 30/31/32
+       — and it puts the speakers under the screen when they are actually at
+       the sides, which is the one thing this preview exists to show.
+
+       96 grid, not 24: the preview renders at ~150px and a 24-grid stroke
+       scales into a slab.
+
+       Speaker centres: x = 0.115 / 0.885, y = 0.480 of the viewBox.
+       AudioLayout.glyphChannelSpots() must match. -->
+
+  <!-- Kickstand, behind and below -->
+  <path d="M26 66l-9 16M70 66l9 16" stroke="currentColor" stroke-width="2.6"
+        stroke-linecap="round" opacity="0.45"/>
+
+  <!-- Slate -->
+  <rect x="16" y="20" width="64" height="46" rx="4.5"
+        stroke="currentColor" stroke-width="3.2"/>
+  <!-- Display inset -->
+  <rect x="21" y="25" width="54" height="36" rx="2"
+        stroke="currentColor" stroke-width="1.6" opacity="0.45"/>
+
+  <!-- Side-firing speaker grilles, on the left and right edges level with the
+       middle of the screen. Vertical slots, because that is how they sit. -->
+  <g stroke="currentColor" stroke-width="2.2" stroke-linecap="round" opacity="0.75">
+    <path d="M11 39v12M11 39v12"/>
+    <path d="M85 39v12"/>
+  </g>
+  <!-- Detachable keyboard folio, hinted at the base -->
+  <path d="M24 76h48" stroke="currentColor" stroke-width="2.6"
+        stroke-linecap="round" opacity="0.35"/>
+</svg>

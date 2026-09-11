@@ -1,6 +1,7 @@
 import QtQuick
 import Quickshell
 import qs.modules.common.functions
+import qs.services
 pragma Singleton
 pragma ComponentBehavior: Bound
 
@@ -12,6 +13,13 @@ Singleton {
     property QtObject colors
     property QtObject rounding
     property QtObject font
+    // The single switch every touch adaptation reads: hit slop, flick press
+    // delay, minimum button height, and controls that are otherwise hover-only.
+    //
+    // Deliberately the EXPLICIT setting rather than auto-detected InputMode —
+    // see sizes.touchSlop for the incident that motivated it.
+    readonly property bool touchUi: Config.options?.tabletMode ?? false
+
     property QtObject sizes
     property string syntaxHighlightingTheme
 
@@ -182,8 +190,10 @@ Singleton {
         property color colOnSurface: m3colors.m3onSurface
         property color colOnSurfaceVariant: m3colors.m3onSurfaceVariant
         // Misc
-        property color colTooltip: m3colors.m3inverseSurface
-        property color colOnTooltip: m3colors.m3inverseOnSurface
+        // Tooltips themed like the rest of the UI (dark elevated surface) rather
+        // than Material's light inverse-surface pill.
+        property color colTooltip: m3colors.m3surfaceContainerHigh
+        property color colOnTooltip: m3colors.m3onSurface
         property color colScrim: ColorUtils.transparentize(m3colors.m3scrim, 0.5)
         property color colShadow: ColorUtils.transparentize(m3colors.m3shadow, 0.7)
         property color colOutline: m3colors.m3outline
@@ -377,6 +387,25 @@ Singleton {
     }
 
     sizes: QtObject {
+        // Hit-area slop for small controls, in px, added OUTSIDE their
+        // bounds via PointerHandler.margin / negative anchors.margins.
+        //
+        // The shell is full of 22-26px round icon buttons. That is roughly
+        // 4-5mm on this panel against the ~9mm a fingertip covers, so on
+        // touch they are a coin flip. Growing them would reflow every row
+        // they sit in; slop costs nothing visually and nothing in layout.
+        //
+        // Keyed to the EXPLICIT tablet-mode setting, not to auto-detected
+        // InputMode. InputMode latches: one touch sets it to "touch", and
+        // only a probed surface can set it back — so a mouse click on an
+        // unprobed panel left the whole shell in touch mode indefinitely.
+        // Slop then applied to the bar's densely packed controls, whose
+        // expanded hit areas overlapped and swallowed each other's clicks.
+        //
+        // An explicit setting cannot latch, and it is the user saying "I am
+        // holding this as a tablet now" rather than the shell guessing.
+        readonly property real touchSlop: root.touchUi ? 10 : 0
+
         // Animated smoothly via baseBarHeightTarget so the bar resizes as
         // a glide instead of a jump when tablet mode toggles.
         property real baseBarHeightTarget: (Config.options?.tabletMode ?? false) ? 56 : 40

@@ -51,8 +51,16 @@ Item {
     // [0, 108, 0, 0]). Taken as a MAX with the config-derived value so a
     // missing or differently-ordered `reserved` degrades to the old behaviour
     // rather than dumping icons at the screen edge.
-    readonly property var _mon: (HyprlandData.monitors && HyprlandData.monitors.length > 0)
-        ? HyprlandData.monitors[0] : null
+    // The monitor THIS instance is on, not monitors[0]. One panel exists per
+    // screen, and reservations differ per screen: eDP-1 reserves 40 here while
+    // HDMI-A-1 reserves 168 for MiniMeters, so indexing [0] put the icons
+    // 128px too high on the second monitor - straight under MiniMeters.
+    readonly property string screenName: root.QsWindow.window?.screen?.name ?? ""
+    readonly property var _mon: {
+        const list = HyprlandData.monitors ?? [];
+        const mine = list.find(m => m.name === root.screenName);
+        return mine ?? (list.length > 0 ? list[0] : null);
+    }
     readonly property int _reservedTop:
         (_mon && _mon.reserved && _mon.reserved.length > 1) ? Math.round(_mon.reserved[1]) : 0
     readonly property int _barInsetTop: (!_barIsVertical && !_barOnBottom)
@@ -172,6 +180,7 @@ Item {
                         filePath: dirModel.folder + "/" + name,
                         fileUrl: "file://" + dirModel.folder + "/" + name,
                         fileIsDir: parts[0] === "d",
+                        isSymlink: parts[0] === "l",
                         fileSize: parseInt(parts[1]) || 0,
                         fileModified: parseFloat(parts[2]) || 0,
                         suffix: dot > 0 ? name.slice(dot + 1).toLowerCase() : ""
@@ -189,6 +198,39 @@ Item {
                 });
                 dirModel.entries = list;
                 dirModel.ready = true;
+                // Symlinks come back as type "l" because the listing above
+                // never dereferences. Promote the ones that really point at
+                // directories so they get folder icons.
+                if (list.some(e => e.isSymlink)) {
+                    linkProc.running = false;
+                    Qt.callLater(() => linkProc.running = true);
+                }
+            }
+        }
+    }
+
+    // Promote symlinks that really point at directories.
+    //
+    // NOT `find -xtype d`. That dereferences, and dereferencing a link into an
+    // autofs mount whose device is gone parks the process in uninterruptible D
+    // state (wchan: autofs_wait) for the mount timeout — 600s on
+    // /mnt/nuke9100, which ~/Desktop links into. The old `timeout 2` guard was
+    // useless because SIGTERM is not delivered to a task in D state, so the 4s
+    // timer below spawned a new stuck find faster than they drained: 764
+    // failing automounts in 30 minutes, and Dolphin crawled along with it.
+    // The helper reads targets without ever following them.
+    Process {
+        id: linkProc
+        command: ["bash", Quickshell.shellPath("scripts/fs/dir-symlinks.sh"), dirModel.folder]
+        stdout: StdioCollector {
+            onStreamFinished: {
+                if (text.trim().length === 0) return;
+                const dirs = ({});
+                for (const line of text.split("\n"))
+                    if (line.length > 0) dirs[line] = true;
+                dirModel.entries = dirModel.entries.map(e =>
+                    (e.isSymlink && dirs[e.fileName])
+                        ? Object.assign({}, e, { fileIsDir: true }) : e);
             }
         }
     }

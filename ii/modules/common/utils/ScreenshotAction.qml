@@ -32,8 +32,11 @@ Singleton {
         const ry = Math.round(y);
         const rw = Math.round(width);
         const rh = Math.round(height);
+        // +repage: -crop keeps the ORIGINAL canvas as page geometry, so the
+        // result declares the whole screen as its canvas with the crop offset
+        // inside it. Anything honouring page geometry then renders it wrong.
         const cropBase = `magick ${StringUtils.shellSingleQuoteEscape(screenshotPath)} `
-            + `-crop ${rw}x${rh}+${rx}+${ry}`
+            + `-crop ${rw}x${rh}+${rx}+${ry} +repage`
         // `png:-` — force PNG on stdout. A bare `-` leaves the output format
         // up to magick's guess from the (extensionless) temp file, which can
         // hand wl-copy bytes it then mistypes.

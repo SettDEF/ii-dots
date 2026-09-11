@@ -1,0 +1,23 @@
+[Unit]
+Description=Sync bank data for the quickshell sidebar
+Documentation=file:///home/caesar/.config/quickshell/ii/scripts/finance/README.md
+After=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=%h/.config/quickshell/ii/scripts/finance/finance-sync sync
+# Bank data and a signing key: give the unit as little of the system as it
+# needs. It reads two paths and writes one.
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=%h/.local/state/quickshell
+NoNewPrivileges=true
+PrivateDevices=true
+ProtectKernelTunables=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+LockPersonality=true
+MemoryDenyWriteExecute=true
+SystemCallFilter=@system-service
+SystemCallErrorNumber=EPERM

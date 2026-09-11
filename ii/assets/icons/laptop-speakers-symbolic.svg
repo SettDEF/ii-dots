@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none">
+  <!-- Laptop seen head-on. Backdrop for the stereo preview, so it is
+       deliberately SYMMETRIC — the L and R level rings are overlaid on the
+       speaker grilles, and any lopsidedness in the artwork would read as a
+       channel imbalance that isn't there.
+
+       Kept sparse on purpose: an earlier version had a thick rounded base and
+       a centre grille, which at preview size merged into an unreadable blob
+       with a dark pill through the middle. The base is now a thin lip and the
+       only marks on it are the two grilles the rings sit on.
+
+       Grille centres: x = 0.235 / 0.765, y = 0.720 of the viewBox.
+       AudioLayout.glyphChannelSpots() must match these. -->
+  <rect x="4" y="2.5" width="16" height="11.5" rx="1.5"
+        stroke="currentColor" stroke-width="1.8"/>
+  <path d="M2.5 17.2h19" stroke="currentColor" stroke-width="1.8"
+        stroke-linecap="round"/>
+  <path d="M4.4 14v3.2M19.6 14v3.2" stroke="currentColor" stroke-width="1.8"
+        stroke-linecap="round"/>
+  <!-- Speaker grilles: three short slots either side, centred on the ring
+       positions above. -->
+  <g stroke="currentColor" stroke-width="1.4" stroke-linecap="round" opacity="0.75">
+    <path d="M4.6 15.3v1.1M5.6 15.3v1.1M6.6 15.3v1.1"/>
+    <path d="M17.4 15.3v1.1M18.4 15.3v1.1M19.4 15.3v1.1"/>
+  </g>
+</svg>

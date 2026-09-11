@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none">
+  <!-- Laptop with sound waves: the built-in analog output, as distinct from a
+       headset. The waves are what separate it from a plain "display" glyph —
+       this icon marks an audio sink, not a screen. Same 24px grid / 2px stroke
+       as the fluent set. -->
+  <path d="M5 6.5A1.5 1.5 0 0 1 6.5 5h7a1.5 1.5 0 0 1 1.5 1.5V15H5V6.5Z"
+        stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>
+  <path d="M3 18h14" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+  <path d="M18.5 8.5a4 4 0 0 1 0 6" stroke="currentColor" stroke-width="2"
+        stroke-linecap="round"/>
+  <path d="M21 6a7.5 7.5 0 0 1 0 11.5" stroke="currentColor" stroke-width="2"
+        stroke-linecap="round"/>
+</svg>

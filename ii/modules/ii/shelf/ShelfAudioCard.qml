@@ -113,8 +113,8 @@ Rectangle {
                 implicitWidth: 26; implicitHeight: 26; radius: 13
                 color: root.isPlaying ? Appearance.colors.colPrimary : (playHov.hovered ? Appearance.colors.colLayer2 : "transparent")
                 Behavior on color { animation: Appearance.animation.elementMoveFast.colorAnimation.createObject(this) }
-                HoverHandler { id: playHov }
-                TapHandler { onTapped: ShelfPlayer.toggle(root.filePath) }
+                HoverHandler { margin: Appearance.sizes.touchSlop; id: playHov }
+                TapHandler { margin: Appearance.sizes.touchSlop; onTapped: ShelfPlayer.toggle(root.filePath) }
                 MaterialSymbol {
                     anchors.centerIn: parent
                     text: root.isPlaying ? "stop" : "play_arrow"
@@ -126,7 +126,7 @@ Rectangle {
 
             Item {
                 implicitWidth: 20; implicitHeight: 26
-                HoverHandler { id: dragHov }
+                HoverHandler { margin: Appearance.sizes.touchSlop; id: dragHov }
                 Column {
                     anchors.centerIn: parent; spacing: 3
                     Repeater {

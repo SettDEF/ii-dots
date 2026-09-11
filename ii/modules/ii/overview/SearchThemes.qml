@@ -1,6 +1,5 @@
 pragma ComponentBehavior: Bound
 import qs
-import qs.services
 import qs.modules.common
 import qs.modules.common.functions
 import qs.modules.common.widgets
@@ -279,7 +278,7 @@ Item {
                     // Filename overlay on hover
                     BottomFadeOverlay {
                         anchors { left: parent.left; right: parent.right; bottom: parent.bottom }
-                        visible: rwHov.hovered
+                        visible: rwHov.hovered || Appearance.touchUi
                         barHeight: 18
                         elide: Text.ElideMiddle
                         text: FileUtils.fileNameForPath(parent.parent.modelData)

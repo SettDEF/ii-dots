@@ -126,6 +126,17 @@ Scope {
         }
     }
     GlobalShortcut {
+        name: "superComboInterrupt"
+        description: "Cancels the pending Super-tap toggle because another key was pressed while Super was held. Bound per-combo (see hypr lua/hyprland/super_interrupts.lua) since 0.56 restricts catchall binds to submaps."
+
+        onPressed: {
+            // No timing guard, unlike searchToggleReleaseInterrupt: this only
+            // ever fires from a real SUPER+<key> bind, so there is no
+            // self-fire from the Super press to filter out.
+            GlobalStates.superReleaseMightTrigger = false;
+        }
+    }
+    GlobalShortcut {
         name: "searchToggleReleaseInterrupt"
         description: "Interrupts possibility of search being toggled on release. " + "This is necessary because GlobalShortcut.onReleased in quickshell triggers whether or not you press something else while holding the key. " + "To make sure this works consistently, use binditn = MODKEYS, catchall in an automatically triggered submap that includes everything."
 

@@ -1,3 +1,4 @@
+import qs
 import qs.services
 import qs.modules.common
 import qs.modules.common.widgets
@@ -34,6 +35,23 @@ Scope { // Scope
 
     property bool open: false
 
+    // Two-way with GlobalStates so the system hub (and IPC) can open this.
+    //
+    // A Connections + one extra line in the EXISTING onOpenChanged, not a
+    // Synchronizer and not a second handler:
+    //   · `property alias source: GlobalStates.x` does not compile — an alias
+    //     must name an id, and a singleton is not one ("Invalid alias
+    //     reference. Unable to find id GlobalStates").
+    //   · declaring onOpenChanged twice silently REPLACES the first, and the
+    //     one below drives the close animation.
+    Connections {
+        target: GlobalStates
+        function onCheatsheetOpenChanged() {
+            if (GlobalStates.cheatsheetOpen !== root.open)
+                root.open = GlobalStates.cheatsheetOpen;
+        }
+    }
+
     Timer {
         id: closeTimer
         interval: 250
@@ -41,6 +59,8 @@ Scope { // Scope
     }
 
     onOpenChanged: {
+        if (GlobalStates.cheatsheetOpen !== root.open)
+            GlobalStates.cheatsheetOpen = root.open;
         if (!open) {
             closeTimer.start();
         }
@@ -68,8 +88,13 @@ Scope { // Scope
             implicitWidth: cheatsheetBackground.width + Appearance.sizes.elevationMargin * 2
             implicitHeight: cheatsheetBackground.height + Appearance.sizes.elevationMargin * 2
             WlrLayershell.namespace: "quickshell:cheatsheet"
-            // Hyprland 0.49: Focus is always exclusive and setting this breaks mouse focus grab
-            // WlrLayershell.keyboardFocus: WlrKeyboardFocus.Exclusive
+            // OnDemand, not Exclusive. Exclusive takes the keyboard the moment
+            // the surface maps, which is what broke the mouse focus grab on
+            // Hyprland 0.49 and got this commented out. OnDemand hands the
+            // keyboard over only once the user clicks into the panel, so the
+            // grab still works AND the search field can actually be typed in —
+            // without it the surface gets no key events at all.
+            WlrLayershell.keyboardFocus: WlrKeyboardFocus.OnDemand
             color: "transparent"
 
             mask: Region {
@@ -165,6 +190,15 @@ Scope { // Scope
                         } else if (event.key === Qt.Key_Backtab) {
                             tabBar.setCurrentIndex((tabBar.currentIndex - 1 + root.tabButtonList.length) % root.tabButtonList.length);
                             event.accepted = true;
+                        }
+                        // Ctrl+F focuses the active page's search box, if it has
+                        // one. currentItem is the TabLoader; .item is the page.
+                        else if (event.key === Qt.Key_F) {
+                            const page = swipeView.currentItem?.item;
+                            if (page?.focusSearch) {
+                                page.focusSearch();
+                                event.accepted = true;
+                            }
                         }
                     }
                 }

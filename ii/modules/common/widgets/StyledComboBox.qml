@@ -60,7 +60,10 @@ ComboBox {
 
             Loader {
                 Layout.alignment: Qt.AlignVCenter
-                active: root.buttonIcon.length > 0 || (root.currentIndex >= 0 && typeof root.model[root.currentIndex] === 'object' && root.model[root.currentIndex]?.icon)
+                // !! — same reason as StyledComboBoxSearch: the chain ends on
+            // `?.icon`, undefined for models with no icon role, and `active` is
+            // a bool.
+            active: !!(root.buttonIcon.length > 0 || (root.currentIndex >= 0 && typeof root.model[root.currentIndex] === 'object' && root.model[root.currentIndex]?.icon))
                 visible: active
                 sourceComponent: MaterialSymbol {
                     text: {
@@ -94,16 +97,16 @@ ComboBox {
         required property int index
         property color color: {
             if (root.currentIndex === itemDelegate.index) {
-                if (itemDelegate.down) return Appearance.colors.colSecondaryContainerActive;
-                if (itemDelegate.hovered) return Appearance.colors.colSecondaryContainerHover;
-                return Appearance.colors.colSecondaryContainer;
+                if (itemDelegate.down) return Appearance.colors.colPrimaryContainerActive;
+                if (itemDelegate.hovered) return Appearance.colors.colPrimaryContainerHover;
+                return Appearance.colors.colPrimaryContainer;
             } else {
                 if (itemDelegate.down) return Appearance.colors.colLayer3Active;
                 if (itemDelegate.hovered) return Appearance.colors.colLayer3Hover;
                 return ColorUtils.transparentize(Appearance.colors.colLayer3);
             }
         }
-        property color colText: (root.currentIndex === itemDelegate.index) ? Appearance.colors.colOnSecondaryContainer : Appearance.colors.colOnLayer3
+        property color colText: (root.currentIndex === itemDelegate.index) ? Appearance.colors.colOnPrimaryContainer : Appearance.colors.colOnLayer3
 
         background: Rectangle {
             anchors.fill: parent

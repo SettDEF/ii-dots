@@ -74,6 +74,21 @@ Item {
         listProc.exec({ command: ["bash", "-c", _cmdFor(rootPath)] })
     }
 
+    /**
+     * Re-scan from the root. Deliberately NOT automatic: watching every
+     * expanded directory would mean an inotify watch per folder running for
+     * the life of the shell, to catch a file appearing in a notes folder.
+     * Callers invoke this when their window becomes visible instead — one
+     * `find` per open, nothing at all while closed.
+     *
+     * Expanded folders collapse, because the model is rebuilt from the root.
+     */
+    function refresh() {
+        if (rootPath.length === 0) return
+        _seededPath = ""
+        _seed()
+    }
+
     function _expand(rowIndex) {
         const row = itemsModel.get(rowIndex)
         if (!row || !row.isDir) return

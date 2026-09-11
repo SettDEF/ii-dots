@@ -18,7 +18,21 @@ PanelWindow {
     color: "transparent"
     WlrLayershell.namespace: "quickshell:regionSelector"
     WlrLayershell.layer: WlrLayer.Overlay
-    WlrLayershell.keyboardFocus: WlrKeyboardFocus.OnDemand
+    // Exclusive, not OnDemand.
+    //
+    // OnDemand only grants focus once the surface is CLICKED, which is
+    // unreachable over a fullscreen game: the game holds a pointer
+    // lock/confine for camera look, and Hyprland only releases a pointer
+    // constraint when the constrained surface loses focus. So the selector
+    // opened, the cursor stayed captured by the game, no region could be
+    // dragged — and Escape did not dismiss it either, because the keystroke
+    // also went to the game. The only way out was restarting the shell.
+    //
+    // Taking focus outright drops the game's constraint, frees the cursor for
+    // the selection, and makes Escape work. The screen freeze itself was never
+    // the problem: grim captures a fullscreen game correctly (verified — a
+    // valid 2560x1600, 12 MB frame while Horizon was fullscreen).
+    WlrLayershell.keyboardFocus: WlrKeyboardFocus.Exclusive
     exclusionMode: ExclusionMode.Ignore
     anchors {
         left: true
@@ -267,6 +281,10 @@ PanelWindow {
         if (root.regionWidth <= 0 || root.regionHeight <= 0) {
             console.warn("[Region Selector] Invalid region size, skipping snip.");
             root.dismiss();
+            // The return is load-bearing: without it this fell through to the
+            // crop, and ImageMagick reads a 0 in a crop geometry as "to the
+            // edge", silently copying a 2px strip instead of erroring.
+            return;
         }
 
         // Clamp region to screen bounds

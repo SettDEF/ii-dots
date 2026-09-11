@@ -20,16 +20,53 @@ MouseArea {
     acceptedButtons: Qt.LeftButton | Qt.RightButton
     implicitWidth: 20
     implicitHeight: 20
+    // Long-press is the touch spelling of right-click. Without it a tray
+    // item's menu — often the only UI an app has — is unreachable on a
+    // tablet. `heldOpen` stops the release from also activating the app.
+    property bool heldOpen: false
+    pressAndHoldInterval: 450
+    onPressAndHold: (event) => {
+        if (event.button !== Qt.LeftButton || !item.hasMenu) return;
+        root.heldOpen = true;
+        menu.open();
+    }
     onPressed: (event) => {
+        root.heldOpen = false;
         switch (event.button) {
         case Qt.LeftButton:
-            item.activate();
-            break;
+            break;   // acted on release, so a hold can pre-empt it
         case Qt.RightButton:
             if (item.hasMenu) menu.open();
             break;
         }
         event.accepted = true;
+    }
+    onReleased: (event) => {
+        if (event.button === Qt.LeftButton && !root.heldOpen) {
+            item.activate();
+            if (root.activateIsUnreliable)
+                activateFallback.restart();
+        }
+        root.heldOpen = false;
+        event.accepted = true;
+    }
+
+    // Electron apps on Wayland stop honouring SNI Activate once they have
+    // unmapped their window (closed to tray) — the icon becomes a dead end
+    // with no way back. Re-running the launcher reaches the app's own
+    // singleton, which does restore it.
+    readonly property bool activateIsUnreliable:
+        (root.item?.id ?? "").toLowerCase().includes("discord")
+
+    Timer {
+        id: activateFallback
+        interval: 1500
+        onTriggered: {
+            const shown = HyprlandData.windowList.some(w =>
+                (w.class ?? "").toLowerCase().includes("discord"));
+            if (!shown)
+                Quickshell.execDetached(["discord-open"]);
+        }
     }
     onEntered: {
         tooltip.text = TrayService.getTooltipForItem(root.item);
@@ -87,6 +124,19 @@ MouseArea {
                 color: ColorUtils.transparentize(Appearance.colors.colOnLayer0, 0.9)
             }
         }
+    }
+
+    // An item whose icon won't load is otherwise a 20×20 invisible hit area:
+    // the app is in the tray and clickable, but you cannot see it or find it.
+    // Discord does exactly this — it hands over a pixmap Quickshell can't
+    // build ("Unable to create pixmap for tray icon"), so closing it to tray
+    // makes it unreachable. A placeholder keeps it findable.
+    MaterialSymbol {
+        anchors.centerIn: parent
+        visible: trayIcon.status !== Image.Ready
+        text: "adjust"
+        iconSize: Appearance.font.pixelSize.larger
+        color: Appearance.colors.colOnLayer0
     }
 
     PopupToolTip {

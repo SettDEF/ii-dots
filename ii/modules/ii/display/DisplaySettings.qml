@@ -547,7 +547,9 @@ Scope {
                 // handles panels whose content is shorter.
                 implicitHeight: ScreenFit.maxHeight(win)
                 radius: Appearance.rounding.large
-                color: "#141418"
+                // See StackedSettingsPanel: a literal here does not retheme
+                // and mismatches every themed child by a hair.
+                color: Appearance.colors.colLayer0Base
                 border.width: 1
                 border.color: Appearance.colors.colLayer0Border
 
@@ -590,8 +592,8 @@ Scope {
                             width: 26; height: 26; radius: 13
                             color: closeHov.hovered ? Appearance.colors.colLayer1Hover : "transparent"
                             Behavior on color { ColorAnimation { duration: 160 } }
-                            HoverHandler { id: closeHov }
-                            TapHandler { onTapped: GlobalStates.displayOpen = false }
+                            HoverHandler { margin: Appearance.sizes.touchSlop; id: closeHov }
+                            TapHandler { margin: Appearance.sizes.touchSlop; onTapped: GlobalStates.displayOpen = false }
                             MaterialSymbol {
                                 anchors.centerIn: parent
                                 text: "close"
@@ -684,8 +686,8 @@ Scope {
                             color: Appearance.colors.colOnLayer0
                         }
                         StyledText {
-                            text: (HyprlandData.monitors?.length ?? 0) > 1
-                                ? "drag to position" : "single display"
+                            text: (MonitorManager.friendly?.length ?? 0) > 1
+                                ? "drag to position · right-click for more" : "right-click for more"
                             font.pixelSize: Appearance.font.pixelSize.smallest
                             color: Appearance.colors.colSubtext
                         }
@@ -696,6 +698,62 @@ Scope {
                         onRequestApply: (name, mode, x, y, scale) =>
                             win.applyMonitor(name, mode, x, y, scale)
                         onRequestOpen: name => root.openMonitorPopup(name)
+                        onRequestMenu: (name, mx, my) => monMenu.openAt(name, mx, my)
+
+                        MonitorContextMenu {
+                            id: monMenu
+                            anchorItem: arrangement
+                            onRequestOpen: name => root.openMonitorPopup(name)
+                        }
+                    }
+
+                    // Displays that are currently OFF. They have no geometry
+                    // to place, so they cannot live in the arrangement above —
+                    // but leaving them out entirely is how you end up with a
+                    // monitor you switched off and no control to switch back on.
+                    Flow {
+                        Layout.fillWidth: true
+                        Layout.topMargin: 2
+                        spacing: 6
+                        visible: repOff.count > 0
+
+                        StyledText {
+                            text: Translation.tr("Turned off:")
+                            font.pixelSize: Appearance.font.pixelSize.smallest
+                            color: Appearance.colors.colSubtext
+                            anchors.verticalCenter: undefined
+                        }
+
+                        Repeater {
+                            id: repOff
+                            model: (MonitorManager.friendly ?? []).filter(m => m.disabled)
+                            delegate: RippleButton {
+                                required property var modelData
+                                implicitHeight: 26
+                                implicitWidth: offRow.implicitWidth + 18
+                                buttonRadius: Appearance.rounding.full
+                                colBackground: Appearance.colors.colLayer2
+                                onClicked: MonitorSafety.enable(modelData.name)
+                                contentItem: RowLayout {
+                                    id: offRow
+                                    anchors.centerIn: parent
+                                    spacing: 5
+                                    MaterialSymbol {
+                                        text: "power_settings_new"
+                                        iconSize: 14
+                                        color: Appearance.colors.colOnLayer2
+                                    }
+                                    StyledText {
+                                        text: modelData.name
+                                        font.pixelSize: Appearance.font.pixelSize.smallest
+                                        color: Appearance.colors.colOnLayer2
+                                    }
+                                }
+                                StyledToolTip {
+                                    text: Translation.tr("Turn %1 back on").arg(modelData.name)
+                                }
+                            }
+                        }
                     }
 
                     // ── Backlight ───────────────────────────────────────
@@ -976,8 +1034,8 @@ Scope {
                                     width: 26; height: 26; radius: 13
                                     color: mpcHov.hovered ? Appearance.colors.colLayer1Hover : "transparent"
                                     Behavior on color { ColorAnimation { duration: 150 } }
-                                    HoverHandler { id: mpcHov }
-                                    TapHandler { onTapped: root.monitorPopupOpen = false }
+                                    HoverHandler { margin: Appearance.sizes.touchSlop; id: mpcHov }
+                                    TapHandler { margin: Appearance.sizes.touchSlop; onTapped: root.monitorPopupOpen = false }
                                     MaterialSymbol {
                                         anchors.centerIn: parent
                                         text: "close"; iconSize: 15
@@ -1341,8 +1399,8 @@ Scope {
                                         width: 26; height: 26; radius: 13
                                         color: alcHov.hovered ? Appearance.colors.colLayer1Hover : "transparent"
                                         Behavior on color { ColorAnimation { duration: 150 } }
-                                        HoverHandler { id: alcHov; cursorShape: Qt.PointingHandCursor }
-                                        TapHandler { onTapped: root.appListOpen = false }
+                                        HoverHandler { margin: Appearance.sizes.touchSlop; id: alcHov; cursorShape: Qt.PointingHandCursor }
+                                        TapHandler { margin: Appearance.sizes.touchSlop; onTapped: root.appListOpen = false }
                                         MaterialSymbol {
                                             anchors.centerIn: parent
                                             text: "close"; iconSize: 15
@@ -1520,8 +1578,8 @@ Scope {
                                         width: 26; height: 26; radius: 13
                                         color: fxcHov.hovered ? Appearance.colors.colLayer1Hover : "transparent"
                                         Behavior on color { ColorAnimation { duration: 150 } }
-                                        HoverHandler { id: fxcHov; cursorShape: Qt.PointingHandCursor }
-                                        TapHandler { onTapped: root.effectTarget = "" }
+                                        HoverHandler { margin: Appearance.sizes.touchSlop; id: fxcHov; cursorShape: Qt.PointingHandCursor }
+                                        TapHandler { margin: Appearance.sizes.touchSlop; onTapped: root.effectTarget = "" }
                                         MaterialSymbol {
                                             anchors.centerIn: parent
                                             text: "close"; iconSize: 15
@@ -1854,8 +1912,8 @@ Scope {
                                         width: 26; height: 26; radius: 13
                                         color: apcHov.hovered ? Appearance.colors.colLayer1Hover : "transparent"
                                         Behavior on color { ColorAnimation { duration: 150 } }
-                                        HoverHandler { id: apcHov; cursorShape: Qt.PointingHandCursor }
-                                        TapHandler { onTapped: root.appPopupId = "" }
+                                        HoverHandler { margin: Appearance.sizes.touchSlop; id: apcHov; cursorShape: Qt.PointingHandCursor }
+                                        TapHandler { margin: Appearance.sizes.touchSlop; onTapped: root.appPopupId = "" }
                                         MaterialSymbol {
                                             anchors.centerIn: parent
                                             text: "close"; iconSize: 15
@@ -1992,8 +2050,9 @@ Scope {
                                             border.color: sel ? Appearance.colors.colPrimary
                                                               : Qt.alpha(Appearance.colors.colOnLayer0, 0.25)
                                             Behavior on border.width { NumberAnimation { duration: 120 } }
-                                            HoverHandler { cursorShape: Qt.PointingHandCursor }
+                                            HoverHandler { margin: Appearance.sizes.touchSlop; cursorShape: Qt.PointingHandCursor }
                                             TapHandler {
+                                                margin: Appearance.sizes.touchSlop
                                                 onTapped: AppDisplay.update(root.appPopupId, "tint", modelData)
                                             }
                                         }
@@ -2177,8 +2236,8 @@ Scope {
                                     width: 26; height: 26; radius: 13
                                     color: bcHov.hovered ? Appearance.colors.colLayer1Hover : "transparent"
                                     Behavior on color { ColorAnimation { duration: 150 } }
-                                    HoverHandler { id: bcHov }
-                                    TapHandler { onTapped: root.shaderBrowserOpen = false }
+                                    HoverHandler { margin: Appearance.sizes.touchSlop; id: bcHov }
+                                    TapHandler { margin: Appearance.sizes.touchSlop; onTapped: root.shaderBrowserOpen = false }
                                     MaterialSymbol {
                                         anchors.centerIn: parent
                                         text: "close"; iconSize: 15
@@ -2634,6 +2693,9 @@ Scope {
         // reason per-display settings were unreachable rather than merely
         // unimplemented.
         signal requestOpen(string name)
+        // Right-click. Coordinates are in THIS item's space, so the panel can
+        // anchor the menu to the arrangement without knowing about the boxes.
+        signal requestMenu(string name, real x, real y)
 
         Layout.fillWidth: true
         implicitHeight: 150
@@ -2717,19 +2779,37 @@ Scope {
                     onTapped: arr.requestOpen(box.modelData.name)
                 }
 
-                // Badge: how many settings this display overrides. Without it,
-                // a configured monitor is indistinguishable from a default one.
+                // Right-click opens the per-monitor menu. Separate handler
+                // rather than widening the one above: that one must stay
+                // left-only, or a right-click would ALSO open the settings
+                // popup behind the menu.
+                TapHandler {
+                    acceptedButtons: Qt.RightButton
+                    gesturePolicy: TapHandler.WithinBounds
+                    onTapped: eventPoint => {
+                        const p = box.mapToItem(arr, eventPoint.position.x, eventPoint.position.y);
+                        arr.requestMenu(box.modelData.name, p.x, p.y);
+                    }
+                }
+
+                // Marker: this display has settings of its own saved, rather
+                // than running on Hyprland's defaults.
+                //
+                // It used to print the COUNT. Nobody reads "8" as "eight saved
+                // overrides" — it reads as a workspace number, a port number,
+                // anything but what it meant, and the exact figure is not
+                // actionable anyway. A plain dot says the one thing that
+                // matters (this one is customised); the tooltip and the
+                // right-click menu carry the number for when you want it.
                 Rectangle {
+                    id: overrideBadge
                     visible: box.overrides > 0 && !drag.active
-                    anchors { top: parent.top; right: parent.right; margins: 3 }
-                    width: 16; height: 16; radius: 8
+                    anchors { top: parent.top; right: parent.right; margins: 5 }
+                    width: 7; height: 7; radius: width / 2
                     color: Appearance.colors.colPrimary
-                    StyledText {
-                        anchors.centerIn: parent
-                        text: box.overrides
-                        font.pixelSize: Appearance.font.pixelSize.smallest
-                        font.bold: true
-                        color: Appearance.colors.colOnPrimary
+                    StyledToolTip {
+                        text: Translation.tr("%1 saved setting(s) override the defaults here. Right-click for options.")
+                            .arg(box.overrides)
                     }
                 }
 

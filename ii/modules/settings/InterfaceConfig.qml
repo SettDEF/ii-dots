@@ -348,6 +348,32 @@ ContentPage {
         title: Translation.tr("Region selector (screen snipping/Google Lens)")
 
         ContentSubsection {
+            title: Translation.tr("Window Decorations")
+            ConfigSwitch {
+                buttonIcon: "palette"
+                text: Translation.tr("Use Material Theme Colors for Titlebar Buttons")
+                checked: Config.options.windows.useThemeColorsForDecorations
+                onCheckedChanged: {
+                    Config.options.windows.useThemeColorsForDecorations = checked;
+                }
+                StyledToolTip {
+                    text: Translation.tr("Toggle between macOS traffic light colors (Red, Yellow, Green) and dynamic Material theme colors")
+                }
+            }
+            ConfigSwitch {
+                buttonIcon: "visibility"
+                text: Translation.tr("Show Button Icons Only on Hover")
+                checked: Config.options.windows.showButtonIconsOnHover
+                onCheckedChanged: {
+                    Config.options.windows.showButtonIconsOnHover = checked;
+                }
+                StyledToolTip {
+                    text: Translation.tr("Hide icons inside the traffic light dots until hovered (clean macOS aesthetic)")
+                }
+            }
+        }
+
+        ContentSubsection {
             title: Translation.tr("Hint target regions")
             ConfigRow {
                 ConfigSwitch {

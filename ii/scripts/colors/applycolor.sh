@@ -114,8 +114,21 @@ broadcast_color_scheme() {
       *light*|*Light*|*LIGHT*) mode_flag="prefer-light" ;;
     esac
   fi
-  command -v gsettings >/dev/null 2>&1 && \
-    gsettings set org.gnome.desktop.interface color-scheme "$mode_flag" 2>/dev/null || true
+  command -v gsettings >/dev/null 2>&1 || return 0
+  gsettings set org.gnome.desktop.interface color-scheme "$mode_flag" 2>/dev/null || true
+
+  # The colour-scheme key only flips light/dark — it does NOT make GTK re-read
+  # the regenerated ~/.config/gtk-{3,4}.0/gtk.css, so running GTK apps kept the
+  # previous accent until they were restarted. Bumping gtk-theme to a scratch
+  # value and straight back fires a theme-changed signal, which re-parses the
+  # user stylesheet. The name ends up exactly as it was, so whatever theme is
+  # set in System Settings is preserved.
+  local gtk_theme
+  gtk_theme=$(gsettings get org.gnome.desktop.interface gtk-theme 2>/dev/null | tr -d "'")
+  if [ -n "$gtk_theme" ]; then
+    gsettings set org.gnome.desktop.interface gtk-theme "${gtk_theme}-tinct-reload" 2>/dev/null || true
+    gsettings set org.gnome.desktop.interface gtk-theme "$gtk_theme" 2>/dev/null || true
+  fi
 }
 
 apply_qt() {
@@ -145,9 +158,21 @@ broadcast_color_scheme
 if [[ "${TINCT:-1}" == "1" ]] && command -v tinct >/dev/null 2>&1; then
     # Rust template renderer — byte-identical to rebuild_templates.py+matugen,
     # ~1ms instead of ~400ms. TINCT=0 falls back to the python path.
-    tinct render --colors "$colors_json_path" >/dev/null 2>&1 || true
-elif [ -x "$SCRIPT_DIR/rebuild_templates.py" ]; then
-    "$SCRIPT_DIR/rebuild_templates.py" "$colors_json_path" >/dev/null 2>&1 || true
+    #
+    # --image is passed explicitly from the live config. Without it the
+    # renderer falls back to reading the path.txt it also WRITES, so a single
+    # colour-based (non-image) run put "Null" in there and every later run
+    # copied that Null forward — leaving everything that reads the active
+    # wallpaper path stuck on a dead value.
+    wallpaper_now=$(jq -r '.background.wallpaperPath // empty' \
+        "$XDG_CONFIG_HOME/illogical-impulse/config.json" 2>/dev/null)
+    if [ -n "$wallpaper_now" ] && [ -e "$wallpaper_now" ]; then
+        tinct render --colors "$colors_json_path" --image "$wallpaper_now" >/dev/null 2>&1 || true
+    else
+        tinct render --colors "$colors_json_path" >/dev/null 2>&1 || true
+    fi
+else
+    echo "applycolor: tinct not available — templates not rendered" >&2
 fi
 
 # Substitute $term0 into nvim's matugen palette and live-reload running nvims.
@@ -157,8 +182,8 @@ fi
 # nvim_colors.lua from the template, re-introducing the A0 = "__TERM0__"
 # placeholder. Running before it (the old order) left the placeholder in the
 # final file, which crashes cocoa.nvim ("arithmetic on nil" in blend()).
-if [ -x "$HOME/.config/matugen/templates/neovim/post-hook.sh" ]; then
-    "$HOME/.config/matugen/templates/neovim/post-hook.sh" 2>/dev/null || true
+if [ -x "$HOME/.config/tinct/templates/neovim/post-hook.sh" ]; then
+    "$HOME/.config/tinct/templates/neovim/post-hook.sh" 2>/dev/null || true
 fi
 
 # Keep wezterm's config-level background in sync with the OSC palette.

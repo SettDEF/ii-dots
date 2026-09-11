@@ -10,7 +10,9 @@ MouseArea {
 
     property alias animateXPos: xBehavior.enabled
     property alias animateYPos: yBehavior.enabled
-    property bool draggable: true
+    // Optional-chained: this binds before Config's FileView has populated
+    // options, and an undefined there would make every widget undraggable.
+    property bool draggable: !(Config.options?.background?.widgetsLocked ?? false)
     drag.target: draggable ? root : undefined
     cursorShape: (draggable && containsPress) ? Qt.ClosedHandCursor : draggable ? Qt.OpenHandCursor : Qt.ArrowCursor
 

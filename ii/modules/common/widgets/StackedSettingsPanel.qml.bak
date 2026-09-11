@@ -1,0 +1,214 @@
+pragma ComponentBehavior: Bound
+import qs
+import qs.services
+import qs.modules.common
+import qs.modules.common.widgets
+import QtQuick
+import QtQuick.Layouts
+import Quickshell
+import Quickshell.Wayland
+import Quickshell.Hyprland
+
+/**
+ * The shared chrome for the top-right settings panels.
+ *
+ * Display, WallTune, KinetiX, the stats overlay and audio each had their own
+ * copy of this: the same layershell flags, the same PanelStack registration,
+ * the same ScreenFit height, the same header with an X, the same Esc handler.
+ * Five copies meant five chances to drift, and they did — panels ended up with
+ * different widths, different heights, and one sat 40px lower than the rest
+ * because it was missing ExclusionMode.Ignore.
+ *
+ * Usage — everything panel-specific goes in `content`:
+ *
+ *     StackedSettingsPanel {
+ *         panelId: "audio"                 // must also appear in PanelStack.order
+ *         title: "Audio"
+ *         icon: "graphic_eq"
+ *         onClosed: GlobalStates.audioSettingsOpen = false
+ *         content: ColumnLayout { ... }
+ *     }
+ *
+ * The caller still owns its own Loader and open-state: a panel decides when it
+ * exists, this decides what it looks like.
+ */
+PanelWindow {
+    id: win
+
+    // Identity in the horizontal stack. Panels ranked earlier in
+    // PanelStack.order sit further right.
+    required property string panelId
+    required property string title
+    property string icon: "settings"
+    // How long the fade-out lasts. The owning Loader must stay active at least
+    // this long after the open-state flips, or the animation never renders.
+    readonly property int exitDuration: 170
+    // Forwarded so a Loader can trigger the exit without reaching into `card`.
+    function playExit() { card.playExit() }
+    // Extra header controls, inserted left of the close button.
+    property list<Item> headerItems
+    default property alias content: contentHolder.data
+    signal closed()
+
+    WlrLayershell.namespace: "quickshell:" + win.panelId
+    WlrLayershell.layer: WlrLayer.Overlay
+    // A fullscreen XWayland game locks the cursor. OnDemand can't break that
+    // (you can't click to take focus while the cursor is trapped), so grab
+    // keyboard focus Exclusively when a game is fullscreen — that pulls focus
+    // off the game and releases its pointer lock. Normal case stays OnDemand.
+    readonly property bool _anyFullscreen: {
+        const ws = HyprlandData.activeWorkspace?.id;
+        const wl = HyprlandData.windowList ?? [];
+        for (let i = 0; i < wl.length; ++i)
+            if (wl[i]?.workspace?.id === ws && wl[i].fullscreen > 0) return true;
+        return false;
+    }
+    WlrLayershell.keyboardFocus: win._anyFullscreen
+        ? WlrKeyboardFocus.Exclusive : WlrKeyboardFocus.OnDemand
+    // Without Ignore the compositor places the panel AFTER the reserved strip,
+    // dropping it ~40px below the panels it is supposed to line up with.
+    exclusionMode: ExclusionMode.Ignore
+    exclusiveZone: 0
+    color: "transparent"
+
+    anchors.top: true
+    anchors.right: true
+    margins.top: Appearance.sizes.barHeight + Appearance.sizes.hyprlandGapsOut + 2
+    margins.right: (Appearance.sizes.hyprlandGapsOut + 8) + PanelStack.offsetFor(win.panelId)
+    Behavior on margins.right {
+        NumberAnimation { duration: 220; easing.type: Easing.OutCubic }
+    }
+
+    implicitWidth: ScreenFit.panelWidth
+    implicitHeight: card.implicitHeight
+    mask: Region { item: card }
+
+    // Registered in BOTH places on purpose: implicitWidth is a constant here,
+    // so onImplicitWidthChanged never fires by itself and the stack offset
+    // would stay 0 — every panel would land on top of its neighbour.
+    onImplicitWidthChanged: PanelStack.register(win.panelId, implicitWidth)
+    Component.onCompleted: PanelStack.register(win.panelId, implicitWidth)
+    Component.onDestruction: PanelStack.unregister(win.panelId)
+
+    // NO focus grab. These are settings panels, not context menus: the point is
+    // to click a control and watch the thing you are configuring change, and a
+    // dismiss-on-outside-click grab closed the panel every time you looked at
+    // what you had just done. Esc and the X are the ways out.
+    Item {
+        anchors.fill: parent
+        focus: true
+        Keys.onEscapePressed: win.closed()
+    }
+
+    // Panels appeared and vanished in one frame, which reads as a glitch —
+    // especially when a neighbour is smoothly sliding across at the same time
+    // because the stack reflowed. Fading and lifting in over the same 220ms as
+    // the reflow makes the whole row move as one thing.
+    Rectangle {
+        id: card
+        opacity: 0
+        transform: Translate { id: cardLift; y: 12 }
+        Component.onCompleted: entryAnim.start()
+        // Called by the owning Loader just before it tears the panel down. The
+        // Loader keeps itself active for exitDuration so this can actually be
+        // seen — destroying the item immediately is what made panels blink out.
+        function playExit() {
+            entryAnim.stop();
+            exitAnim.start();
+        }
+        ParallelAnimation {
+            id: exitAnim
+            NumberAnimation {
+                target: card; property: "opacity"
+                to: 0.0; duration: win.exitDuration; easing.type: Easing.InCubic
+            }
+            NumberAnimation {
+                target: cardLift; property: "y"
+                to: 10; duration: win.exitDuration; easing.type: Easing.InCubic
+            }
+        }
+        ParallelAnimation {
+            id: entryAnim
+            NumberAnimation {
+                target: card; property: "opacity"
+                to: 1.0; duration: 200; easing.type: Easing.OutCubic
+            }
+            NumberAnimation {
+                target: cardLift; property: "y"
+                to: 0; duration: 220; easing.type: Easing.OutCubic
+            }
+        }
+        width: parent.width
+        // Full available height rather than content height: these sit SIDE BY
+        // SIDE, and a row of panels at three different heights reads as broken
+        // rather than as compact. The flickable handles shorter content.
+        implicitHeight: ScreenFit.maxHeight(win)
+        radius: Appearance.rounding.large
+        color: "#141418"
+        border.width: 1
+        border.color: Appearance.colors.colLayer0Border
+
+        StyledFlickable {
+            id: scroller
+            anchors.fill: parent
+            anchors.margins: 16
+            contentHeight: col.implicitHeight
+            contentWidth: width
+            clip: true
+            boundsBehavior: Flickable.StopAtBounds
+
+            ColumnLayout {
+                id: col
+                width: scroller.width
+                spacing: 14
+
+                RowLayout {
+                    Layout.fillWidth: true
+                    spacing: 8
+                    MaterialSymbol {
+                        text: win.icon
+                        iconSize: 20
+                        color: Appearance.colors.colPrimary
+                    }
+                    StyledText {
+                        Layout.fillWidth: true
+                        text: win.title
+                        elide: Text.ElideRight
+                        font.pixelSize: Appearance.font.pixelSize.larger
+                        color: Appearance.colors.colOnLayer0
+                    }
+                    Repeater {
+                        model: win.headerItems
+                        delegate: Item {
+                            required property var modelData
+                            implicitWidth: modelData?.implicitWidth ?? 0
+                            implicitHeight: modelData?.implicitHeight ?? 0
+                            Component.onCompleted: if (modelData) modelData.parent = this
+                        }
+                    }
+                    RippleButton {
+                        implicitWidth: 28
+                        implicitHeight: 28
+                        buttonRadius: 14
+                        onClicked: win.closed()
+                        contentItem: MaterialSymbol {
+                            anchors.centerIn: parent
+                            text: "close"
+                            iconSize: 18
+                            color: Appearance.colors.colOnLayer0
+                        }
+                    }
+                }
+
+                // Panel-specific content lands here.
+                ColumnLayout {
+                    id: contentHolder
+                    Layout.fillWidth: true
+                    spacing: 14
+                }
+
+                Item { Layout.fillHeight: true }
+            }
+        }
+    }
+}

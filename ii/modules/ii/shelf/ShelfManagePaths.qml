@@ -91,15 +91,15 @@ Item {
                         Rectangle {
                             implicitWidth: 28; implicitHeight: 28; radius: 14; color: eHov.hovered ? Appearance.colors.colLayer2 : "transparent"
                             Behavior on color { animation: Appearance.animation.elementMoveFast.colorAnimation.createObject(this) }
-                            HoverHandler { id: eHov }
-                            TapHandler { onTapped: root._startEdit(index, modelData) }
+                            HoverHandler { margin: Appearance.sizes.touchSlop; id: eHov }
+                            TapHandler { margin: Appearance.sizes.touchSlop; onTapped: root._startEdit(index, modelData) }
                             MaterialSymbol { anchors.centerIn: parent; text: "edit"; iconSize: Appearance.font.pixelSize.small; color: Appearance.colors.colOnLayer0; opacity: 0.5 }
                         }
                         Rectangle {
                             implicitWidth: 28; implicitHeight: 28; radius: 14; color: dHov.hovered ? Appearance.colors.colLayer2 : "transparent"
                             Behavior on color { animation: Appearance.animation.elementMoveFast.colorAnimation.createObject(this) }
-                            HoverHandler { id: dHov }
-                            TapHandler { onTapped: ShelfPaths.remove(index) }
+                            HoverHandler { margin: Appearance.sizes.touchSlop; id: dHov }
+                            TapHandler { margin: Appearance.sizes.touchSlop; onTapped: ShelfPaths.remove(index) }
                             MaterialSymbol { anchors.centerIn: parent; text: "delete"; iconSize: Appearance.font.pixelSize.small; color: Appearance.m3colors.m3error; opacity: 0.6 }
                         }
                     }

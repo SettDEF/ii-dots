@@ -1,2 +1,4 @@
 WallTune 1.0 WallTune.qml
 WallTuneContent 1.0 WallTuneContent.qml
+WallEffectPanel 1.0 WallEffectPanel.qml
+AppColors 1.0 AppColors.qml

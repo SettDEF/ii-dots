@@ -15,8 +15,10 @@ import Quickshell.Hyprland
  * KeyboardLayoutPicker — full XKB-layout picker opened from the OSK chips.
  *  • lists every installed layout (and variant) from evdev.lst
  *  • live filter by code or name
- *  • click to switch (Hyprland adopts it via `hyprctl keyword` if new,
- *    then `switchxkblayout`)
+ *  • click to switch — if the combo is new it is appended to kb_layout,
+ *    persisted to the hypr config, applied via the `eval` request, then
+ *    `switchxkblayout`. (NOT `hyprctl keyword`: that answers `unknown
+ *    request` on the Lua config. See KeyboardLayout.qml's _persistCmd.)
  *  • Esc / click-outside dismisses
  */
 Scope {
@@ -65,14 +67,39 @@ Scope {
                 }
             }
 
-            // Filter live by query — matches the code OR the human name.
+            // Filter live by query — code, human name, or ISO-639 language.
+            //
+            // Ranked, not just filtered. A plain substring test puts
+            // `at(nodeadkeys)` above `de` when you type "de", because
+            // "nodeadkeys" contains "de" — wrong answer to an obvious
+            // question, and much more noticeable now the list is 753 entries
+            // rather than 598. Exact code and language hits win, then
+            // prefixes, then loose text.
             property string query: ""
             readonly property var filtered: {
                 const q = win.query.toLowerCase().trim()
-                if (q === "") return KeyboardLayout.allLayouts
-                return (KeyboardLayout.allLayouts ?? []).filter(e =>
-                    (e.code || "").toLowerCase().indexOf(q) >= 0
-                    || (e.name || "").toLowerCase().indexOf(q) >= 0)
+                const all = KeyboardLayout.allLayouts ?? []
+                if (q === "") return all
+                const scored = []
+                for (let i = 0; i < all.length; i++) {
+                    const e = all[i]
+                    const code = (e.code || "").toLowerCase()
+                    const name = (e.name || "").toLowerCase()
+                    const layout = (e.layout || "").toLowerCase()
+                    const langs = e.languages ?? []
+                    let rank
+                    if (code === q) rank = 0
+                    else if (layout === q) rank = 1
+                    else if (langs.some(l => String(l).toLowerCase() === q)) rank = 2
+                    else if (code.startsWith(q) || name.startsWith(q)) rank = 3
+                    else if (name.indexOf(q) >= 0) rank = 4
+                    else if (code.indexOf(q) >= 0) rank = 5
+                    else continue
+                    scored.push({ rank: rank, entry: e })
+                }
+                scored.sort((a, b) => a.rank - b.rank
+                    || (a.entry.code || "").localeCompare(b.entry.code || ""))
+                return scored.map(s => s.entry)
             }
 
             StyledRectangularShadow { target: card }
@@ -228,10 +255,14 @@ Scope {
                                     font.weight: row.active ? Font.Bold : Font.Medium
                                     elide: Text.ElideRight
                                 }
-                                // "missing" tag — visible for layouts NOT in
-                                // your hypr kb_layout. Picking one runs
-                                // setLayout() which appends it via
-                                // `hyprctl keyword` (session-only).
+                                // Tag for layouts NOT yet in your hypr
+                                // kb_layout. It reads "add" rather than
+                                // "missing" because nothing is broken about
+                                // these — with one layout configured, 597 of
+                                // 598 rows carried a "missing" badge, which
+                                // looked like a wall of failures instead of
+                                // an invitation. Picking one runs setLayout(),
+                                // which appends and persists it.
                                 Rectangle {
                                     visible: !row.inConfig
                                     implicitWidth: missingTagText.implicitWidth + 12
@@ -243,7 +274,7 @@ Scope {
                                     StyledText {
                                         id: missingTagText
                                         anchors.centerIn: parent
-                                        text: qsTr("missing")
+                                        text: qsTr("add")
                                         font.pixelSize: Appearance.font.pixelSize.smaller
                                         color: Appearance.colors.colOnLayer0
                                         opacity: 0.55

@@ -127,8 +127,8 @@ Item {
                     iconSize: 16
                     color: "#f0c8a8"
                 }
-                HoverHandler { id: chevHov }
-                TapHandler { onTapped: root.closeRequested() }
+                HoverHandler { margin: Appearance.sizes.touchSlop; id: chevHov }
+                TapHandler { margin: Appearance.sizes.touchSlop; onTapped: root.closeRequested() }
             }
 
             // Tiny indicator dot — represents the current selection
@@ -193,8 +193,8 @@ Item {
                     color: Appearance.m3colors.m3onSurface
                     opacity: hbHov.hovered ? 1 : 0.8
                 }
-                HoverHandler { id: hbHov }
-                TapHandler { onTapped: hb.pressed() }
+                HoverHandler { margin: Appearance.sizes.touchSlop; id: hbHov }
+                TapHandler { margin: Appearance.sizes.touchSlop; onTapped: hb.pressed() }
             }
 
             HeadBtn {

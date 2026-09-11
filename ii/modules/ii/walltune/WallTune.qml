@@ -18,31 +18,53 @@ Scope {
         active: GlobalStates.wallTuneOpen
         sourceComponent: PanelWindow {
             id: win
+
+            // Esc closes. This used to come free with the focus grab; without it
+            // the panel would only be closable from its own buttons.
+            Item {
+                anchors.fill: parent
+                focus: true
+                Keys.onEscapePressed: GlobalStates.wallTuneOpen = false
+            }
             exclusionMode: ExclusionMode.Ignore
+            exclusiveZone: 0
             WlrLayershell.namespace: "quickshell:walltune"
             WlrLayershell.layer: WlrLayer.Overlay
+            WlrLayershell.keyboardFocus: WlrKeyboardFocus.OnDemand
             color: "transparent"
 
             anchors.top: true
             anchors.right: true
-            margins.top: Appearance.sizes.barHeight + Appearance.sizes.hyprlandGapsOut + 8
-            margins.right: Appearance.sizes.hyprlandGapsOut + 8
+            margins.top: Appearance.sizes.barHeight + Appearance.sizes.hyprlandGapsOut + 2
+            // This panel is listed in PanelStack.order but never registered or
+            // applied an offset, so it sat at the base position and every other
+            // panel opened directly on top of it. It keeps its own chrome —
+            // WallTuneContent already draws a card — but it has to take part in
+            // the stacking like everything else.
+            margins.right: (Appearance.sizes.hyprlandGapsOut + 8) + PanelStack.offsetFor("walltune")
+            Behavior on margins.right {
+                NumberAnimation { duration: 220; easing.type: Easing.OutCubic }
+            }
 
-            implicitWidth: 290
-            implicitHeight: panel.implicitHeight
+            onImplicitWidthChanged: PanelStack.register("walltune", implicitWidth)
+            Component.onCompleted: PanelStack.register("walltune", implicitWidth)
+            Component.onDestruction: PanelStack.unregister("walltune")
+
+            // Shared width AND height. Sizing to content left this panel 640px
+            // tall next to 889px neighbours, and a row of panels at different
+            // heights reads as broken rather than as compact — the same reason
+            // StackedSettingsPanel takes the full available height.
+            implicitWidth: ScreenFit.panelWidth
+            implicitHeight: ScreenFit.maxHeight(win)
 
             mask: Region { item: panel }
-
-            Component.onCompleted: GlobalFocusGrab.addDismissable(win)
-            Component.onDestruction: GlobalFocusGrab.removeDismissable(win)
-            Connections {
-                target: GlobalFocusGrab
-                function onDismissed() { GlobalStates.wallTuneOpen = false }
-            }
 
             WallTuneContent {
                 id: panel
                 width: parent.width
+                // Fill the taller window rather than floating at its natural
+                // height inside it, so the card matches its neighbours.
+                height: parent.height
             }
         }
     }

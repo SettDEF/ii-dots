@@ -22,6 +22,20 @@ Scope {
         onPressed: GlobalStates.wallTuneOpen = !GlobalStates.wallTuneOpen
     }
 
+    // ── Per-app colours ─────────────────────────────────────────────────
+    GlobalShortcut {
+        name: "appColorsToggle"
+        description: "Toggle per-application colours panel"
+        onPressed: GlobalStates.appColorsOpen = !GlobalStates.appColorsOpen
+    }
+
+    // ── ROG power & fan ──────────────────────────────────────────────────
+    GlobalShortcut {
+        name: "rogPowerToggle"
+        description: "Toggle ROG power & fan panel"
+        onPressed: GlobalStates.rogPowerOpen = !GlobalStates.rogPowerOpen
+    }
+
     // ── WallpaperSelector ───────────────────────────────────────────────
     GlobalShortcut {
         name: "wallpaperSelectorToggle"
@@ -86,6 +100,15 @@ Scope {
         name: "screenDrawFullToggle"
         description: "Toggle fullscreen screen-draw overlay"
         onPressed: GlobalStates.screenDrawFullOpen = !GlobalStates.screenDrawFullOpen
+    }
+
+    // ── Audio recording ─────────────────────────────────────────────────
+    // Lives here, not in AudioSettings.qml: the panel is unloaded while
+    // closed, and a recording toggle has to work without it on screen.
+    GlobalShortcut {
+        name: "audioRecordToggle"
+        description: "Start/stop recording system audio"
+        onPressed: AudioRecorder.toggle()
     }
 
     // ── CornerPopup (media) ─────────────────────────────────────────────
@@ -199,6 +222,64 @@ Scope {
         function toggle(): void { GlobalStates.sidebarRightOpen = !GlobalStates.sidebarRightOpen }
         function close(): void  { GlobalStates.sidebarRightOpen = false }
         function open(): void   { GlobalStates.sidebarRightOpen = true }
+    }
+
+    // ── MouseMenu ───────────────────────────────────────────────────────
+    GlobalShortcut {
+        name: "mouseMenuToggle"
+        description: "Toggle mouse settings menu"
+        onPressed: GlobalStates.mouseMenuOpen = !GlobalStates.mouseMenuOpen
+    }
+    IpcHandler {
+        target: "mouseMenu"
+        function toggle(): void { GlobalStates.mouseMenuOpen = !GlobalStates.mouseMenuOpen }
+        function open(): void   { GlobalStates.mouseMenuOpen = true }
+        function close(): void  { GlobalStates.mouseMenuOpen = false }
+    }
+    IpcHandler {
+        target: "kinetix"
+        function toggle(): void { GlobalStates.kinetixOpen = !GlobalStates.kinetixOpen }
+        function open(): void   { GlobalStates.kinetixOpen = true }
+        function close(): void  { GlobalStates.kinetixOpen = false }
+
+        // Mid-game you cannot open a panel. Bind `raw` to a key and the whole
+        // physics engine flattens to 1:1 and back on one press, restoring the
+        // exact settings you had rather than a preset approximating them.
+        function raw(): void { KinetixProfiles.toggleRaw() }
+        function preset(name: string): void { KinetixProfiles.applyPreset(name) }
+        /// Pin a preset to the focused window's app, so it engages by itself
+        /// every time that app is in front. Run it once with the game focused.
+        function pin(name: string): void { KinetixProfiles.pinPresetToFocusedApp(name) }
+        function status(): string {
+            return KinetixProfiles.rawActive ? "raw" : (KinetixProfiles.activeLabel || "base")
+        }
+    }
+    IpcHandler {
+        target: "display"
+        function toggle(): void { GlobalStates.displayOpen = !GlobalStates.displayOpen }
+        function open(): void   { GlobalStates.displayOpen = true }
+        function close(): void  { GlobalStates.displayOpen = false }
+    }
+    IpcHandler {
+        target: "settings"
+        function toggle(): void { SettingsApp.toggle() }
+        function open(): void   { SettingsApp.open() }
+        function close(): void  { SettingsApp.close() }
+    }
+    GlobalShortcut {
+        name: "settingsToggle"
+        description: "Toggle the settings window"
+        onPressed: SettingsApp.toggle()
+    }
+    GlobalShortcut {
+        name: "displayToggle"
+        description: "Toggle display settings panel"
+        onPressed: GlobalStates.displayOpen = !GlobalStates.displayOpen
+    }
+    GlobalShortcut {
+        name: "kinetixToggle"
+        description: "Toggle KinetiX mouse menu"
+        onPressed: GlobalStates.kinetixOpen = !GlobalStates.kinetixOpen
     }
 
     // Lock + suspend (with the suspending popup) lives in modules/ii/lock/Lock.qml.

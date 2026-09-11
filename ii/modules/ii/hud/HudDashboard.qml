@@ -262,6 +262,12 @@ Item {
                 // clear the central clock instead of overlapping it.
                 readonly property real rx: Math.max(80, width / 2 - 24)
                 readonly property real ry: Math.max(70, height / 2 - 52)
+                // Scale the central time so it always clears the side pills. The
+                // time was a fixed 76px; on a narrow (small-monitor) orbit that
+                // overflowed into the 00:00 / 12:00 pills. Half the "HH:mm" width
+                // is ~1.5·fontPx, and it must fit within rx minus a pill's
+                // half-width (~33) + margin — hence (rx-46)/114. Capped at 1.
+                readonly property real clockScale: Math.max(0.6, Math.min(1, (rx - 46) / 114))
 
                 // Slow ambient rotation — the hourly pills drift around
                 // the fixed dashed track, one revolution every 3 min.
@@ -304,16 +310,16 @@ Item {
                         StyledText {
                             text: Qt.formatTime(secClock.date, "HH:mm")
                             font.family: Appearance.font.family.monospace
-                            font.pixelSize: 76
+                            font.pixelSize: Math.round(76 * orbit.clockScale)
                             font.weight: Font.Bold
                             color: Appearance.colors.colOnLayer0
                         }
                         StyledText {
                             anchors.bottom: parent.bottom
-                            anchors.bottomMargin: 14
+                            anchors.bottomMargin: Math.round(14 * orbit.clockScale)
                             text: ":" + Qt.formatTime(secClock.date, "ss")
                             font.family: Appearance.font.family.monospace
-                            font.pixelSize: Appearance.font.pixelSize.huge
+                            font.pixelSize: Math.round(Appearance.font.pixelSize.huge * orbit.clockScale)
                             font.weight: Font.Bold
                             color: Appearance.colors.colSubtext
                         }
@@ -322,7 +328,7 @@ Item {
                         anchors.horizontalCenter: parent.horizontalCenter
                         text: Qt.formatDate(secClock.date, "dddd, MMMM d")
                         font.family: Appearance.font.family.monospace
-                        font.pixelSize: Appearance.font.pixelSize.normal
+                        font.pixelSize: Math.round(Appearance.font.pixelSize.normal * orbit.clockScale)
                         color: Appearance.colors.colSubtext
                     }
                 }

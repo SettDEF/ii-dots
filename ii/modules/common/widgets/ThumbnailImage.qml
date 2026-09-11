@@ -35,7 +35,10 @@ StyledImage {
 
     onSourceSizeChanged: {
         if (!root.generateThumbnail) return;
-        thumbnailGeneration.running = false;
+        // Don't kill an in-flight run: sourceSizeChanged can fire repeatedly
+        // while a slow (video) generation is still working, and restarting it
+        // every time means it never finishes → endless respawn, pegged CPU.
+        if (thumbnailGeneration.running) return;
         thumbnailGeneration.running = true;
     }
     // Guard: same lifecycle race as CliphistImage — Repeater item is gone,
@@ -55,12 +58,28 @@ StyledImage {
             // Prefer vipsthumbnail: same speed as magick, ~30 MB peak, no
             // thread fanout. Fall back to magick (capped) only if vips
             // isn't installed or fails. Exit 1 on regen so the Image reloads.
+            // vipsthumbnail/magick can't decode video — without an ffmpeg
+            // step the thumbnail never lands, and this Process re-runs every
+            // time the tile re-lays out, pegging a core. Order: vips → magick
+            // (images) → ffmpeg (video/anything else). If ALL fail, drop a
+            // `.thumbfail` marker so we never retry that file (else infinite
+            // respawn). `[ -s ]` guards against half-written 0-byte outputs.
             return ["bash", "-c",
-                `[ -f '${dst}' ] && exit 0; \\
+                `dst='${dst}'; src='${src}'; max=${maxSize}; \\
+                 [ -f "$dst" ] && exit 0; \\
+                 [ -f "$dst.thumbfail" ] && exit 0; \\
+                 case "\${src,,}" in \\
+                   *.mp4|*.webm|*.mkv|*.mov|*.avi|*.m4v) \\
+                     if command -v ffmpeg >/dev/null && \\
+                        ffmpeg -nostdin -y -loglevel quiet -ss 1 -i "$src" \\
+                          -frames:v 1 -vf "scale=\${max}:-2" "$dst" 2>/dev/null && [ -s "$dst" ]; then exit 1; fi; \\
+                     : > "$dst.thumbfail" 2>/dev/null; exit 0 ;; \\
+                 esac; \\
                  if command -v vipsthumbnail >/dev/null && \\
-                    vipsthumbnail '${src}' -s ${maxSize}x${maxSize} -o '${dst}' 2>/dev/null; then exit 1; fi; \\
+                    vipsthumbnail "$src" -s \${max}x\${max} -o "$dst" 2>/dev/null && [ -s "$dst" ]; then exit 1; fi; \\
                  export MAGICK_THREAD_LIMIT=1 MAGICK_MEMORY_LIMIT=256MiB MAGICK_MAP_LIMIT=512MiB OMP_NUM_THREADS=1; \\
-                 magick '${src}' -resize ${maxSize}x${maxSize} '${dst}' && exit 1`
+                 if magick "$src" -resize \${max}x\${max} "$dst" 2>/dev/null && [ -s "$dst" ]; then exit 1; fi; \\
+                 : > "$dst.thumbfail" 2>/dev/null; exit 0`
             ]
         }
         onExited: (exitCode, exitStatus) => {

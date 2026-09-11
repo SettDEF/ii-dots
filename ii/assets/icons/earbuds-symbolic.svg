@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none">
+  <!-- In-ear buds: two rounded bodies with stems, no headband. The absence of
+       the band is the whole point — it is what separates this at a glance from
+       headphones-symbolic.svg. Same 24px grid / 2px stroke as the fluent set,
+       currentColor so it inherits the caller's theme role. -->
+  <rect x="3" y="3.5" width="6.5" height="8" rx="3.25"
+        stroke="currentColor" stroke-width="2"/>
+  <path d="M6.25 11.5v6a2.5 2.5 0 0 0 2.5 2.5" stroke="currentColor"
+        stroke-width="2" stroke-linecap="round"/>
+  <rect x="14.5" y="3.5" width="6.5" height="8" rx="3.25"
+        stroke="currentColor" stroke-width="2"/>
+  <path d="M17.75 11.5v6a2.5 2.5 0 0 1-2.5 2.5" stroke="currentColor"
+        stroke-width="2" stroke-linecap="round"/>
+</svg>

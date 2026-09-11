@@ -13,7 +13,7 @@ import qs.modules.ii.sidebarRight.quickToggles
 import qs.modules.ii.sidebarRight.quickToggles.classicStyle
 import qs.modules.ii.sidebarRight.quickToggles.androidStyle
 
-import qs.modules.ii.sidebarRight.bluetoothDevices
+import qs.modules.ii.sidebarRight.devices
 import qs.modules.ii.sidebarRight.nightLight
 import qs.modules.ii.sidebarRight.volumeMixer
 import qs.modules.ii.sidebarRight.wifiNetworks
@@ -29,7 +29,7 @@ Item {
     property string settingsQmlPath: Quickshell.shellPath("settings.qml")
     property bool showAudioOutputDialog: false
     property bool showAudioInputDialog: false
-    property bool showBluetoothDialog: false
+    property bool showDevicesDialog: false
     property bool showNightLightDialog: false
     property bool showWifiDialog: false
     property bool showKdeConnectDialog: false
@@ -47,7 +47,7 @@ Item {
         function onSidebarRightOpenChanged() {
             if (!GlobalStates.sidebarRightOpen) {
                 root.showWifiDialog = false;
-                root.showBluetoothDialog = false;
+                root.showDevicesDialog = false;
                 root.showAudioOutputDialog = false;
                 root.showAudioInputDialog = false;
                 root.showKdeConnectDialog = false;
@@ -62,9 +62,9 @@ Item {
             GlobalStates.sidebarRightOpen = true
             root.showWifiDialog = true
         }
-        function onOpenBluetoothDialogRequestChanged() {
+        function onOpenDevicesDialogRequestChanged() {
             GlobalStates.sidebarRightOpen = true
-            root.showBluetoothDialog = true
+            root.showDevicesDialog = true
         }
     }
 
@@ -252,7 +252,7 @@ Item {
 
                                         readonly property var labelMap: ({
                                             "sliders":          { name: "Sliders",   icon: "tune" },
-                                            "bluetoothDevices": { name: "Bluetooth", icon: "devices_other" },
+                                            "devices": { name: "Devices", icon: "devices" },
                                             "midi":             { name: "MIDI",      icon: "piano" },
                                             "rog":              { name: "ROG",       icon: "memory" },
                                             "phone":            { name: "Phone",     icon: "smartphone" },
@@ -280,7 +280,7 @@ Item {
                                             anchors.fill: parent
                                             sourceComponent: switch (panelHost.modelData.type) {
                                                 case "sliders":          return slidersComp
-                                                case "bluetoothDevices": return btComp
+                                                case "devices": return devicesComp
                                                 case "midi":             return midiComp
                                                 case "rog":              return rogComp
                                                 case "phone":            return phoneComp
@@ -631,7 +631,7 @@ Item {
                                         }
 
                                         Component { id: slidersComp; QuickSliders {} }
-                                        Component { id: btComp; DevicesView { popupRounding: sidebarRightBackground.radius; isSidebar: true } }
+                                        Component { id: devicesComp; DevicesView { popupRounding: sidebarRightBackground.radius; isSidebar: true } }
                                         Component { id: midiComp; MidiView { popupRounding: sidebarRightBackground.radius; isSidebar: true } }
                                         Component { id: rogComp; RogView {} }
                                         Component {
@@ -875,8 +875,8 @@ Item {
     }
 
     ToggleDialog {
-        shownPropertyString: "showBluetoothDialog"
-        dialog: BluetoothDialog {}
+        shownPropertyString: "showDevicesDialog"
+        dialog: DevicesDialog {}
         onShownChanged: {
             if (!shown) {
                 Bluetooth.defaultAdapter.discovering = false;
@@ -962,8 +962,8 @@ Item {
             function onOpenAudioInputDialog() {
                 root.showAudioInputDialog = true;
             }
-            function onOpenBluetoothDialog() {
-                root.showBluetoothDialog = true;
+            function onOpenDevicesDialog() {
+                root.showDevicesDialog = true;
             }
             function onOpenNightLightDialog() {
                 root.showNightLightDialog = true;

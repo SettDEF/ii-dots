@@ -16,13 +16,10 @@ import qs.modules.waffle.actionCenter
 Item {
     id: root
 
-    Component.onCompleted: {
-        if (Bluetooth.defaultAdapter.enabled)
-            Bluetooth.defaultAdapter.discovering = true;
-    }
-    Component.onDestruction: {
-        Bluetooth.defaultAdapter.discovering = false;
-    }
+    // (Previously started/stopped Bluetooth discovery here — a copy-paste
+    // leftover from BluetoothControl.qml. A night-light toggle must not touch
+    // Bluetooth: it left the BT scan running, which trashes 2.4GHz WiFi on the
+    // combo chip. Removed.)
 
     WPanelPageColumn {
         anchors.fill: parent

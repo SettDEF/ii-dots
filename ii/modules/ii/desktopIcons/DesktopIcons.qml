@@ -58,6 +58,40 @@ Scope {
                 right: true
             }
 
+            // Everything except the background widgets, which live on the layer
+            // below. Without this the empty-space handler here takes every press
+            // and those widgets can never be dragged. Four slots covers the
+            // widgets anyone actually enables at once; extras keep working, they
+            // just stay uncuttable.
+            readonly property var widgetRects: DesktopWidgetRegions.forScreen(win.modelData.name)
+
+            // The base area the mask starts from. A Region with no `item` is
+            // EMPTY, not "everything" — see LayoutOsd's maskHidden — so the
+            // whole-surface base has to be given explicitly.
+            Item {
+                id: maskBase
+                anchors.fill: parent
+            }
+
+            component WidgetHole: Region {
+                property var rect: null
+                intersection: Intersection.Subtract
+                x: rect?.x ?? 0
+                y: rect?.y ?? 0
+                width: rect?.w ?? 0
+                height: rect?.h ?? 0
+            }
+
+            WidgetHole { id: hole0; rect: win.widgetRects[0] ?? null }
+            WidgetHole { id: hole1; rect: win.widgetRects[1] ?? null }
+            WidgetHole { id: hole2; rect: win.widgetRects[2] ?? null }
+            WidgetHole { id: hole3; rect: win.widgetRects[3] ?? null }
+
+            mask: Region {
+                item: maskBase
+                regions: [hole0, hole1, hole2, hole3]
+            }
+
             // Animate up + fade out on lock — mirrors the bar's exit
             // transition. The Loader stays active during the animation
             // so the content can fade gracefully; we tear it down on

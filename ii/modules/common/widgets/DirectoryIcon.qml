@@ -22,10 +22,18 @@ Image {
         if (!fileModelData.fileIsDir)
             return Quickshell.iconPath("application-x-zerosize", "text-x-generic");
 
-        if ([Directories.documents, Directories.downloads, Directories.music, Directories.pictures, Directories.videos].some(dir => FileUtils.trimFileProtocol(dir) === fileModelData.filePath))
-            return Quickshell.iconPath(`folder-${fileModelData.fileName.toLowerCase()}`, "inode-directory");
-
-        return Quickshell.iconPath("inode-directory", "folder");
+        // Ask the theme for a folder icon named after the folder itself, for
+        // EVERY directory rather than only the five XDG ones. Icon themes ship
+        // a lot of these — Reversal has 192 (folder-android, folder-blender,
+        // folder-code, ...) — and restricting the lookup to XDG paths meant
+        // almost every folder rendered with the generic icon while the matching
+        // artwork sat unused in the theme. This is what Dolphin does.
+        //
+        // Spaces become dashes ("Bitwig Studio" -> folder-bitwig-studio), which
+        // is the naming convention themes use. A miss costs nothing: the second
+        // argument is the fallback.
+        const stem = fileModelData.fileName.toLowerCase().replace(/\s+/g, "-");
+        return Quickshell.iconPath(`folder-${stem}`, "inode-directory");
     }
 
     onStatusChanged: {

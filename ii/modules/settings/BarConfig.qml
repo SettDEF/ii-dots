@@ -239,6 +239,51 @@ ContentPage {
     }
 
     ContentSection {
+        icon: "memory"
+        title: Translation.tr("Resource monitor")
+
+        ContentSubsection {
+            title: Translation.tr("Show beside the window pill")
+
+            ConfigSelectionArray {
+                currentValue: Config.options.bar.resources.showInWindowPill
+                onSelected: newValue => {
+                    Config.options.bar.resources.showInWindowPill = newValue;
+                }
+                options: [
+                    {
+                        displayName: Translation.tr("Never"),
+                        icon: "visibility_off",
+                        value: 0
+                    },
+                    {
+                        displayName: Translation.tr("Near critical"),
+                        icon: "warning",
+                        value: 1
+                    },
+                    {
+                        displayName: Translation.tr("Always"),
+                        icon: "visibility",
+                        value: 2
+                    }
+                ]
+            }
+        }
+
+        ConfigSpinBox {
+            icon: "priority_high"
+            text: Translation.tr("Near-critical threshold (%)")
+            value: Config.options.bar.resources.criticalThreshold
+            from: 50
+            to: 100
+            stepSize: 5
+            onValueChanged: {
+                Config.options.bar.resources.criticalThreshold = value;
+            }
+        }
+    }
+
+    ContentSection {
         icon: "cloud"
         title: Translation.tr("Weather")
         ConfigSwitch {

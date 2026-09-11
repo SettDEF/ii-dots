@@ -1,0 +1,4 @@
+# Built by cargo into $CARGO_TARGET_DIR (/mnt/storage), symlinked here so the
+# shell can find it at a stable path. Neither belongs in the repo.
+/finance-sync
+/target

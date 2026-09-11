@@ -17,15 +17,47 @@ Item {
     required property var screen
     readonly property HyprlandMonitor monitor: Hyprland.monitorFor(screen)
     readonly property var toplevels: ToplevelManager.toplevels
+    readonly property var visibleWindows: ToplevelManager.toplevels.values.filter((toplevel) => {
+        const address = `0x${toplevel.HyprlandToplevel?.address}`
+        var win = windowByAddress[address]
+        const inWorkspaceGroup = (root.workspaceGroup * root.workspacesShown < win?.workspace?.id && win?.workspace?.id <= (root.workspaceGroup + 1) * root.workspacesShown)
+        return inWorkspaceGroup;
+    })
+    property int keyboardSelectedIndex: -1
+    onVisibleWindowsChanged: {
+        if (keyboardSelectedIndex >= visibleWindows.length) {
+            keyboardSelectedIndex = visibleWindows.length - 1;
+        }
+    }
+
     readonly property int workspacesShown: Config.options.overview.rows * Config.options.overview.columns
-    // The "real" group containing the currently focused workspace.
-    readonly property int activeGroup: Math.floor((monitor.activeWorkspace?.id - 1) / workspacesShown)
-    // Offset added by the prev/next pager chips. Reset to 0 each time
-    // the overview opens so we always start on the active group.
-    property int viewGroupOffset: 0
+    // The "real" group containing the currently focused workspace. Guarded:
+    // a missing activeWorkspace (startup, monitor hotplug) would otherwise make
+    // this NaN and poison every workspace number in the grid.
+    readonly property int activeGroup: {
+        const id = monitor?.activeWorkspace?.id ?? 1
+        return Math.max(0, Math.floor((id - 1) / workspacesShown))
+    }
+    // The group being viewed, stored absolutely; -1 follows the active group.
+    // An offset relative to activeGroup would slide the view a whole page
+    // whenever the active workspace crossed a group boundary while open.
+    property int viewGroup: -1
     // The group whose workspaces are currently rendered.
-    readonly property int workspaceGroup: Math.max(0, activeGroup + viewGroupOffset)
+    readonly property int workspaceGroup: viewGroup >= 0 ? viewGroup : activeGroup
     readonly property bool viewingActiveGroup: workspaceGroup === activeGroup
+
+    // Highest group holding real workspaces (or the active one). The pager may
+    // walk one page past it, never further.
+    readonly property int maxGroup: {
+        let m = activeGroup
+        const list = HyprlandData.workspaces ?? []
+        for (let i = 0; i < list.length; i++) {
+            const ws = list[i]
+            if (ws && ws.id > 0)
+                m = Math.max(m, Math.floor((ws.id - 1) / workspacesShown))
+        }
+        return m + 1
+    }
 
     // Group indices that should be rendered as pills. We only show
     // groups that hold at least one known (non-empty) workspace, plus
@@ -49,14 +81,18 @@ Item {
     Connections {
         target: GlobalStates
         function onOverviewOpenChanged() {
-            if (GlobalStates.overviewOpen) root.viewGroupOffset = 0
+            if (GlobalStates.overviewOpen) {
+                root.viewGroup = -1
+            } else {
+                root.keyboardSelectedIndex = -1
+            }
         }
     }
 
     /**
      * Step the viewed group by `direction` (±1). Snaps to the next/prev
      * non-empty group in dotGroups; if there isn't one in that direction,
-     * walks one step into an adjacent empty group (clamped at 0).
+     * walks one step into an adjacent empty group (clamped to 0..maxGroup).
      */
     function stepGroup(direction) {
         const list = root.dotGroups
@@ -70,10 +106,9 @@ Item {
         } else if (direction < 0) {
             target = (idx > 0)
                 ? list[idx - 1]
-                : Math.max(0, cur - 1)
+                : cur - 1
         }
-        target = Math.max(0, target)
-        root.viewGroupOffset = target - root.activeGroup
+        root.viewGroup = Math.max(0, Math.min(root.maxGroup, target))
     }
     property bool monitorIsFocused: (Hyprland.focusedMonitor?.name == monitor.name)
     property var windows: HyprlandData.windowList
@@ -180,21 +215,27 @@ Item {
                             property color defaultWorkspaceColor: Appearance.colors.colSurfaceContainerLow
                             property color hoveredWorkspaceColor: ColorUtils.mix(defaultWorkspaceColor, Appearance.colors.colLayer1Hover, 0.1)
                             property color hoveredBorderColor: Appearance.colors.colLayer2Hover
-                            property bool hoveredWhileDragging: false
+                            // Derived, not set by hand: the highlight can then
+                            // never outlive the drag that caused it, whether or
+                            // not DropArea gets to emit its exit.
+                            readonly property bool hoveredWhileDragging: root.draggingFromWorkspace !== -1
+                                && root.draggingTargetWorkspace === workspaceValue
+                                && root.draggingFromWorkspace !== workspaceValue
 
                             function getContextMenuModel() {
                                 const val = workspace.workspaceValue
                                 const activeId = HyprlandData.activeWorkspace?.id ?? 1
                                 const model = [
                                     { icon: "visibility", label: "Switch to Workspace", onTriggered: () => {
+                                        GlobalFocusGrab.cancelRestore()
                                         GlobalStates.overviewOpen = false
-                                        Hyprland.dispatch("workspace " + val)
+                                        HyprDispatch.run("workspace " + val)
                                     }},
                                     { icon: "drive_file_move", label: "Move Active Window Here", onTriggered: () => {
-                                        Hyprland.dispatch("movetoworkspace " + val)
+                                        HyprDispatch.run("movetoworkspace " + val)
                                     }},
                                     { icon: "input", label: "Move Active Here (Silently)", onTriggered: () => {
-                                        Hyprland.dispatch("movetoworkspacesilent " + val)
+                                        HyprDispatch.run("movetoworkspacesilent " + val)
                                     }},
                                     { separator: true },
                                     { icon: "arrow_upward", label: "Move All Windows to Active", onTriggered: () => {
@@ -264,7 +305,7 @@ Item {
                                             icon: mon.focused ? "star" : "desktop_windows",
                                             label: "Move to " + mon.name + (mon.focused ? " (active)" : ""),
                                             onTriggered: () => {
-                                                Hyprland.dispatch("moveworkspacetomonitor " + val + " " + mon.name);
+                                                HyprDispatch.run("moveworkspacetomonitor " + val + " " + mon.name);
                                             }
                                         });
                                     });
@@ -324,25 +365,24 @@ Item {
                                     if (mouse.button === Qt.RightButton) {
                                         const globalPos = mapToItem(overviewBackground, mouse.x, mouse.y)
                                         workspaceContextMenu.popup(globalPos.x, globalPos.y, workspace.getContextMenuModel())
-                                    } else if (mouse.button === Qt.LeftButton) {
-                                        if (root.draggingTargetWorkspace === -1) {
-                                            GlobalStates.overviewOpen = false
-                                            Hyprland.dispatch(`workspace ${workspace.workspaceValue}`)
-                                        }
+                                    }
+                                }
+                                // Switch on a released click, not on press — a bare press
+                                // fired instantly, so a stray tap jumped workspaces.
+                                onClicked: (mouse) => {
+                                    if (mouse.button === Qt.LeftButton && root.draggingTargetWorkspace === -1) {
+                                        GlobalFocusGrab.cancelRestore()
+                                        GlobalStates.overviewOpen = false
+                                        HyprDispatch.run(`workspace ${workspace.workspaceValue}`)
                                     }
                                 }
                             }
 
                             DropArea {
                                 anchors.fill: parent
-                                onEntered: {
-                                    root.draggingTargetWorkspace = workspace.workspaceValue
-                                    if (root.draggingFromWorkspace == root.draggingTargetWorkspace) return;
-                                    hoveredWhileDragging = true
-                                }
+                                onEntered: root.draggingTargetWorkspace = workspace.workspaceValue
                                 onExited: {
-                                    hoveredWhileDragging = false
-                                    if (root.draggingTargetWorkspace == workspace.workspaceValue) root.draggingTargetWorkspace = -1
+                                    if (root.draggingTargetWorkspace === workspace.workspaceValue) root.draggingTargetWorkspace = -1
                                 }
                             }
 
@@ -361,19 +401,13 @@ Item {
 
             Repeater { // Window repeater
                 model: ScriptModel {
-                    values: {
-                        // console.log(JSON.stringify(ToplevelManager.toplevels.values.map(t => t), null, 2))
-                        return ToplevelManager.toplevels.values.filter((toplevel) => {
-                            const address = `0x${toplevel.HyprlandToplevel?.address}`
-                            var win = windowByAddress[address]
-                            const inWorkspaceGroup = (root.workspaceGroup * root.workspacesShown < win?.workspace?.id && win?.workspace?.id <= (root.workspaceGroup + 1) * root.workspacesShown)
-                            return inWorkspaceGroup;
-                        })
-                    }
+                    values: root.visibleWindows
                 }
                 delegate: OverviewWindow {
                     id: window
                     required property var modelData
+                    required property int index
+                    keyboardSelected: index === root.keyboardSelectedIndex
                     property int monitorId: windowData?.monitor
                     property var monitor: HyprlandData.monitors.find(m => m.id == monitorId)
                     property var address: `0x${modelData.HyprlandToplevel.address}`
@@ -451,9 +485,13 @@ Item {
                             const targetWorkspace = root.draggingTargetWorkspace
                             window.pressed = false
                             window.Drag.active = false
+                            // Cleared here, up front — the tiled branch below
+                            // returns early, and a target left set makes the
+                            // workspace click handler ignore every later click.
                             root.draggingFromWorkspace = -1
+                            root.draggingTargetWorkspace = -1
                             if (targetWorkspace !== -1 && targetWorkspace !== windowData?.workspace.id) {
-                                Hyprland.dispatch(`movetoworkspacesilent ${targetWorkspace}, address:${window.windowData?.address}`)
+                                HyprDispatch.run(`movetoworkspacesilent ${targetWorkspace}, address:${window.windowData?.address}`)
                                 updateWindowPosition.restart()
                             }
                             else {
@@ -461,20 +499,29 @@ Item {
                                     updateWindowPosition.restart()
                                     return
                                 }
-                                const percentageX = Math.round((window.x - xOffset) / root.workspaceImplicitWidth * 100)
-                                const percentageY = Math.round((window.y - yOffset) / root.workspaceImplicitHeight * 100)
-                                Hyprland.dispatch(`movewindowpixel exact ${percentageX}% ${percentageY}%, address:${window.windowData?.address}`)
+                                // Canvas coords → absolute layout pixels: the exact
+                                // inverse of xWithinWorkspaceWidget above, landing
+                                // back in the same space windowData.at is given in.
+                                // Percentages used to go out here, but Hyprland's
+                                // Lua dispatcher takes pixels only and rejected the
+                                // whole call, so a dragged window never moved.
+                                const targetX = Math.round((window.x - xOffset) / root.scale
+                                    + (monitor?.x ?? 0) + (monitor?.reserved?.[0] ?? 0))
+                                const targetY = Math.round((window.y - yOffset) / root.scale
+                                    + (monitor?.y ?? 0) + (monitor?.reserved?.[1] ?? 0))
+                                HyprDispatch.run(`movewindowpixel exact ${targetX} ${targetY}, address:${window.windowData?.address}`)
                             }
                         }
                         onClicked: (event) => {
                             if (!windowData) return;
 
                             if (event.button === Qt.LeftButton) {
+                                GlobalFocusGrab.cancelRestore()
                                 GlobalStates.overviewOpen = false
-                                Hyprland.dispatch(`focuswindow address:${windowData.address}`)
+                                HyprDispatch.run(`focuswindow address:${windowData.address}`)
                                 event.accepted = true
                             } else if (event.button === Qt.MiddleButton) {
-                                Hyprland.dispatch(`closewindow address:${windowData.address}`)
+                                HyprDispatch.run(`closewindow address:${windowData.address}`)
                                 event.accepted = true
                             }
                         }
@@ -575,7 +622,7 @@ Item {
 
                         HoverHandler { id: dotHov }
                         TapHandler {
-                            onTapped: root.viewGroupOffset = parent.parent.groupIndex - root.activeGroup
+                            onTapped: root.viewGroup = parent.parent.groupIndex
                         }
                     }
                 }

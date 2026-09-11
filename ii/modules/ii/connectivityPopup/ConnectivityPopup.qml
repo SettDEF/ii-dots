@@ -12,11 +12,26 @@ import qs.modules.ii.hud
 import QtQuick
 import QtQuick.Layouts
 import Quickshell
+import Quickshell.Io
 import Quickshell.Bluetooth
 import Quickshell.Wayland
 
 Scope {
     id: scope
+
+    // This popup had no programmatic control at all — it could only be opened
+    // by clicking the bar icons. Every other surface here has an IPC handler.
+    IpcHandler {
+        target: "connectivity"
+        function wifi(): void { GlobalStates.connectivityWifiOpen = !GlobalStates.connectivityWifiOpen }
+        function bt(): void   { GlobalStates.connectivityBluetoothOpen = !GlobalStates.connectivityBluetoothOpen }
+        function vpn(): void  { GlobalStates.connectivityVpnOpen = !GlobalStates.connectivityVpnOpen }
+        function close(): void {
+            GlobalStates.connectivityWifiOpen = false;
+            GlobalStates.connectivityBluetoothOpen = false;
+            GlobalStates.connectivityVpnOpen = false;
+        }
+    }
 
     Variants {
         model: Quickshell.screens
@@ -28,6 +43,7 @@ Scope {
             visible: GlobalStates.connectivityPopupOpen
                      || GlobalStates.connectivityBluetoothOpen
                      || GlobalStates.connectivityWifiOpen
+                     || GlobalStates.connectivityVpnOpen
 
             exclusiveZone: 0
             exclusionMode: ExclusionMode.Ignore
@@ -75,7 +91,8 @@ Scope {
             readonly property real cardLeftMargin: 16
             readonly property bool btOpen:   GlobalStates.connectivityBluetoothOpen
             readonly property bool wifiOpen: GlobalStates.connectivityWifiOpen
-            readonly property int  openCount: (btOpen ? 1 : 0) + (wifiOpen ? 1 : 0)
+            readonly property bool vpnOpen:  GlobalStates.connectivityVpnOpen
+            readonly property int  openCount: (btOpen ? 1 : 0) + (wifiOpen ? 1 : 0) + (vpnOpen ? 1 : 0)
 
             // ── Tab strip — hangs from the bar, multi-select pills ──────
             Item {
@@ -133,10 +150,12 @@ Scope {
                     tabs: [
                         { id: "wifi", icon: "wifi",      label: qsTr("Wi-Fi")     },
                         { id: "bt",   icon: "bluetooth", label: qsTr("Bluetooth") },
+                        { id: "vpn",  icon: "vpn_key",   label: qsTr("VPN")       },
                     ]
                     activeIds: [
                         ...(GlobalStates.connectivityWifiOpen      ? ["wifi"] : []),
                         ...(GlobalStates.connectivityBluetoothOpen ? ["bt"]   : []),
+                        ...(GlobalStates.connectivityVpnOpen        ? ["vpn"]  : []),
                     ]
                     current: ""
                     onTabSelected: id => {
@@ -151,6 +170,9 @@ Scope {
                                 Bluetooth.defaultAdapter.enabled = true
                                 Bluetooth.defaultAdapter.discovering = true
                             }
+                        } else if (id === "vpn") {
+                            GlobalStates.connectivityVpnOpen = !GlobalStates.connectivityVpnOpen
+                            if (GlobalStates.connectivityVpnOpen) Vpn.refresh()
                         }
                     }
                 }
@@ -187,11 +209,13 @@ Scope {
                     color: closeHov.hovered ? Appearance.colors.colLayer1Hover : "transparent"
                     z: 10
                     Behavior on color { ColorAnimation { duration: 160 } }
-                    HoverHandler { id: closeHov }
+                    HoverHandler { margin: Appearance.sizes.touchSlop; id: closeHov }
                     TapHandler {
+                        margin: Appearance.sizes.touchSlop
                         onTapped: {
                             GlobalStates.connectivityBluetoothOpen = false
                             GlobalStates.connectivityWifiOpen = false
+                            GlobalStates.connectivityVpnOpen = false
                         }
                     }
                     MaterialSymbol {
@@ -239,6 +263,24 @@ Scope {
                             anchors.fill: parent
                             forceMode: "wifi"
                         }
+                    }
+
+                    Rectangle {
+                        Layout.preferredWidth: 1
+                        Layout.fillHeight: true
+                        Layout.topMargin: 16
+                        Layout.bottomMargin: 16
+                        color: Appearance.colors.colLayer0Border
+                        visible: popupWindow.vpnOpen && (popupWindow.btOpen || popupWindow.wifiOpen)
+                    }
+
+                    Item {
+                        id: vpnHalf
+                        Layout.fillHeight: true
+                        Layout.preferredWidth: popupWindow.halfWidth
+                        visible: popupWindow.vpnOpen
+                        clip: true
+                        VpnView { anchors.fill: parent }
                     }
                 }
             }

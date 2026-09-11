@@ -197,7 +197,12 @@ TASKS=$(printf '%s' "$JSON" | jq -r --argjson tw "$TARGET_W" --argjson vh "$VIDE
     | .data as $p
     | (post_to_url($p; $tw)) as $m
     | select($m != null and $m.url != null and $m.url != "")
-    | "\($m.url)\t\($m.alt // "")\t\($m.kind)\t\($p.id)\t\($p.title // "untitled")"
+    # Titles arrive containing real newlines and tabs. Those split one record
+    # into several and shift every field left, which is where the
+    # "Could not resolve host: img" failures came from -- title text landing
+    # in the url slot. Flatten them here, before the record is ever formed.
+    | ($p.title // "untitled" | gsub("[\\n\\r\\t]"; " ")) as $t
+    | "\($m.url)\t\($m.alt // "")\t\($m.kind)\t\($p.id)\t\($t)"
 ' 2>/dev/null)
 
 [ -z "$TASKS" ] && exit 0
@@ -219,9 +224,13 @@ printf '%s\n' "$TASKS" \
             | sed 's/[[:space:]]*$//')
         # Skip if ANY extension of this id is already on disk.
         if ls "$OUT_DIR/${id} "* >/dev/null 2>&1; then continue; fi
-        printf '%s\t%s\t%s\t%s\t%s\n' "$url" "$alt" "$kind" "$id" "$safe_title"
+        # NUL-terminated, to be read by `xargs -0`. Newline records made xargs
+        # apply its own quote parsing, and a single apostrophe anywhere in the
+        # record aborted the WHOLE batch with "unmatched single quote" --
+        # losing every remaining download in that wave, not just one.
+        printf '%s\t%s\t%s\t%s\t%s\0' "$url" "$alt" "$kind" "$id" "$safe_title"
     done \
-  | xargs -P 6 -I{} bash -c '
+  | xargs -0 -P 12 -I{} bash -c '
         line="{}"
         url="${line%%	*}"
         rest="${line#*	}"

@@ -9,6 +9,8 @@ import qs.modules.ii.cheatsheet
 import qs.modules.ii.display
 import qs.modules.ii.statsHud
 import qs.modules.ii.audio
+import qs.modules.ii.clipboardToast
+import qs.modules.ii.iris
 import qs.modules.ii.walltune
 import qs.modules.ii.dock
 import qs.modules.ii.lock
@@ -38,6 +40,7 @@ import qs.modules.ii.wallpaperAdjuster
 import qs.modules.ii.desktopIcons
 import qs.modules.ii.mouseMenu
 import qs.modules.ii.kinetix
+import qs.modules.ii.systemHub
 import qs.modules.ii.screenDraw
 import qs.modules.ii.screenshotEditor
 import qs.modules.ii.mouseMenu
@@ -100,12 +103,17 @@ Scope {
         component: ConnectivityPopup {}
     }
     PanelLoader { component: KeybindsHint {} }
-    // Touch-only edge swipe handles. The "input-transparent under mouse / pen"
-    // claim is now actually TRUE: TouchEdges masks its input region to an empty
-    // Region unless InputMode reports a finger or a pen. Before, nothing
-    // implemented that and the bands ate mouse clicks down both screen edges,
-    // which is why this was commented out rather than fixed.
-    PanelLoader { component: TouchEdges {} }
+    // Touch-only edge swipe handles.
+    //
+    // Twice now this made the bar unclickable, because "off" was implemented
+    // as an empty input mask on a live Overlay-layer surface and the off
+    // switch was the LATCHING InputMode singleton. Off is now the surface not
+    // being created at all — the same shape TouchGestures below already uses,
+    // and the one state that cannot eat a click by construction.
+    PanelLoader {
+        extraCondition: Appearance.touchUi
+        component: TouchEdges {}
+    }
     // Fullscreen multi-finger / corner gestures — tablet mode only,
     // because its input region covers the whole screen and would block
     // mouse hover otherwise.
@@ -132,15 +140,22 @@ Scope {
     LazyPanelLoader { isOpen: GlobalStates.kbPickerOpen;          idleMs: 30 * 1000; component: KeyboardLayoutPicker {} }
     LazyPanelLoader { isOpen: GlobalStates.kbSettingsOpen;        idleMs: 30 * 1000; component: KeyboardSettings {} }
     LazyPanelLoader { isOpen: GlobalStates.wallTuneOpen;          idleMs: 30 * 1000; component: WallTune {} }
+    // Visibility-driven like the connectivity popup, not gated by a Loader:
+    // it drives its own `visible` per screen, so it wants to exist already.
+    PanelLoader { component: AppColors {} }
     LazyPanelLoader { isOpen: GlobalStates.rogPowerOpen;          idleMs: 30 * 1000; component: RogPower {} }
     PanelLoader { component: SkwdWall {} }
     LazyPanelLoader { isOpen: GlobalStates.wallpaperAdjusterOpen; idleMs: 30 * 1000; component: WallpaperAdjuster {} }
     PanelLoader { component: MouseMenu {} }
     PanelLoader { component: KinetiX {} }
     PanelLoader { component: DisplaySettings {} }
+    PanelLoader { component: MonitorSafetyDialog {} }
+    PanelLoader { component: SystemHub {} }
     PanelLoader { component: StatsHud {} }
     PanelLoader { component: StatsHudSettings {} }
     PanelLoader { component: AudioSettings {} }
+    PanelLoader { component: IrisSettings {} }
+    ClipboardToast {}
     PanelLoader { component: WallEffectPanel {} }
     // Window-scope per-app effects: click-through surfaces over app windows.
     PanelLoader { component: AppDisplayOverlays {} }

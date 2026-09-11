@@ -13,18 +13,6 @@ import Quickshell.Io
 Item { // Bar content region
     id: root
 
-    // Tells InputMode whether the last pointer event came from a finger, a pen
-    // or a mouse. Its own docstring says it belongs in "always-visible surfaces
-    // (the bar)" — but it was never actually instantiated anywhere, so
-    // InputMode.mode sat on its "mouse" default forever and InputMode.isTouch
-    // was permanently false. Anything gated on touch input (TouchEdges) could
-    // therefore never switch on.
-    //
-    // Passive by construction: the HoverHandler does not consume events and the
-    // TapHandler uses DragThreshold, so it never fires and clicks pass through
-    // to the bar widgets underneath.
-    InputModeProbe {}
-
     property var screen: root.QsWindow.window?.screen
     property var brightnessMonitor: Brightness.getMonitorForScreen(screen)
     property real useShortenedForm: (Appearance.sizes.barHellaShortenScreenWidthThreshold >= screen?.width) ? 2 : (Appearance.sizes.barShortenScreenWidthThreshold >= screen?.width) ? 1 : 0
@@ -101,16 +89,13 @@ Item { // Bar content region
             anchors.fill: parent
             spacing: 0
 
-            LeftSidebarButton { // Left sidebar button
-                id: leftSidebarButton
-                Layout.alignment: Qt.AlignVCenter
-                Layout.leftMargin: Appearance.rounding.screenRounding
-                colBackground: barLeftSideMouseArea.hovered ? Appearance.colors.colLayer1Hover : ColorUtils.transparentize(Appearance.colors.colLayer1Hover, 1)
-            }
+            // The left-sidebar (AI) button used to stand alone here. It now
+            // lives inside the ActiveWindow pill, where it grows out of the
+            // status dot — see ActiveWindow.qml's leading slot.
 
             // Morphs between active window title and shelf tab switcher
             Item {
-                Layout.leftMargin: 10 + (leftSidebarButton.visible ? 0 : Appearance.rounding.screenRounding)
+                Layout.leftMargin: Appearance.rounding.screenRounding
                 Layout.rightMargin: Appearance.rounding.screenRounding
                 Layout.fillWidth: true
                 Layout.fillHeight: true
@@ -346,8 +331,12 @@ Item { // Bar content region
             readonly property bool _torrentsMode: GlobalStates.shelfOpen
                                                 && GlobalStates.shelfTab === "files"
                                                 && GlobalStates.shelfFilesSubTab === "torrents"
-            // Either swap-mode hides the standard right cluster.
-            readonly property bool _swapMode: _battleMode || _torrentsMode
+            // While the corner popup is open its tab strip is rendered here
+            // instead of inside the popup, so the popup reads as one clean
+            // surface and the strip sits in space the bar already has.
+            readonly property bool _cornerPopupMode: GlobalStates.cornerPopupOpen
+            // Any swap-mode hides the standard right cluster.
+            readonly property bool _swapMode: _battleMode || _torrentsMode || _cornerPopupMode
 
             RippleButton { // Right sidebar button
                 id: rightSidebarButton
@@ -448,7 +437,7 @@ Item { // Bar content region
                         color: rightSidebarButton.colText
                         TapHandler {
                             gesturePolicy: TapHandler.ReleaseWithinBounds
-                            onTapped: GlobalStates.openBluetoothDialogRequest++
+                            onTapped: GlobalStates.openDevicesDialogRequest++
                         }
                     }
                 }
@@ -564,6 +553,27 @@ Item { // Bar content region
                         }
                     }
                 }
+            }
+
+            // ── Corner-popup tabs — shown on the bar's right side while the
+            //    corner popup is open, in place of the network/bluetooth
+            //    cluster. Same swap pattern as the pills below.
+            PillTabBar {
+                id: cornerPopupTabs
+                Layout.alignment: Qt.AlignVCenter | Qt.AlignRight
+                Layout.rightMargin: Appearance.rounding.screenRounding
+                implicitHeight: 30
+                opacity: rightSectionRowLayout._cornerPopupMode ? 1 : 0
+                visible: opacity > 0
+                Behavior on opacity { NumberAnimation { duration: 180; easing.type: Easing.OutCubic } }
+
+                tabs: [
+                    { id: "media",   icon: "music_note",  label: Translation.tr("Media") },
+                    { id: "sources", icon: "graphic_eq",  label: Translation.tr("Sources") },
+                    { id: "files",   icon: "folder_open", label: Translation.tr("Files") },
+                ]
+                current: GlobalStates.cornerPopupTab
+                onTabSelected: id => GlobalStates.cornerPopupTab = id
             }
 
             // ── Torrents filter pills — shown on the bar's right side

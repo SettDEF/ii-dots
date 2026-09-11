@@ -85,7 +85,7 @@ handle_kde_material_you_colors() {
             kde_scheme_variant="scheme-tonal-spot"
             ;;
     esac
-    "$XDG_CONFIG_HOME"/matugen/templates/kde/kde-material-you-colors-wrapper.sh --scheme-variant "$kde_scheme_variant" \
+    "$XDG_CONFIG_HOME"/tinct/templates/kde/kde-material-you-colors-wrapper.sh --scheme-variant "$kde_scheme_variant" \
         >/dev/null 2>&1 || true
 }
 
@@ -1052,35 +1052,13 @@ switch() {
     fi
 
     if [[ "$tinct_ok" != "1" ]]; then
-        # ── legacy python pipeline ───────────────────────────────────────
-        local temp_config="/tmp/matugen-temp-config.toml"
-        cat > "$temp_config" <<EOF
-[config]
-version_check = false
-
-[templates.m3colors]
-input_path = '$HOME/.config/matugen/templates/colors.json'
-output_path = '/tmp/matugen-temp-colors.json'
-EOF
-
-        matugen -c "$temp_config" "${matugen_args[@]}"
-        rm -f "$temp_config"
-
-        source "$(eval echo "$ILLOGICAL_IMPULSE_VIRTUAL_ENV")/bin/activate"
-        python3 "$SCRIPT_DIR/generate_colors_material.py" "${generate_colors_material_args[@]}" \
-            > /tmp/matugen-temp-material_colors.scss
-
-        if [[ -n "$theory_flag$style_flag$practical_flag$remap_flag" ]]; then
-            python3 "$SCRIPT_DIR/palette_transform.py" \
-                --theory    "$theory_flag" \
-                --style     "$style_flag" \
-                --practical "$practical_flag" \
-                --remap     "$remap_flag" \
-                --mix-order "$mix_order_flag" \
-                --json /tmp/matugen-temp-colors.json \
-                --scss /tmp/matugen-temp-material_colors.scss \
-                2>/dev/null || true
-        fi
+        # tinct is the only engine now (matugen + the python palette scripts
+        # are gone). Fail loudly rather than applying a half-written palette.
+        echo "switchwall: tinct is required for colour generation but did not produce a palette" >&2
+        command -v notify-send >/dev/null 2>&1 && \
+            notify-send -a "Wallpaper" "Theming failed" "tinct could not generate a palette" 2>/dev/null
+        rm -f /tmp/matugen-temp-colors.json /tmp/matugen-temp-material_colors.scss
+        return 1
     fi
 
     # Run applycolor.sh using the temporary files.

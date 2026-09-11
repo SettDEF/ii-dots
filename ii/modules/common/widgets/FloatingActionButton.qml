@@ -41,7 +41,11 @@ RippleButton {
         Loader {
             anchors.verticalCenter: parent.verticalCenter
             visible: root.buttonText?.length > 0
-            active: true
+            // Only instantiate the reveal text when there IS text. Loading it
+            // unconditionally builds a Revealer whose childrenRect-based
+            // implicitHeight loops against its verticalCenter-anchored child,
+            // firing every frame forever (idle-CPU drain) even while hidden.
+            active: (root.buttonText?.length ?? 0) > 0
             sourceComponent: Revealer {
                 visible: root.expanded || implicitWidth > 0
                 reveal: root.expanded

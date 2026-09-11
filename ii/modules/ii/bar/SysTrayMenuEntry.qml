@@ -1,5 +1,6 @@
 pragma ComponentBehavior: Bound
 
+import qs.services
 import qs.modules.common
 import qs.modules.common.widgets
 import qs.modules.common.functions
@@ -37,13 +38,34 @@ RippleButton {
         }
     }
 
-    releaseAction: () => { 
+    // Electron ignores "show my window" once Hyprland has unmapped it
+    // (hyprwm/Hyprland#9819) — Vesktop and Webcord too, so it is the
+    // toolkit, not the app. The menu entry then does nothing at all.
+    // Fire the request anyway, and if no window turns up, open it properly.
+    readonly property bool needsShowFallback:
+        /^(open|show)\b/i.test(menuEntry.text ?? "")
+        && /discord/i.test(menuEntry.text ?? "")
+
+    releaseAction: () => {
         if (menuEntry.hasChildren) {
             root.openSubmenu(root.menuEntry);
             return;
         }
         menuEntry.triggered();
-        root.dismiss(); 
+        if (root.needsShowFallback)
+            showFallback.restart();
+        root.dismiss();
+    }
+
+    Timer {
+        id: showFallback
+        interval: 1500
+        onTriggered: {
+            const up = HyprlandData.windowList.some(w =>
+                /discord/i.test(w.class ?? ""));
+            if (!up)
+                Quickshell.execDetached(["discord-open"]);
+        }
     }
     altAction: (event) => { // Not hog right-click
         event.accepted = false;

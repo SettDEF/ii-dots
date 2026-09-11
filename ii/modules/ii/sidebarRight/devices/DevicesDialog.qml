@@ -38,7 +38,7 @@ WindowDialog {
     Component.onDestruction: if (Bluetooth.defaultAdapter) Bluetooth.defaultAdapter.discovering = false
 
     WindowDialogTitle {
-        text: Translation.tr("Bluetooth devices")
+        text: Translation.tr("Devices")
     }
 
     WindowDialogSeparator {
@@ -75,8 +75,8 @@ WindowDialog {
         StyledText {
             Layout.alignment: Qt.AlignHCenter
             text: root.isDiscovering
-                  ? Translation.tr("Searching for Bluetooth devices…")
-                  : Translation.tr("No Bluetooth devices found")
+                  ? Translation.tr("Searching for devices…")
+                  : Translation.tr("No devices found")
             font.pixelSize: Appearance.font.pixelSize.small
             font.weight: Font.Medium
             color: Appearance.colors.colOnLayer1
@@ -106,7 +106,7 @@ WindowDialog {
         model: ScriptModel {
             values: root.shownDevices
         }
-        delegate: BluetoothDeviceItem {
+        delegate: DeviceItem {
             required property BluetoothDevice modelData
             device: modelData
             anchors {

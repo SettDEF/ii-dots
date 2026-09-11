@@ -13,6 +13,9 @@ import Qt5Compat.GraphicalEffects
 
 Rectangle {
     id: root
+    // This is a ListView delegate, so the view itself is one attached property
+    // away. Passing it down beats having each image walk its parent chain.
+    readonly property Item booruViewport: root.ListView.view
     property var responseData
     property var tagInputField
 
@@ -156,6 +159,62 @@ Rectangle {
             PointingHandLinkHover {}
         }
 
+        // ── Example tags, fetched from the provider itself ──────────────
+        // Shown only on a miss. "Check your tags" is useless advice if you
+        // do not know what a tag looks like, so this offers the booru's own
+        // most-used ones, and tapping one runs it.
+        ColumnLayout {
+            Layout.fillWidth: true
+            Layout.leftMargin: responsePadding
+            Layout.rightMargin: responsePadding
+            spacing: 4
+            visible: root.responseData.message.length > 0 && Booru.popularTags.length > 0
+
+            StyledText {
+                text: Translation.tr("Try one of these:")
+                font.pixelSize: Appearance.font.pixelSize.smaller
+                color: Appearance.colors.colSubtext
+            }
+
+            Flow {
+                id: exampleTagFlow
+                Layout.fillWidth: true
+                spacing: 4
+
+                Repeater {
+                    model: Booru.popularTags
+                    delegate: Rectangle {
+                        id: exampleChip
+                        required property var modelData
+                        implicitHeight: 26
+                        implicitWidth: exampleChipText.implicitWidth + 20
+                        radius: Appearance.rounding.full
+                        color: exampleChipHov.hovered
+                            ? Appearance.colors.colLayer2Hover
+                            : Appearance.colors.colLayer2
+                        Behavior on color { ColorAnimation { duration: 140 } }
+
+                        HoverHandler { id: exampleChipHov; cursorShape: Qt.PointingHandCursor }
+                        TapHandler {
+                            onTapped: {
+                                // Same route the Next page button takes.
+                                root.tagInputField.text = exampleChip.modelData.name;
+                                root.tagInputField.accept();
+                            }
+                        }
+
+                        StyledText {
+                            id: exampleChipText
+                            anchors.centerIn: parent
+                            text: exampleChip.modelData.name
+                            font.pixelSize: Appearance.font.pixelSize.smaller
+                            color: Appearance.colors.colOnLayer2
+                        }
+                    }
+                }
+            }
+        }
+
         Repeater {
             model: ScriptModel {
                 values: {
@@ -227,6 +286,9 @@ Rectangle {
                     delegate: BooruImage {
                         required property var modelData
                         imageData: modelData
+                        // The scrolling list, so each image can tell whether it
+                        // is actually on screen before pulling a full-size copy.
+                        viewport: root.booruViewport
                         rowHeight: imageRow.rowHeight
                         imageRadius: imageRow.modelData.images.length == 1 ? 50 : Appearance.rounding.normal
                         // Download manually to reduce redundant requests or make sure downloading works

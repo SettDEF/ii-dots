@@ -68,8 +68,8 @@ Rectangle {
             implicitWidth: 28; implicitHeight: 28; radius: 14
             color: root.isPlaying ? Appearance.colors.colPrimary : Appearance.colors.colLayer1
             Behavior on color { animation: Appearance.animation.elementMoveFast.colorAnimation.createObject(this) }
-            HoverHandler { id: playHov }
-            TapHandler { onTapped: root.togglePlay() }
+            HoverHandler { margin: Appearance.sizes.touchSlop; id: playHov }
+            TapHandler { margin: Appearance.sizes.touchSlop; onTapped: root.togglePlay() }
             MaterialSymbol {
                 anchors.centerIn: parent
                 text: root.isPlaying ? "stop" : "play_arrow"
@@ -103,7 +103,7 @@ Rectangle {
         Item {
             id: dragHandle
             implicitWidth: 28; implicitHeight: 28
-            HoverHandler { id: dragHov }
+            HoverHandler { margin: Appearance.sizes.touchSlop; id: dragHov }
 
             Column {
                 anchors.centerIn: parent

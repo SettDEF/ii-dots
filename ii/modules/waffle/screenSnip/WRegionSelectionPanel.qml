@@ -36,9 +36,9 @@ PanelWindow {
         Window
     }
 
-    signal closed
+    signal requestClose
     function close() {
-        root.closed();
+        root.requestClose();
     }
 
     property var mediaType: WRegionSelectionPanel.MediaType.Image
@@ -157,7 +157,12 @@ PanelWindow {
             property int selectionHeight: isWindowSelection ? ((hoveredWindow?.size[1] ?? 0) + winPadding * 2) : regionHeight
 
             onDragReleased: (diffX, diffY) => {
-                if (selectionWidth === 0 || selectionHeight === 0) {
+                // Window mode adds winPadding*2, so a null hoveredWindow gives
+                // 2, not 0 — the check below never fired and captured a sliver.
+                if (isWindowSelection && !hoveredWindow) {
+                    return;
+                }
+                if (selectionWidth <= 0 || selectionHeight <= 0) {
                     return;
                 }
                 const screenshotDir = Config.options.screenSnip.savePath !== "" ? Config.options.screenSnip.savePath : "";
@@ -340,7 +345,7 @@ PanelWindow {
             icon.name: "eyedropper"
             onClicked: {
                 Quickshell.execDetached(["bash", "-c", "sleep 0.2; hyprpicker -a"]);
-                root.closed();
+                root.requestClose();
             }
             WToolTip {
                 text: Translation.tr("Color picker")

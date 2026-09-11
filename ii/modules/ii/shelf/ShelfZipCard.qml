@@ -182,8 +182,8 @@ Rectangle {
                     ? Appearance.colors.colLayer2
                     : (extHov.hovered ? Appearance.colors.colPrimaryContainer : Appearance.colors.colLayer2)
                 Behavior on color { animation: Appearance.animation.elementMoveFast.colorAnimation.createObject(this) }
-                HoverHandler { id: extHov }
-                TapHandler { onTapped: root.extract() }
+                HoverHandler { margin: Appearance.sizes.touchSlop; id: extHov }
+                TapHandler { margin: Appearance.sizes.touchSlop; onTapped: root.extract() }
                 MaterialSymbol {
                     anchors.centerIn: parent
                     text: root.extracting ? "hourglass_empty" : "unarchive"

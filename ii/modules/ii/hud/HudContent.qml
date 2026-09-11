@@ -1059,7 +1059,7 @@ Item {
                                             selectByMouse: true
                                             onAccepted: {
                                                 const t = text.trim()
-                                                if (t) Hyprland.dispatch(`renameworkspace ${modelData.id} ${t}`)
+                                                if (t) HyprDispatch.run(`renameworkspace ${modelData.id} ${t}`)
                                                 parent.parent.parent.isEditing = false
                                             }
                                             Keys.onEscapePressed: {
@@ -1083,11 +1083,12 @@ Item {
                                             Behavior on color { animation: Appearance.animation.elementMoveFast.colorAnimation.createObject(this) }
                                         }
                                         TapHandler {
+                                            margin: Appearance.sizes.touchSlop
                                             onTapped: {
                                                 const c = parent.parent.parent
                                                 if (c.isEditing) {
                                                     const t = nameIn.text.trim()
-                                                    if (t) Hyprland.dispatch(`renameworkspace ${c.modelData.id} ${t}`)
+                                                    if (t) HyprDispatch.run(`renameworkspace ${c.modelData.id} ${t}`)
                                                     c.isEditing = false
                                                 } else {
                                                     c.isEditing = true
@@ -1118,6 +1119,7 @@ Item {
                                                 border.width: wsRow.parent.wsCustomColor.toString() === swatchColor.toString() ? 2 : 0
                                                 border.color: Appearance.colors.colOnLayer0
                                                 TapHandler {
+                                                    margin: Appearance.sizes.touchSlop
                                                     onTapped: {
                                                         const id = wsRow.parent.modelData.id
                                                         const nc = Object.assign({}, root.wsColors)
@@ -1133,6 +1135,7 @@ Item {
                                             border.width: 1; border.color: Appearance.colors.colLayer0Border
                                             MaterialSymbol { anchors.centerIn: parent; text: "close"; iconSize: 9; color: Appearance.colors.colOnLayer0; opacity: 0.55 }
                                             TapHandler {
+                                                margin: Appearance.sizes.touchSlop
                                                 onTapped: {
                                                     const id = wsRow.parent.modelData.id
                                                     const nc = Object.assign({}, root.wsColors)
@@ -1150,8 +1153,9 @@ Item {
                                         border.width: 1; border.color: Appearance.colors.colLayer0Border
                                         MaterialSymbol { anchors.centerIn: parent; text: "arrow_forward"; iconSize: Appearance.font.pixelSize.normal; color: Appearance.colors.colOnLayer0 }
                                         TapHandler {
+                                            margin: Appearance.sizes.touchSlop
                                             onTapped: {
-                                                Hyprland.dispatch(`workspace ${wsRow.parent.modelData.id}`)
+                                                HyprDispatch.run(`workspace ${wsRow.parent.modelData.id}`)
                                                 GlobalStates.hudOpen = false
                                             }
                                         }
@@ -1258,6 +1262,7 @@ Item {
                                                     border.width: 1; border.color: Appearance.colors.colLayer0Border
                                                     MaterialSymbol { anchors.centerIn: parent; text: parent.modelData; iconSize: Appearance.font.pixelSize.normal; color: parent.index === 1 ? Appearance.m3colors.m3onPrimary : Appearance.colors.colOnLayer0 }
                                                     TapHandler {
+                                                        margin: Appearance.sizes.touchSlop
                                                         onTapped: {
                                                             const p = MprisController.activePlayer
                                                             if (!p) return

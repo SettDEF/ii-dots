@@ -1,0 +1,3 @@
+module qs.modules.ii.statsHud
+StatsHud 1.0 StatsHud.qml
+StatsHudSettings 1.0 StatsHudSettings.qml

@@ -1,0 +1,32 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="96" height="96" viewBox="0 0 96 96" fill="none">
+  <!-- Preview-only artwork, drawn on a 96 grid rather than the 24 grid the
+       list icons use. That matters: the preview renders this at ~150px, and a
+       24-grid glyph scaled 6x turns a 1.8px stroke into an 11px slab — which
+       is exactly why the earlier version read as a blob rather than a laptop.
+       At 96 units a 3.2 stroke lands near 5px on screen: crisp, and visually
+       the same weight as the rest of the panel.
+
+       Grille centres: x = 0.245 / 0.755, y = 0.688 of the viewBox.
+       AudioLayout.glyphChannelSpots() must match. -->
+
+  <!-- Lid -->
+  <rect x="18" y="12" width="60" height="42" rx="4"
+        stroke="currentColor" stroke-width="3.2"/>
+  <!-- Screen inset, so the lid does not read as an empty frame -->
+  <rect x="24" y="18" width="48" height="30" rx="2"
+        stroke="currentColor" stroke-width="1.6" opacity="0.45"/>
+
+  <!-- Deck: a shallow trapezoid, wider than the lid -->
+  <path d="M14 58h68l6 10H8l6-10Z"
+        stroke="currentColor" stroke-width="3.2" stroke-linejoin="round"/>
+
+  <!-- Speaker grilles, flanking the keyboard. Three slots each side, centred
+       on the ring positions. -->
+  <g stroke="currentColor" stroke-width="2" stroke-linecap="round" opacity="0.7">
+    <path d="M19.5 62.5v3M23.5 62.5v3M27.5 62.5v3"/>
+    <path d="M68.5 62.5v3M72.5 62.5v3M76.5 62.5v3"/>
+  </g>
+  <!-- Trackpad hint, purely to make the deck read as a deck -->
+  <path d="M40 63h16" stroke="currentColor" stroke-width="2"
+        stroke-linecap="round" opacity="0.35"/>
+</svg>

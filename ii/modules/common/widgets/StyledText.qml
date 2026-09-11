@@ -1,5 +1,6 @@
 import qs.modules.common
 import QtQuick
+import QtQuick.Window
 
 Text {
     id: root
@@ -7,7 +8,17 @@ Text {
     property real animationDistanceX: 0
     property real animationDistanceY: 6
 
-    renderType: Text.NativeRendering
+    // NativeRendering rasterises glyphs for an untransformed, whole-pixel
+    // target. This display runs at scale 1.67, and the sidebar wraps its
+    // pages in layer.enabled masks — so those glyphs get rendered once at
+    // native size and then resampled, which is exactly what makes the text
+    // look soft. Distance-field rendering survives both the fractional scale
+    // and the layer.
+    //
+    // Integer-scale screens keep NativeRendering, where it really is the
+    // sharper of the two, so the external monitor is unaffected.
+    renderType: (Screen.devicePixelRatio % 1 === 0)
+        ? Text.NativeRendering : Text.QtRendering
     verticalAlignment: Text.AlignVCenter
     property bool shouldUseNumberFont: /^\d+$/.test(root.text)
     property var defaultFont: shouldUseNumberFont ? Appearance.font.family.numbers : Appearance.font.family.main

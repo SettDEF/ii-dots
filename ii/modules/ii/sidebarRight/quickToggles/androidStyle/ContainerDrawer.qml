@@ -39,7 +39,8 @@ Rectangle {
         switch (drawer.containerType) {
             case "rog":              return Translation.tr("ROG")
             case "sliders":          return Translation.tr("Sliders")
-            case "bluetoothDevices": return Translation.tr("Bluetooth")
+            case "devices":
+            case "bluetoothDevices": return Translation.tr("Devices")
             case "midi":             return Translation.tr("MIDI")
             case "phone":            return Translation.tr("Phone")
         }
@@ -49,7 +50,8 @@ Rectangle {
         switch (drawer.containerType) {
             case "rog":              return "memory"
             case "sliders":          return "tune"
-            case "bluetoothDevices": return "devices_other"
+            case "devices":
+            case "bluetoothDevices": return "devices"
             case "midi":             return "piano"
             case "phone":            return "smartphone"
         }
@@ -269,6 +271,7 @@ Rectangle {
                 switch (drawer.containerType) {
                     case "rog":     return (drawer.editMode && !drawer._preview) ? drawer.editorComp : drawer.rogGridComp
                     case "sliders": return (drawer.editMode && !drawer._preview) ? drawer.editorComp : drawer.qsViewComp
+                    case "devices":
                     case "bluetoothDevices": return drawer.btViewComp
                     case "midi":    return drawer.midiViewComp
                     case "phone":   return drawer.phoneViewComp

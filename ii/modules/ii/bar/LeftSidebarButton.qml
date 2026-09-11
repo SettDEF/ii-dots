@@ -12,9 +12,13 @@ RippleButton {
     property bool aiChatEnabled: Config.options.policies.ai !== 0
     property bool translatorEnabled: Config.options.sidebar.translator.enable
     property bool animeEnabled: Config.options.policies.weeb !== 0
-    visible: aiChatEnabled || translatorEnabled || animeEnabled
+    // Exposed separately from `visible` so a host can add its own conditions
+    // (e.g. an appear animation) without losing the policy check.
+    readonly property bool enabledByPolicy: aiChatEnabled || translatorEnabled || animeEnabled
+    visible: enabledByPolicy
 
     property real buttonPadding: 5
+    property real iconSize: 19.5
     implicitWidth: distroIcon.width + buttonPadding * 2
     implicitHeight: distroIcon.height + buttonPadding * 2
     buttonRadius: Appearance.rounding.full
@@ -55,8 +59,8 @@ RippleButton {
     CustomIcon {
         id: distroIcon
         anchors.centerIn: parent
-        width: 19.5
-        height: 19.5
+        width: root.iconSize
+        height: root.iconSize
         source: Config.options.bar.topLeftIcon == 'distro' ? SystemInfo.distroIcon : `${Config.options.bar.topLeftIcon}-symbolic`
         colorize: true
         color: Appearance.colors.colOnLayer0

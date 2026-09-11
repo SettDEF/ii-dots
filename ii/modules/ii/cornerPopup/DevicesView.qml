@@ -40,6 +40,11 @@ Rectangle {
     // "a device" is instead of each deciding separately.
     readonly property var deviceRows: Devices.rows
 
+    // Compact mode: one summary line instead of the card list. The 2x1 tile uses
+    // it -- a list of cards is unreadable at that size, and shrinking the cards
+    // to fit would just make a worse list rather than a better summary.
+    property bool compact: false
+
     radius: isSidebar ? Appearance.rounding.large : popupRounding
     color: isSidebar ? Appearance.colors.colLayer1 : Appearance.colors.colLayer0
     border.width: isSidebar ? 0 : 1
@@ -63,14 +68,64 @@ Rectangle {
         }
         spacing: 10
 
+        // Compact summary ---------------------------------------------------
+        // The whole 2x1 tile in one row: what is attached, and the battery most
+        // worth worrying about. Tapping it is the tile's job, not this view's.
+        RowLayout {
+            visible: root.compact
+            Layout.fillWidth: true
+            spacing: 10
+
+            MaterialSymbol {
+                text: Devices.count > 0
+                    ? Devices.iconFor(Devices.rows[0].kind, Devices.rows[0].transport)
+                    : "devices_off"
+                iconSize: Appearance.font.pixelSize.larger
+                color: Devices.count > 0
+                    ? Appearance.colors.colPrimary
+                    : Appearance.colors.colSubtext
+            }
+            ColumnLayout {
+                Layout.fillWidth: true
+                spacing: 0
+                StyledText {
+                    Layout.fillWidth: true
+                    text: qsTr("Devices")
+                    font.pixelSize: Appearance.font.pixelSize.smaller
+                    font.weight: Font.Medium
+                    color: Appearance.colors.colOnLayer1
+                    elide: Text.ElideRight
+                }
+                StyledText {
+                    Layout.fillWidth: true
+                    text: Devices.summary
+                    font.pixelSize: 9
+                    color: Appearance.colors.colSubtext
+                    elide: Text.ElideRight
+                }
+            }
+            // Lowest battery, not the first: on a summary the number that
+            // matters is the one about to run out.
+            StyledText {
+                visible: Devices.lowestBattery >= 0
+                text: Devices.lowestBattery + "%"
+                font.pixelSize: Appearance.font.pixelSize.smaller
+                font.weight: Font.DemiBold
+                color: Devices.lowestBattery <= 20
+                    ? Appearance.m3colors.m3error
+                    : Appearance.colors.colOnLayer1
+            }
+        }
+
         // Header ------------------------------------------------------------
         RowLayout {
+            visible: !root.compact
             Layout.fillWidth: true
             spacing: 8
             MaterialSymbol {
-                text: BluetoothStatus.connected ? "bluetooth_connected" : "bluetooth"
+                text: Devices.count > 0 ? "devices" : "devices_off"
                 iconSize: Appearance.font.pixelSize.larger
-                color: BluetoothStatus.connected
+                color: Devices.count > 0
                     ? Appearance.colors.colPrimary
                     : Appearance.colors.colOnLayer1
             }
@@ -82,14 +137,14 @@ Rectangle {
                 color: Appearance.colors.colOnLayer1
             }
             StyledText {
-                text: root.deviceRows.length
-                    + qsTr(" connected")
+                text: qsTr("%1 connected").arg(root.deviceRows.length)
                 font.pixelSize: Appearance.font.pixelSize.smaller
                 color: Appearance.colors.colSubtext
             }
         }
 
         Rectangle {
+            visible: !root.compact
             Layout.fillWidth: true
             Layout.bottomMargin: 4
             height: 1
@@ -99,7 +154,7 @@ Rectangle {
 
         // Device cards ------------------------------------------------------
         Repeater {
-            model: root.deviceRows
+            model: root.compact ? [] : root.deviceRows
 
             delegate: Rectangle {
                 id: card
@@ -401,7 +456,7 @@ Rectangle {
 
         // Empty state -------------------------------------------------------
         Item {
-            visible: root.deviceRows.length === 0
+            visible: !root.compact && root.deviceRows.length === 0
             Layout.fillWidth: true
             implicitHeight: 56
             ColumnLayout {

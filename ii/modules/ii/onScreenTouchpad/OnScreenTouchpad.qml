@@ -177,8 +177,8 @@ Scope {
                             color: closeHov.hovered
                                 ? Appearance.colors.colLayer2Hover
                                 : "transparent"
-                            HoverHandler { id: closeHov }
-                            TapHandler { onTapped: GlobalStates.touchpadOpen = false }
+                            HoverHandler { margin: Appearance.sizes.touchSlop; id: closeHov }
+                            TapHandler { margin: Appearance.sizes.touchSlop; onTapped: GlobalStates.touchpadOpen = false }
                             MaterialSymbol {
                                 anchors.centerIn: parent
                                 text: "close"; iconSize: 16

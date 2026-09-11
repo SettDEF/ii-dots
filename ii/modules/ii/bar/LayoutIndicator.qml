@@ -26,8 +26,9 @@ Item {
         color: hov.hovered ? Appearance.colors.colLayer2Base : "transparent"
         Behavior on color { animation: Appearance.animation.elementMoveFast.colorAnimation.createObject(this) }
 
-        HoverHandler { id: hov }
+        HoverHandler { margin: Appearance.sizes.touchSlop; id: hov }
         TapHandler {
+            margin: Appearance.sizes.touchSlop
             acceptedButtons: Qt.LeftButton | Qt.RightButton
             onTapped: (event) => {
                 if (event.button === Qt.RightButton) LayoutService.cycle(-1)

@@ -75,9 +75,14 @@ LockScreen {
         delegate: Scope {
             required property ShellScreen modelData
             property bool shouldPush: GlobalStates.screenLocked
-            property string targetMonitorName: modelData.name
-            property int verticalMovementDistance: modelData.height
-            property int horizontalSqueeze: modelData.width * 0.2
+            // Null-guarded: Variants re-models when a monitor is plugged,
+            // unplugged, or comes back from suspend, and the delegate
+            // outlives its ShellScreen for a frame. Unguarded, all three
+            // threw on every such event — and this is the LOCK SCREEN, the
+            // one surface where a binding error is not merely cosmetic.
+            property string targetMonitorName: modelData?.name ?? ""
+            property int verticalMovementDistance: modelData?.height ?? 0
+            property int horizontalSqueeze: (modelData?.width ?? 0) * 0.2
             property int lastWorkspaceId
             // Persist per-monitor across quickshell restarts and
             // suspend/resume cycles. Without this, if the delegate
@@ -125,8 +130,8 @@ LockScreen {
                 if [ -n "$cur" ] && [ "$cur" -gt 1000000000 ] 2>/dev/null; then
                     saved=$(cat /tmp/qs-lock-ws-$m.txt 2>/dev/null)
                     [ -z "$saved" ] && saved=1
-                    hyprctl dispatch focusmonitor "$m" >/dev/null
-                    hyprctl dispatch workspace "$saved" >/dev/null
+                    hyprctl dispatch "hl.dsp.focus({ monitor = \"$m\" })" >/dev/null
+                    hyprctl dispatch "hl.dsp.focus({ workspace = \"$saved\" })" >/dev/null
                     rm -f /tmp/qs-lock-ws-$m.txt
                 fi
             done

@@ -279,7 +279,7 @@ Rectangle {
 
         onClicked: {
             GlobalStates.searchOpen = false;
-            desktopEntry.execute();
+            AppLaunch.launch(desktopEntry);
         }
 
         contentItem: Item {
@@ -328,14 +328,18 @@ Rectangle {
     }
 
     component SmallGridButton: WButton {
-        id: root
+        // `btn`, not `root`: the file's own root object already claims that id
+        // at line 13, and a second one is a hard qmllint error
+        // (syntax.duplicate-ids). It resolved to the inner object by scoping
+        // luck rather than by intent.
+        id: btn
         implicitWidth: 68
         implicitHeight: 68
 
         property real pressedScale: 5 / 6
 
         onDownChanged: {
-            contentItem.scale = root.down ? root.pressedScale : 1; // If/When we do dragging, the scale is 1.25
+            contentItem.scale = btn.down ? btn.pressedScale : 1; // If/When we do dragging, the scale is 1.25
         }
     }
 }

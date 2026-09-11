@@ -63,6 +63,13 @@ Singleton {
                 property real temperature: 0.5
             }
 
+            property JsonObject draw: JsonObject {
+                // JSON-encoded [{id, name, colors[]}], same reason as
+                // mdScrollMap: JsonObject doesn't take list properties.
+                property string customPalettes: "[]"
+                property string activePalette: "studio"
+            }
+
             property JsonObject cheatsheet: JsonObject {
                 property int tabIndex: 0
                 // Markdown viewer state ─────────────────────────────────
@@ -87,6 +94,11 @@ Singleton {
                 // JSON-encoded { "subreddit": pageNumber }. String for the
                 // same dynamic-key reason as mdScrollMap above.
                 property string redditPageMap: "{}"
+                // Forced Reddit listing sort from the filter chips.
+                // "" = AUTO (advance through the sorts as each dries up).
+                property string forcedSort: ""
+                // JSON array of favourited wallpaper paths.
+                property string favorites: "[]"
             }
 
             // Native wallpaper selector (file-picker) filter state.
@@ -118,6 +130,20 @@ Singleton {
                 // hold dynamic keys. Applied to the app's stream as soon as
                 // one appears.
                 property string appVolumes: "{}"
+            }
+
+            property JsonObject lid: JsonObject {
+                property bool enabled: false   // react to lid close (clamshell / suspend)
+            }
+
+            property JsonObject rog: JsonObject {
+                property int watts: 35
+                property string activePreset: "Balanced"
+                property string curve: "[]"     // JSON of the live fan pwmValues[8]
+                // JSON array of { name, watts, pwms[8], temps[8] } custom presets.
+                // Stored as a STRING (not nested JsonObjects/`property var`) to dodge
+                // the JsonAdapter reload segfault — see Config.qml playerColors.
+                property string presets: "[]"
             }
 
             property JsonObject touchpad: JsonObject {
@@ -194,6 +220,14 @@ Singleton {
                 }
             }
 
+            property JsonObject bar: JsonObject {
+                // JSON-encoded { "<appId>": ["actionId", ...] } — which three
+                // quick actions each application shows under the window pill.
+                // A string rather than a JsonObject for the same reason as
+                // mdScrollMap above: the keys are app ids, so they are dynamic.
+                property string windowActionMap: "{}"
+            }
+
             property JsonObject timer: JsonObject {
                 property JsonObject pomodoro: JsonObject {
                     property bool running: false
@@ -205,6 +239,13 @@ Singleton {
                     property bool running: false
                     property int start: 0
                     property list<var> laps: []
+                }
+                property JsonObject countdown: JsonObject {
+                    property bool running: false
+                    // Unix seconds the countdown ends at, so it stays correct
+                    // across a reload rather than restarting from the remainder.
+                    property int endsAt: 0
+                    property int duration: 300
                 }
             }
         }

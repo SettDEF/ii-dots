@@ -27,7 +27,7 @@ AbstractQuickPanel {
         }
         BluetoothToggle {
             altAction: () => {
-                root.openBluetoothDialog();
+                root.openDevicesDialog();
             }
         }
         NightLight {}

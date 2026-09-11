@@ -61,8 +61,8 @@ Item {
         anchors { top: parent.top; right: parent.right; margins: 16 }
         width: 32; height: 32; radius: 16
         color: closeHov.hovered ? Appearance.m3colors.m3surfaceContainerHighest : Appearance.m3colors.m3surfaceContainerHighest
-        HoverHandler { id: closeHov }
-        TapHandler { onTapped: root.closeRequested() }
+        HoverHandler { margin: Appearance.sizes.touchSlop; id: closeHov }
+        TapHandler { margin: Appearance.sizes.touchSlop; onTapped: root.closeRequested() }
         MaterialSymbol {
             anchors.centerIn: parent
             text: "close"

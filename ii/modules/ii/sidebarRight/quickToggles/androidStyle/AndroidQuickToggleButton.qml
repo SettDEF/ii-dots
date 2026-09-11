@@ -548,7 +548,7 @@ GroupButton {
     // Drag-to-reorder visual offset. No Behavior — we want pixel-perfect tracking
     function _defaultSize(type) {
         const cols = (Config?.options?.sidebar?.quickToggles?.android?.columns) ?? 5;
-        if (["bluetoothDevices","midi","phone"].includes(type)) return cols;
+        if (["devices","bluetoothDevices","midi","phone"].includes(type)) return cols;
         if (["volumeSlider","brightnessSlider","micSlider",
              "rogProfile","rogGpu","rogBattery","rogCharge"].includes(type))
             return Math.max(2, Math.min(3, cols));
@@ -757,7 +757,7 @@ GroupButton {
 
         function _defaultSize(type) {
             const cols = (Config?.options?.sidebar?.quickToggles?.android?.columns) ?? 5;
-            if (["bluetoothDevices","midi","phone"].includes(type)) return cols;
+            if (["devices","bluetoothDevices","midi","phone"].includes(type)) return cols;
             if (["volumeSlider","brightnessSlider","micSlider",
                  "rogProfile","rogGpu","rogBattery","rogCharge"].includes(type))
                 return Math.max(2, Math.min(3, cols));
@@ -868,7 +868,7 @@ GroupButton {
                 // or toggled size), don't run the tap/click handler too.
                 if (holdFired) { holdFired = false; return; }
                 // Tray tiles: tap adds normal toggles. Container tiles
-                // (rog / sliders / phone / midi / bluetoothDevices) are
+                // (rog / sliders / phone / midi / devices) are
                 // intentionally NOT added on tap — they're added by
                 // drag-and-drop into a tab, so a stray click can't
                 // pollute the grid with a giant container.

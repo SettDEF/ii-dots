@@ -58,7 +58,7 @@ AbstractQuickPanel {
     // Tile-style toggle types (rendered in the grid). Sliders/MIDI/ROG/
     // BluetoothDevices/Phone used to be full-width panels below the grid;
     // they're now ordinary tiles that default to a full row (size = columns).
-    readonly property list<string> availableToggleTypes: ["network", "vpn", "bluetooth", "idleInhibitor", "sleepTimer", "easyEffects", "nightLight", "darkMode", "cloudflareWarp", "gameMode", "tabletMode", "screenSnip", "colorPicker", "onScreenKeyboard", "mic", "audio", "audioOutput", "notifications", "torrentKeepAlive", "powerProfile","musicRecognition", "antiFlashbang", "monitors", "lastfm", "miniMeters", "mounting", "offload", "rss", "email", "sliders", "bluetoothDevices", "midi", "rog", "phone", "volumeSlider", "brightnessSlider", "micSlider", "rogProfile", "rogGpu", "rogBattery", "rogCharge", "windows"]
+    readonly property list<string> availableToggleTypes: ["network", "vpn", "bluetooth", "idleInhibitor", "sleepTimer", "easyEffects", "nightLight", "darkMode", "cloudflareWarp", "gameMode", "tabletMode", "screenSnip", "colorPicker", "onScreenKeyboard", "mic", "audio", "audioOutput", "notifications", "torrentKeepAlive", "powerProfile","musicRecognition", "antiFlashbang", "monitors", "lastfm", "miniMeters", "mounting", "offload", "rss", "email", "sliders", "devices", "midi", "rog", "phone", "volumeSlider", "brightnessSlider", "micSlider", "rogProfile", "rogGpu", "rogBattery", "rogCharge", "windows"]
     // Panel-only types are gone — kept as empty arrays so the (now inert)
     // panel-rendering code paths stay compile-safe.
     readonly property list<string> availablePanelTypes: []
@@ -85,7 +85,7 @@ AbstractQuickPanel {
     readonly property list<string> wideByDefault: ["volumeSlider", "brightnessSlider", "micSlider",
                                                     "rogProfile", "rogGpu", "rogBattery", "rogCharge"]
     // Full-inline tiles (rich panel content) — default to a full row.
-    readonly property list<string> fullRowByDefault: ["bluetoothDevices", "midi", "phone", "mounting"]
+    readonly property list<string> fullRowByDefault: ["devices", "midi", "phone", "mounting"]
     function defaultSizeForType(type) {
         if (fullRowByDefault.includes(type)) return columns
         if (wideByDefault.includes(type)) return Math.max(2, Math.min(3, columns))
@@ -118,7 +118,7 @@ AbstractQuickPanel {
     // becomes scannable. Each entry: { id, label, types: [...] }.
     // A toggle that isn't matched falls into "Other".
     readonly property var trayCategories: [
-        { id: "connect", label: qsTr("Connect"), types: ["network","vpn","bluetooth","bluetoothDevices","cloudflareWarp","phone"] },
+        { id: "connect", label: qsTr("Connect"), types: ["network","vpn","bluetooth","devices","cloudflareWarp","phone"] },
         { id: "audio",   label: qsTr("Audio"),   types: ["audio","mic","volumeSlider","micSlider","easyEffects","lastfm","miniMeters","musicRecognition","midi","sliders"] },
         { id: "display", label: qsTr("Display"), types: ["nightLight","darkMode","antiFlashbang","brightnessSlider","monitors","screenSnip","colorPicker","onScreenKeyboard"] },
         { id: "system",  label: qsTr("System"),  types: ["idleInhibitor","sleepTimer","gameMode","tabletMode","notifications","powerProfile","mounting","offload","email","rss","windows"] },
@@ -285,7 +285,7 @@ AbstractQuickPanel {
                             spacing: root.spacing
                             onOpenAudioOutputDialog: root.openAudioOutputDialog()
                             onOpenAudioInputDialog: root.openAudioInputDialog()
-                            onOpenBluetoothDialog: root.openBluetoothDialog()
+                            onOpenDevicesDialog: root.openDevicesDialog()
                             onOpenNightLightDialog: root.openNightLightDialog()
                             onOpenWifiDialog: root.openWifiDialog()
                             onOpenKdeConnectDialog: root.openKdeConnectDialog()
@@ -491,7 +491,7 @@ AbstractQuickPanel {
                     Repeater {
                         model: [
                             { type: "sliders",          label: "Sliders",   icon: "tune" },
-                            { type: "bluetoothDevices", label: "Bluetooth", icon: "devices_other" },
+                            { type: "devices", label: "Devices", icon: "devices" },
                             { type: "midi",             label: "MIDI",      icon: "piano" },
                             { type: "rog",              label: "ROG",       icon: "memory" },
                             { type: "phone",            label: "Phone",     icon: "smartphone" },

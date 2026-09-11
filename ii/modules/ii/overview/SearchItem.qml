@@ -34,11 +34,24 @@ RippleButton {
     property string materialSymbol: entry.iconType === LauncherSearchResult.IconType.Material ? entry?.iconName ?? "" : ""
     property string cliphistRawString: entry?.rawValue ?? ""
     property bool blurImage: entry?.blurImage ?? false
+    readonly property bool isGroup: root.itemType === Translation.tr("Group")
     
     visible: root.entryShown
     property int horizontalMargin: 10
     property int buttonHorizontalPadding: 10
-    property int buttonVerticalPadding: 6
+
+    // Row-appearance settings from the launcher's sort & filter panel.
+    readonly property var launcherOpts: Config.options?.launcher
+    readonly property bool compact: launcherOpts?.compactRows ?? false
+    // Only app rows have a meaningful id / launch count / description.
+    readonly property bool isApp: root.itemType === Translation.tr("App")
+    readonly property string entryId: root.entry?.id ?? ""
+    // The icon drives the row height, so compact mode has to shrink it too —
+    // trimming only the padding moved the row by 8px and looked like nothing
+    // had happened.
+    readonly property int rowIconSize: root.compact ? 24 : 35
+
+    property int buttonVerticalPadding: root.compact ? 2 : 6
     property bool keyboardDown: false
 
     implicitHeight: rowLayout.implicitHeight + root.buttonVerticalPadding * 2
@@ -100,8 +113,26 @@ RippleButton {
     }
 
     onClicked: {
-        GlobalStates.overviewOpen = false
+        // A group drills into its subcommands by rewriting the query, so the
+        // launcher must stay open; closing it first made selecting a group
+        // look like it did nothing.
+        if (!root.isGroup)
+            GlobalStates.overviewOpen = false
         root.itemExecute()
+    }
+
+    // Right-click → per-entry ranking menu. RippleButton already routes the
+    // secondary button here, so this needs no MouseArea of its own and cannot
+    // fight the left-click handler above. Entries with no id (search actions,
+    // shell commands, clipboard rows) are skipped by openFor().
+    altAction: () => {
+        if (root.itemType === Translation.tr("App"))
+            entryMenu.openFor(root.entry?.id ?? "", root.itemName)
+    }
+
+    LauncherEntryMenu {
+        id: entryMenu
+        anchorItem: root
     }
     Keys.onPressed: (event) => {
         if (event.key === Qt.Key_Delete && event.modifiers === Qt.ShiftModifier) {
@@ -151,9 +182,9 @@ RippleButton {
         Component {
             id: iconImageComponent
             IconImage {
-                source: Quickshell.iconPath(root.iconName, "image-missing")
-                width: 35
-                height: 35
+                source: FileUtils.iconSource(root.iconName, "image-missing")
+                width: root.rowIconSize
+                height: root.rowIconSize
             }
         }
 
@@ -161,7 +192,7 @@ RippleButton {
             id: materialSymbolComponent
             MaterialSymbol {
                 text: root.materialSymbol
-                iconSize: 30
+                iconSize: root.compact ? 21 : 30
                 color: Appearance.m3colors.m3onSurface
             }
         }
@@ -186,6 +217,20 @@ RippleButton {
                 color: Appearance.colors.colSubtext
                 visible: root.itemType && root.itemType != Translation.tr("App")
                 text: root.itemType
+            }
+
+            // The .desktop Comment, e.g. "Manage files and folders" under
+            // Dolphin. Hidden in compact mode — a second line is exactly the
+            // height compact mode exists to remove.
+            StyledText {
+                Layout.fillWidth: true
+                visible: (root.launcherOpts?.showDescriptions ?? true)
+                         && !root.compact && text.length > 0
+                text: root.entry?.comment ?? ""
+                font.pixelSize: Appearance.font.pixelSize.smallest
+                color: Appearance.colors.colSubtext
+                elide: Text.ElideRight
+                maximumLineCount: 1
             }
             RowLayout {
                 Loader { // Checkmark for copied clipboard entry
@@ -237,15 +282,49 @@ RippleButton {
             }
         }
 
-        // Action text
-        StyledText {
+        // Action text or Chevron for groups
+        RowLayout {
             Layout.fillWidth: false
-            visible: (root.hovered || root.focus)
-            id: clickAction
-            font.pixelSize: Appearance.font.pixelSize.normal
-            color: Appearance.colors.colOnPrimaryContainer
-            horizontalAlignment: Text.AlignRight
-            text: root.itemClickActionName
+            spacing: 4
+            Layout.alignment: Qt.AlignVCenter
+
+            // How often this app has been started. Sits before the hover
+            // "Open" label and disappears while hovering, so the two never
+            // fight for the same space.
+            Rectangle {
+                visible: (root.launcherOpts?.showLaunchCounts ?? false)
+                         && root.isApp && !root.hovered && !root.focus
+                         && LauncherRanking.count(root.entryId) > 0
+                implicitWidth: countText.implicitWidth + 12
+                implicitHeight: countText.implicitHeight + 4
+                radius: Appearance.rounding.full
+                color: Appearance.colors.colLayer2
+                StyledText {
+                    id: countText
+                    anchors.centerIn: parent
+                    // Reading `revision` keeps this live: LauncherRanking
+                    // mutates its map in place, which emits no change signal.
+                    text: { LauncherRanking.revision; return `${LauncherRanking.count(root.entryId)}\u00d7` }
+                    font.pixelSize: Appearance.font.pixelSize.smallest
+                    font.family: Appearance.font.family.monospace
+                    color: Appearance.colors.colSubtext
+                }
+            }
+
+            StyledText {
+                visible: (root.hovered || root.focus || Appearance.touchUi) && !root.isGroup
+                id: clickAction
+                font.pixelSize: Appearance.font.pixelSize.normal
+                color: Appearance.colors.colOnPrimaryContainer
+                text: root.itemClickActionName
+            }
+
+            MaterialSymbol {
+                visible: root.isGroup
+                text: "chevron_right"
+                iconSize: 20
+                color: (root.hovered || root.focus) ? Appearance.colors.colOnPrimaryContainer : Appearance.colors.colSubtext
+            }
         }
 
         RowLayout {
@@ -254,7 +333,9 @@ RippleButton {
             Layout.bottomMargin: -root.buttonVerticalPadding // Why is this necessary? Good question.
             spacing: 4
             Repeater {
-                model: (root.entry.actions ?? []).slice(0, 4)
+                model: (root.launcherOpts?.showDesktopActions ?? true)
+                    ? (root.entry.actions ?? []).slice(0, 4)
+                    : []
                 delegate: RippleButton {
                     id: actionButton
                     required property var modelData
@@ -282,13 +363,13 @@ RippleButton {
                             anchors.centerIn: parent
                             active: actionButton.iconType === LauncherSearchResult.IconType.System && actionButton.iconName !== ""
                             sourceComponent: IconImage {
-                                source: Quickshell.iconPath(actionButton.iconName)
+                                source: FileUtils.iconSource(actionButton.iconName, "")
                                 implicitSize: 20
                             }
                         }
                     }
 
-                    onClicked: modelData.execute()
+                    onClicked: AppLaunch.launch(modelData)
 
                     StyledToolTip {
                         text: modelData.name

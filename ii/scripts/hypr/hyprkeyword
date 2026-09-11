@@ -1,0 +1,63 @@
+#!/usr/bin/env bash
+# Set a Hyprland config value, on a Lua-configured Hyprland.
+#
+# Usage:  hyprkeyword <keyword> <value...>
+#   hyprkeyword decoration:screen_shader /path/to.frag
+#   hyprkeyword monitor "eDP-1,2560x1600@180,0x0,1.67"
+#   hyprkeyword input:repeat_rate 65
+#
+# WHY THIS EXISTS
+# ---------------
+# `hyprctl keyword` is a hyprlang (.conf) mechanism. This machine runs a LUA
+# config (~/.config/hypr/hyprland.lua), and with a Lua config the compositor
+# answers every `keyword` request with a bare "unknown request" — no error, no
+# hint, and hyprctl still exits 0. So every caller looked like it worked while
+# nothing happened at all: screen shaders that never applied, monitor changes
+# that silently did nothing, keyboard settings that never took.
+#
+# The Lua equivalent is hl.config{} with a NESTED table, so "a:b:c value"
+# becomes hl.config({ a = { b = { c = value } } }).
+#
+# `monitor` is special: it is not a config key but its own hl.monitor() call
+# taking output/mode/position/scale, so it is translated separately.
+set -euo pipefail
+
+[ $# -ge 2 ] || { echo "usage: hyprkeyword <keyword> <value...>" >&2; exit 2; }
+key="$1"; shift
+val="$*"
+
+lua_quote() { printf "%s" "$1" | sed "s/\\\\/\\\\\\\\/g; s/'/\\\\'/g"; }
+
+if [ "$key" = "monitor" ]; then
+    # "output,mode,position,scale[,extra...]" -> hl.monitor{...}
+    IFS=',' read -r out mode pos scale rest <<< "$val"
+    if [ "${mode:-}" = "disable" ] || [ "${mode:-}" = "disabled" ]; then
+        printf "hl.monitor({ output = '%s', disabled = true })" "$(lua_quote "$out")"
+    else
+        printf "hl.monitor({ output = '%s', mode = '%s', position = '%s', scale = '%s' })" \
+            "$(lua_quote "$out")" "$(lua_quote "${mode:-preferred}")" \
+            "$(lua_quote "${pos:-auto}")" "$(lua_quote "${scale:-1}")"
+    fi > /tmp/.hyprkeyword.$$
+else
+    # Build the nested table from the colon path.
+    IFS=':' read -ra parts <<< "$key"
+    open=""; close=""
+    for p in "${parts[@]}"; do
+        open+="{ ${p} = "
+        close+=" }"
+    done
+    # Numbers and booleans go through bare; everything else is a quoted string.
+    if [[ "$val" =~ ^-?[0-9]+(\.[0-9]+)?$ ]] || [ "$val" = "true" ] || [ "$val" = "false" ]; then
+        lit="$val"
+    else
+        lit="'$(lua_quote "$val")'"
+    fi
+    printf "hl.config(%s%s%s)" "${open}" "${lit}" "${close#\{ }" > /tmp/.hyprkeyword.$$
+    # ^ the first "{ " opened by the loop is consumed by hl.config's own paren
+fi
+
+code="$(cat /tmp/.hyprkeyword.$$)"; rm -f /tmp/.hyprkeyword.$$
+# HYPRKEYWORD_PRINT=1 shows the generated Lua instead of running it — the
+# translation is the part worth being able to inspect.
+if [ "${HYPRKEYWORD_PRINT:-0}" = "1" ]; then echo "$code"; exit 0; fi
+exec hyprctl eval "$code"

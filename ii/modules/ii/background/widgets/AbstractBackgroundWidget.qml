@@ -1,3 +1,4 @@
+import qs.services
 import QtQuick
 import Quickshell
 import Quickshell.Io
@@ -31,6 +32,30 @@ AbstractWidget {
     Behavior on scale {
         animation: Appearance.animation.elementResize.numberAnimation.createObject(this)
     }
+
+    // Published so the desktop-icons layer can cut these areas out of its input
+    // mask; it sits above this one and would otherwise swallow every drag.
+    // Resolves only once the item is parented into its window, which is after
+    // Component.onCompleted for anything behind a Loader. Publishing when it
+    // changes is what registers statically-placed widgets at all; the clock
+    // only worked because its placement animates.
+    readonly property string screenName: root.QsWindow.window?.screen?.name ?? ""
+    readonly property string regionKey: root.screenName + ":" + root.configEntryName
+
+    function publishRegion() {
+        if (root.screenName.length === 0)
+            return;
+        DesktopWidgetRegions.set(root.regionKey, root.screenName,
+            root.x, root.y, root.width, root.height);
+    }
+
+    onScreenNameChanged: publishRegion()
+    onXChanged: publishRegion()
+    onYChanged: publishRegion()
+    onWidthChanged: publishRegion()
+    onHeightChanged: publishRegion()
+    Component.onCompleted: publishRegion()
+    Component.onDestruction: DesktopWidgetRegions.clear(root.regionKey)
 
     draggable: placementStrategy === "free"
     onReleased: {

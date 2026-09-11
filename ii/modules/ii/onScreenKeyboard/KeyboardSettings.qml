@@ -13,8 +13,8 @@ import Quickshell.Wayland
 /**
  * KeyboardSettings — small panel opened from the OSK's "tune" button.
  * Exposes the Hyprland input{} keyboard knobs (repeat delay/rate, numlock,
- * resolve-binds-by-sym). Live-applies via `hyprctl keyword`, session-only —
- * footer warns you to copy to the hypr conf if you want persistence.
+ * resolve-binds-by-sym). Live-applies via the `eval` request and persists to
+ * lua/hyprland/shellOverrides/keyboard.lua, so changes survive a reboot.
  */
 Scope {
     id: root
@@ -63,19 +63,33 @@ Scope {
                 }}
             }
 
-            // Apply live AND persist. `hyprctl keyword` takes effect now; the
-            // upsert into hyprland/shellOverrides/keyboard.conf (sourced after
-            // general.conf) makes it survive a reboot. Idempotent: rewrites the
-            // key's line if present, else appends it.
+            // Apply live AND persist.
+            //
+            // Both halves of this were dead after the Lua migration:
+            //   • `hyprctl keyword` answers `unknown request` on a Lua config
+            //     — the live path is the `eval` request carrying Lua.
+            //   • hyprland/shellOverrides/keyboard.conf is no longer sourced;
+            //     hyprland.lua does require("lua.hyprland.shellOverrides.
+            //     keyboard"), i.e. it reads the .lua next to it.
+            // So every knob in this panel silently did nothing.
+            //
+            // Values are emitted unquoted, which is right for all four callers:
+            // repeat_delay/repeat_rate are ints, and numlock_by_default /
+            // resolve_binds_by_sym arrive as "true"/"false" — Lua boolean
+            // literals. Quoting them would make Hyprland ignore the field while
+            // still answering `ok`.
+            //
+            // Idempotent: rewrites the key's line if present, else appends.
             function setOpt(key, value) {
                 const v = String(value)
+                const line = `hl.config({ input = { ${key} = ${v} } })`
                 Quickshell.execDetached(["bash", "-c",
-                      `hyprctl keyword input:${key} '${v}' >/dev/null 2>&1; `
-                    + `f="$HOME/.config/hypr/hyprland/shellOverrides/keyboard.conf"; `
+                      `hyprctl eval '${line}' >/dev/null 2>&1; `
+                    + `f="$HOME/.config/hypr/lua/hyprland/shellOverrides/keyboard.lua"; `
                     + `mkdir -p "$(dirname "$f")"; touch "$f"; `
-                    + `if grep -qE '^input:${key} =' "$f"; then `
-                    +   `sed -i 's|^input:${key} =.*|input:${key} = ${v}|' "$f"; `
-                    + `else printf 'input:%s = %s\\n' '${key}' '${v}' >> "$f"; fi`
+                    + `if grep -qF 'input = { ${key} =' "$f"; then `
+                    +   `sed -i 's|^hl\\.config({ input = { ${key} = .*|${line}|' "$f"; `
+                    + `else printf '%s\\n' '${line}' >> "$f"; fi`
                 ])
             }
 

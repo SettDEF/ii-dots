@@ -96,8 +96,8 @@ Item {
                 implicitWidth: 26; implicitHeight: 26; radius: 13
                 color: refreshHov.hovered ? Appearance.colors.colLayer2 : "transparent"
                 Behavior on color { animation: Appearance.animation.elementMoveFast.colorAnimation.createObject(this) }
-                HoverHandler { id: refreshHov }
-                TapHandler { onTapped: root.scan() }
+                HoverHandler { margin: Appearance.sizes.touchSlop; id: refreshHov }
+                TapHandler { margin: Appearance.sizes.touchSlop; onTapped: root.scan() }
                 MaterialSymbol {
                     anchors.centerIn: parent
                     text: "refresh"

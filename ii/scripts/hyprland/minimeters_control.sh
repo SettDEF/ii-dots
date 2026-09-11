@@ -38,13 +38,13 @@ case "$CHOICE" in
         /home/caesar/Applications/MiniMeters-x86_64.AppImage &
         ;;
     *Pin*)
-        hyprctl dispatch pin "address:$ADDRESS"
+        hyprctl dispatch "hl.dsp.window.pin({ window = \"address:$ADDRESS\" })"
         ;;
     *Floating*)
-        hyprctl dispatch togglefloating "address:$ADDRESS"
+        hyprctl dispatch "hl.dsp.window.float({ action = \"toggle\", window = \"address:$ADDRESS\" })"
         ;;
     *Front*)
-        hyprctl dispatch focuswindow "address:$ADDRESS"
+        hyprctl dispatch "hl.dsp.focus({ window = \"address:$ADDRESS\" })"
         ;;
     *Restart*)
         pkill -ix minimeters

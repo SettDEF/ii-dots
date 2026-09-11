@@ -6,6 +6,7 @@ import QtQuick
 import qs
 import qs.services
 import qs.modules.common
+import qs.modules.common.functions
 import qs.modules.common.widgets
 import qs.modules.ii.screenDraw
 
@@ -94,15 +95,7 @@ Item {
             z: 2 // Sit on top of DrawCanvas to intercept right clicks
             acceptedButtons: Qt.RightButton
             onClicked: event => {
-                let sidebarContentRoot = null;
-                let p = parent;
-                while (p) {
-                    if (p.showContextMenu !== undefined) {
-                        sidebarContentRoot = p;
-                        break;
-                    }
-                    p = p.parent;
-                }
+                const sidebarContentRoot = ObjectUtils.findAncestorWith(canvasCtxMenuArea, "showContextMenu");
                 if (sidebarContentRoot) {
                     const items = [
                         { icon: "edit", label: Translation.tr("Pen"), onTriggered: () => GlobalStates.drawTool = "pen" },
@@ -155,16 +148,31 @@ Item {
             tool:        GlobalStates.drawTool
             strokeColor: GlobalStates.drawColor
             onToolPicked: function(t) { GlobalStates.drawTool = t }
-            onColorCyclePressed: {
-                const palette = ["#ff5a5a", "#f5d36e", "#5af7a8", "#5ab8f7",
-                                 "#c4a4f7", "#f7a8c4", "#ffffff", "#000000"]
-                const i = palette.indexOf(String(GlobalStates.drawColor))
-                GlobalStates.drawColor = palette[(i + 1) % palette.length]
-            }
+            onColorCyclePressed: colorPicker.open = !colorPicker.open
             onUndoPressed:  GlobalStates.drawUndo()
             onRedoPressed:  GlobalStates.drawRedo()
             onClearPressed: GlobalStates.drawClear()
             onSavePressed:  GlobalStates.drawSave()
+        }
+
+        // Loader, not just visible:false - an instantiated picker keeps its
+        // Canvas and bindings alive while the panel is closed.
+        Loader {
+            id: colorPicker
+            property bool open: false
+            active: open
+            visible: open
+            z: 11
+            anchors {
+                bottom: tools.top
+                horizontalCenter: parent.horizontalCenter
+                bottomMargin: 10
+            }
+            sourceComponent: ZenColorPicker {
+                width: Math.min(implicitWidth, colorPicker.parent.width - 24)
+                selectedColor: GlobalStates.drawColor
+                onPicked: function(c) { GlobalStates.drawColor = c }
+            }
         }
     }
 }

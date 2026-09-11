@@ -227,18 +227,46 @@ Scope {
         }
     }
 
-    // Reads /sys/class/leds once to seed the initial state — runs at
-    // startup so the OSD doesn't start out lying. After that we don't
-    // poll the LED at all; every Hyprland bindn flips our internal
-    // state instead (instant, never races with kernel LED updates).
+    // Reads the real LED state. Two things this must get right:
+    //
+    //  1. OR across EVERY *::capslock LED, not `head -n 1` of the glob.
+    //     Glob order puts input2 (the phantom "AT Translated Set 2
+    //     keyboard") ahead of input55 (the actual GZ302EA keyboard),
+    //     so head -n 1 always read the wrong device.
+    //  2. Emit only "0" or "1". A failed/empty read must NOT be
+    //     interpreted, or a transient miss silently forces OFF.
     Process {
-        id: capslockSeedProc
+        id: capslockReadProc
         running: true
-        command: ["bash", "-c", "cat /sys/class/leds/input*::capslock/brightness 2>/dev/null | head -n 1"]
+        command: ["bash", "-c",
+            "s=0; for f in /sys/class/leds/*::capslock/brightness; do [ -r \"$f\" ] || continue; v=$(cat \"$f\" 2>/dev/null); [ -n \"$v\" ] && [ \"$v\" != \"0\" ] && s=1; done; echo $s"]
         stdout: StdioCollector {
             onStreamFinished: {
-                root.capslockActive = !(text.trim() === "0" || text.trim() === "");
+                const v = text.trim();
+                // Ignore anything that isn't a clean 0/1 — better to keep
+                // the current guess than to flip on a failed read.
+                if (v === "0" || v === "1")
+                    root.capslockActive = (v === "1");
             }
+        }
+    }
+
+    // Re-read shortly after a press. The flip in trigger() is what makes
+    // the OSD feel instant; this is what stops it drifting. Without it the
+    // state was pure dead reckoning: ONE missed or extra event (IPC
+    // dropped while the shell was busy, the on-screen keyboard setting
+    // caps via Ydotool, the detachable keyboard re-enumerating) left the
+    // indicator inverted until the next shell reload.
+    Timer {
+        id: capslockVerify
+        interval: 150
+        repeat: false
+        onTriggered: {
+            // false→true, not a bare true: if a previous read is still in
+            // flight, assigning true again is a no-op and the verification
+            // would silently never happen.
+            capslockReadProc.running = false;
+            capslockReadProc.running = true;
         }
     }
 
@@ -246,11 +274,13 @@ Scope {
         target: "capslock"
 
         function trigger() {
-            // Flip the internal state on every press — Caps_Lock toggles
-            // the kernel LED on press too, so they always agree. Showing
-            // the OSD immediately also means rapid presses each get
-            // their own indicator instead of being eaten by a debounce.
+            // Flip immediately so the OSD is instant and rapid presses each
+            // get their own indicator instead of being eaten by a debounce.
+            // This is a GUESS: it assumes every press reaches us exactly once.
+            // capslockVerify below is what makes a wrong guess self-correct.
             root.capslockActive = !root.capslockActive;
+            // ...then confirm against the hardware and correct if we guessed wrong.
+            capslockVerify.restart();
             root.currentIndicator = "capslock";
             root.triggerOsd();
             KeyTracker.flashKey(root.capslockActive ? "CAPS ON" : "CAPS OFF");

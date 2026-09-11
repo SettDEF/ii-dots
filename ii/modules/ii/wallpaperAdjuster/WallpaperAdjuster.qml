@@ -170,6 +170,18 @@ Scope {
                                     audioOutput: AudioOutput { muted: true; volume: 0 }
                                     videoOutput: wpVidOut
                                     Component.onCompleted: play()
+                                    // The Loader stays active while
+                                    // panel.wallpaperPath changes, so picking a
+                                    // different video swaps `source` under a
+                                    // live player. setSource() resets playback
+                                    // to Stopped and Component.onCompleted has
+                                    // already fired, leaving a frozen frame.
+                                    onMediaStatusChanged: {
+                                        if ((mediaStatus === MediaPlayer.LoadedMedia
+                                             || mediaStatus === MediaPlayer.BufferedMedia)
+                                            && playbackState !== MediaPlayer.PlayingState)
+                                            play()
+                                    }
                                     onErrorOccurred: (e, msg) => console.warn("adjuster video:", e, msg)
                                     onMetaDataChanged: {
                                         const r = metaData.value(MediaMetaData.Resolution)

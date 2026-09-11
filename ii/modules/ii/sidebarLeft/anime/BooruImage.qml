@@ -25,6 +25,112 @@ Button {
     property int maxTagStringLineLength: 50
     property real imageRadius: Appearance.rounding.small
 
+    // ── Progressive quality ─────────────────────────────────────────────
+    // preview_url is a thumbnail — 150-300px on most boorus. Stretched to a
+    // row this tall it is visibly mush, and nothing ever asked for anything
+    // sharper. sample_url is already populated for every provider by
+    // Booru.qml, so the crisp copy was one binding away.
+    //
+    // The thumbnail still loads first, because it is small and arrives almost
+    // immediately; the sample decodes in the background and fades in over it.
+    // Nothing pops, and a slow sample never leaves an empty box.
+    property Item viewport: null
+
+    // Providers on the manualDownload list are fetched to disk precisely
+    // because they refuse hotlinking. Asking them for a sample over the
+    // network just produces a failed request per image.
+    readonly property string hqUrl: root.imageData.sample_url ?? ""
+    readonly property bool hqEligible: !root.manualDownload
+        && root.hqUrl.length > 0
+        && root.hqUrl !== root.imageData.preview_url
+
+    // Half a screen of margin either side, so scrolling reveals sharp images
+    // rather than a row of thumbnails that sharpen after they land.
+    readonly property real hqPreloadMargin: root.viewport ? root.viewport.height * 0.5 : 0
+    readonly property bool inView: {
+        if (!root.viewport) return false;
+        // Reading contentY is what makes this re-evaluate while scrolling:
+        // mapToItem is a function call, not a dependency, so the binding would
+        // otherwise be computed once and go stale the moment the list moved.
+        const scrollTick = root.viewport.contentY;
+        const pos = root.mapToItem(root.viewport, 0, 0);
+        if (!pos) return false;
+        return (pos.y + root.height) > -root.hqPreloadMargin
+            && pos.y < (root.viewport.height + root.hqPreloadMargin);
+    }
+
+    // Coming into view arms a short settle rather than firing at once, so
+    // flinging through a page does not queue a full-size fetch for every row
+    // that swept past. Hovering skips the wait entirely — see hqActive.
+    property bool hqSettled: false
+    Timer {
+        id: hqSettleTimer
+        interval: 140
+        onTriggered: root.hqSettled = true
+    }
+    onInViewChanged: {
+        if (root.inView && root.hqEligible) hqSettleTimer.restart();
+        else if (!root.inView) hqSettleTimer.stop();
+    }
+    // onInViewChanged does not fire for a delegate that is already on screen
+    // when it is built, which is most of the first page.
+    Component.onCompleted: if (root.inView && root.hqEligible) hqSettleTimer.restart()
+
+    // Once loaded it stays loaded. Dropping the source on scroll-away would
+    // re-fetch it the moment it came back.
+    readonly property bool hqActive: root.hqEligible && (root.hqSettled || root.hovered)
+
+    // The menu was built inline in the ⋮ button's onClicked, which meant it was
+    // the ONLY way to reach it — right-clicking the image, the obvious gesture,
+    // did nothing. Lifted onto root so the button and the right-click open the
+    // same list rather than two that drift apart.
+    function contextMenuItems() {
+        return [
+            { icon: "open_in_new", label: Translation.tr("Open file link"),
+              onTriggered: () => root.openWithoutWarp(root.imageData.file_url) },
+            ...(root.imageData.source && root.imageData.source.length > 0 ? [{
+                icon: "link",
+                label: Translation.tr("Go to source (%1)").arg(StringUtils.getDomain(root.imageData.source)),
+                onTriggered: () => root.openWithoutWarp(root.imageData.source)
+            }] : []),
+            { icon: "download", label: Translation.tr("Download"), onTriggered: () => {
+                const targetDir = root.imageData.is_nsfw ? root.nsfwPath : root.downloadPath;
+                const target = `${targetDir}/${root.fileName}`;
+                // The old command reported the SFW path in its notification even
+                // when the file had gone to the NSFW folder, because it built the
+                // message from downloadPath rather than the directory it used.
+                Quickshell.execDetached(["bash", "-c",
+                    FileUtils.fetchToFileCommand(root.imageData.file_url, target)
+                    + ` && notify-send ${FileUtils.shQuote(Translation.tr("Download complete"))} `
+                    + `${FileUtils.shQuote(target)} -a 'Shell'`
+                ])
+            }}
+        ];
+    }
+
+    // Opening a link warps the cursor to the new window; no_warps suppresses
+    // that for the duration. Both menu entries need it, so it lives here once.
+    function openWithoutWarp(url) {
+        if (!url || url.length === 0) return;
+        HyprDispatch.run("keyword cursor:no_warps true");
+        Qt.openUrlExternally(url);
+        HyprDispatch.run("keyword cursor:no_warps false");
+    }
+
+    function openContextMenu(anchorItem, x, y) {
+        const host = ObjectUtils.findAncestorWith(root, "showContextMenu");
+        if (!host) return;
+        host.showContextMenu(anchorItem, x, y, root.contextMenuItems());
+    }
+
+    // Right-click anywhere on the image. gesturePolicy keeps it from taking an
+    // exclusive grab, so the Button underneath still gets its own press.
+    TapHandler {
+        acceptedButtons: Qt.RightButton
+        gesturePolicy: TapHandler.ReleaseWithinBounds
+        onTapped: (eventPoint) => root.openContextMenu(root, eventPoint.position.x, eventPoint.position.y)
+    }
+
     ImageDownloaderProcess {
         id: imageDownloader
         running: root.manualDownload
@@ -79,6 +185,32 @@ Button {
             }
         }
 
+        // The sharp copy, drawn on top. StyledImage already holds opacity at 0
+        // until status is Ready and fades in, so the swap needs no extra state
+        // — and retainWhileLoading keeps this from blinking on re-decode.
+        StyledImage {
+            id: hqImageObject
+            anchors.fill: parent
+            width: root.rowHeight * modelData.aspect_ratio
+            height: root.rowHeight
+            fillMode: Image.PreserveAspectFit
+            source: root.hqActive ? root.hqUrl : ""
+            // Decode near the size actually drawn instead of at full
+            // resolution: a booru original can be 4000px on a side, and
+            // decoding a screenful of those is how you eat a gigabyte.
+            // Height alone keeps the aspect ratio.
+            sourceSize.height: Math.min(Math.ceil(root.rowHeight * 2), 2048)
+
+            layer.enabled: true
+            layer.effect: OpacityMask {
+                maskSource: Rectangle {
+                    width: root.rowHeight * modelData.aspect_ratio
+                    height: root.rowHeight
+                    radius: imageRadius
+                }
+            }
+        }
+
         RippleButton {
             id: menuButton
             anchors.top: parent.top
@@ -100,42 +232,7 @@ Button {
                 text: "more_vert"
             }
 
-            onClicked: {
-                let sidebarContentRoot = null;
-                let p = parent;
-                while (p) {
-                    if (p.showContextMenu !== undefined) {
-                        sidebarContentRoot = p;
-                        break;
-                    }
-                    p = p.parent;
-                }
-                if (sidebarContentRoot) {
-                    const items = [
-                        { icon: "open_in_new", label: Translation.tr("Open file link"), onTriggered: () => {
-                            Hyprland.dispatch("keyword cursor:no_warps true")
-                            Qt.openUrlExternally(root.imageData.file_url)
-                            Hyprland.dispatch("keyword cursor:no_warps false")
-                        }},
-                        ...(root.imageData.source && root.imageData.source.length > 0 ? [{
-                            icon: "link",
-                            label: Translation.tr("Go to source (%1)").arg(StringUtils.getDomain(root.imageData.source)),
-                            onTriggered: () => {
-                                Hyprland.dispatch("keyword cursor:no_warps true")
-                                Qt.openUrlExternally(root.imageData.source)
-                                Hyprland.dispatch("keyword cursor:no_warps false")
-                            }
-                        }] : []),
-                        { icon: "download", label: Translation.tr("Download"), onTriggered: () => {
-                            const targetPath = root.imageData.is_nsfw ? root.nsfwPath : root.downloadPath;
-                            Quickshell.execDetached(["bash", "-c", 
-                                `mkdir -p '${targetPath}' && curl '${root.imageData.file_url}' -o '${targetPath}/${root.fileName}' && notify-send '${Translation.tr("Download complete")}' '${root.downloadPath}/${root.fileName}' -a 'Shell'`
-                            ])
-                        }}
-                    ];
-                    sidebarContentRoot.showContextMenu(menuButton, 0, menuButton.height, items);
-                }
-            }
+            onClicked: root.openContextMenu(menuButton, 0, menuButton.height)
         }
     }
 }

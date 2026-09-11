@@ -304,12 +304,10 @@ Item {
         onRedoPressed:  drawCanvas.redo()
         onClearPressed: drawCanvas.clear()
         onToolPicked:  function(t) { GlobalStates.drawTool = t }
-        onColorCyclePressed: {
-            const palette = ["#ff5a5a", "#f5d36e", "#5af7a8", "#5ab8f7",
-                             "#c4a4f7", "#f7a8c4", "#ffffff", "#000000"]
-            const i = palette.indexOf(String(GlobalStates.drawColor))
-            GlobalStates.drawColor = palette[(i + 1) % palette.length]
-        }
+        // The swatch opens the picker, same as the sidebar. It used to step
+        // through a hardcoded list, which is why the fullscreen overlay had no
+        // way to reach the palettes at all.
+        onColorCyclePressed: colorPicker.open = !colorPicker.open
         onSavePressed: {
             const ts = new Date()
             const stamp = ts.getFullYear() + "-" +
@@ -323,6 +321,25 @@ Item {
             saveDrawingProc.command = ["bash", "-c", `mkdir -p '${root.saveDir}'`]
             saveDrawingProc.running = true
             Qt.callLater(root.refreshSavedDrawings)
+        }
+    }
+
+    // Loader, not visible:false — an instantiated picker keeps its Canvas and
+    // bindings alive while it is closed.
+    Loader {
+        id: colorPicker
+        property bool open: false
+        active: open
+        visible: open
+        z: 11
+        anchors {
+            bottom: tools.top
+            horizontalCenter: parent.horizontalCenter
+            bottomMargin: 10
+        }
+        sourceComponent: ZenColorPicker {
+            selectedColor: GlobalStates.drawColor
+            onPicked: function(c) { GlobalStates.drawColor = c }
         }
     }
 

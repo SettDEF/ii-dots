@@ -168,7 +168,79 @@ Singleton {
                 property string volumeMixer: `~/.config/hypr/hyprland/scripts/launch_first_available.sh "pavucontrol-qt" "pavucontrol"`
             }
 
+            // Touchpad speed profile (libinput sensitivity — not a grab).
+            // Context-switched pointer profiles. See services/KinetixProfiles.
+            property JsonObject kinetix: JsonObject {
+                property bool profilesEnabled: true
+                // [ { scope: "app"|"workspace"|"monitor", match, name,
+                //     settings: { ...engine fields... } } ]
+                // JSON text, not a map: a `property var` with dynamic keys
+                // inside a nested JsonObject segfaults Quickshell.
+                property string profiles: "[]"
+            }
+
+            property JsonObject kinetixTouchpad: JsonObject {
+                property bool enabled: false
+                property real sensitivity: 0.0   // -1 slow .. 0 default .. 1 fast
+                property bool flat: false        // flat = no acceleration
+            }
+
+            // On-screen stats overlay (FPS / net / CPU / GPU).
+            property JsonObject statsHud: JsonObject {
+                property string layout: "bar"        // bar | stack | compact | detailed
+                property string position: "top-right" // top-left|top-right|bottom-left|bottom-right
+                property real opacity: 0.88
+                property bool showIcons: true
+                property int marginX: 10
+                property int marginY: 10
+                property string iface: ""            // "" = auto-pick the busiest
+                // Free placement, set by dragging in edit mode. The corner is
+                // kept as well as the offsets: anchoring to the NEAREST corner
+                // means the overlay stays put when the screen resolution
+                // changes, which absolute coordinates would not.
+                property bool editMode: false
+                property int snapPx: 12              // magnet radius
+                property bool snapGrid: true         // magnet to edges/centres
+                property bool snapDots: false        // magnet to the dotted grid
+                property int gridSize: 20            // dotted-grid spacing (px)
+                property bool showGrid: true         // draw the grid while placing
+                // Used when layout == "custom": exactly the stats you ticked,
+                // in the order you put them.
+                property list<string> fields: ["fps", "cpu", "gpu", "ram", "net"]
+                // { appId: { layout, fields, position, opacity } }
+                // A game wants FPS and temps; a compile wants CPU and disk.
+                // Stored as JSON text because JsonAdapter has no map type.
+                property string appProfiles: "{}"
+                // How the overlay presents itself:
+                //   always  floating card, click-through, never in the way
+                //   peek    a thin tab at the edge that expands on hover
+                //   dock    a full-width strip pinned to an edge
+                // Remembered across restarts — an overlay you have to re-enable
+                // every time the shell reloads is not an overlay you leave on.
+                property bool enabled: false
+                property string mode: "always"
+                property int peekSize: 5        // px of tab left showing
+                property bool dockReserve: false // dock: push windows aside?
+                // Per-stat unit choices. The same number is useful in
+                // different shapes: a network rate as MB/s tells you about
+                // file transfers, as Mbit/s it tells you about your link
+                // speed. { statId: formatId } — see StatsHudBridge.formats.
+                property string units: "{}"
+            }
+
             property JsonObject background: JsonObject {
+                // Pack effect drawn over the wallpaper (path to its .json).
+                // Empty = off. This runs on OUR layer rather than through
+                // decoration:screen_shader, so it costs no damage-tracking
+                // and cannot fight the colour-grading sliders.
+                property string effect: ""
+                property real effectStrength: -1   // -1 = use the effect's own default
+                // Per-effect variable overrides, as JSON keyed by effect path:
+                //   { "<effect.json path>": { "<param id>": value } }
+                // Keyed by effect so switching effects and back keeps each
+                // one's tuning. A JSON string (not a JsonObject) because the
+                // shape is dynamic — one entry per effect the user has touched.
+                property string effectParams: "{}"
                 property JsonObject widgets: JsonObject {
                     property JsonObject clock: JsonObject {
                         property bool enable: true
@@ -216,7 +288,68 @@ Singleton {
                         property real x: 400
                         property real y: 100
                     }
+                    property JsonObject calendar: JsonObject {
+                        property bool enable: false
+                        property string placementStrategy: "free"
+                        property real x: 400
+                        property real y: 100
+                        property string sizeMode: "2x2"
+                    }
+                    property JsonObject worldClock: JsonObject {
+                        property bool enable: false
+                        property list<string> timezones: ["Australia/Sydney", "Asia/Tokyo", "Europe/London", "America/New_York"]
+                        property string placementStrategy: "free"
+                        property real x: 400
+                        property real y: 100
+                        property string sizeMode: "2x2"
+                        property int clockCount: 4
+                    }
+                    property JsonObject todo: JsonObject {
+                        property bool enable: false
+                        property string placementStrategy: "free"
+                        property real x: 400
+                        property real y: 100
+                    }
+                    property JsonObject userCard: JsonObject {
+                        property bool enable: false
+                        property string placementStrategy: "free"
+                        property real x: 400
+                        property real y: 100
+                        property string sizeMode: "1x2"
+                    }
+                    property JsonObject customImage: JsonObject {
+                        property bool enable: false
+                        property string placementStrategy: "free"
+                        property real x: 400
+                        property real y: 100
+                        property string path: ""
+                        property string shape: "Cookie4Sided"
+                        property real size: 200
+                    }
+                    property JsonObject visualizer: JsonObject {
+                        property bool enable: false
+                        property string placementStrategy: "free"
+                        property real x: 0
+                        property real y: 0
+                    }
+                    property JsonObject resources: JsonObject {
+                        property bool enable: false
+                        property string placementStrategy: "free"
+                        property real x: 400
+                        property real y: 100
+                        property bool vertical: false
+                    }
+                    property JsonObject timers: JsonObject {
+                        property bool enable: false
+                        property string placementStrategy: "free"
+                        property real x: 400
+                        property real y: 100
+                        property bool vertical: false
+                    }
                 }
+                // Freeze widgets where they are, so a stray drag can't shove
+                // one off the desktop.
+                property bool widgetsLocked: false
                 property string wallpaperPath: ""
                 // The ORIGINAL source file — set alongside wallpaperPath by
                 // every apply site. For direct applies this equals
@@ -275,7 +408,17 @@ Singleton {
                     property int memoryWarningThreshold: 95
                     property int swapWarningThreshold: 85
                     property int cpuWarningThreshold: 90
+                    // CPU/RAM/swap readout on the bar beside the active-window
+                    // pill (key name predates the move out of the pill itself):
+                    // 0 = never, 1 = only the ones near critical, 2 = always.
+                    property int showInWindowPill: 1
+                    // Percentage at which RAM/swap/CPU counts as near critical
+                    // for the mode above.
+                    property int criticalThreshold: 85
                 }
+                // Spectrum in the media island. Costs a cava process while
+                // something plays, so it's a switch.
+                property bool showVisualizer: true
                 property list<string> screenList: [] // List of names, like "eDP-1", find out with 'hyprctl monitors' command
                 property JsonObject utilButtons: JsonObject {
                     property bool showScreenSnip: true
@@ -295,6 +438,16 @@ Singleton {
                     property int showNumberDelay: 300 // milliseconds
                     property list<string> numberMap: ["1", "2"] // Characters to show instead of numbers on workspace indicator
                     property bool useNerdFont: false
+                    // Roman numerals (I, II, III...) vs plain digits on the
+                    // workspace slots. Separate from useNerdFont, which swaps
+                    // the glyph set entirely.
+                    property bool romanNumerals: true
+                    // The cookie blob's spin + numeral flash on every workspace
+                    // change. Purely decorative; off makes switching silent.
+                    property bool switchFlash: true
+                    // The media / notification slot on the right of the island
+                    // (play button, track title, transport controls).
+                    property bool showMediaContext: true
                     // Slot + active-indicator shape:
                     //   "cookie"   = squircle blob (default, 4-sided SineCookie)
                     //   "pill"     = round occupied chips + circular active dot
@@ -360,6 +513,10 @@ Singleton {
 
             property JsonObject dock: JsonObject {
                 property bool enable: false
+                property bool showBackground: true
+                property bool showPinButton: true
+                property bool showAppsButton: true
+                property bool showMedia: true
                 property bool monochromeIcons: true
                 property real height: 60
                 property real hoverRegionHeight: 2
@@ -393,6 +550,38 @@ Singleton {
 
             property JsonObject launcher: JsonObject {
                 property list<string> pinnedApps: [ "org.kde.dolphin", "kitty", "cmake-gui"]
+
+                // ── Ordering ─────────────────────────────────────────────
+                // frecency | relevance | frequency | recent | alphabetical
+                property string sortMode: "frecency"
+                property bool reverseSort: false
+                // Manual per-entry importance, highest first. An ORDERED LIST
+                // rather than an {id: rank} map on purpose: dynamic keys in a
+                // nested JsonObject are exactly what the JsonAdapter cannot
+                // store safely. Mirrors pinnedApps above.
+                property list<string> priorityApps: []
+                // Applied as a boost on top of whatever sortMode is active, so
+                // prioritising something doesn't force you out of relevance.
+                property bool usePriorityBoost: true
+
+                // ── Usage tracking ───────────────────────────────────────
+                // Counts live in ii/services/LauncherRanking.qml, not here —
+                // they're hot and dynamically keyed.
+                property bool trackUsage: true
+                // Days until a launch counts half as much, for "Smart" sort.
+                property real frecencyHalfLife: 14
+
+                // ── Which entries appear ─────────────────────────────────
+                property list<string> hiddenApps: []
+                property bool showHidden: false
+                property bool showTerminalApps: true
+                property bool showDesktopActions: true
+                property int maxResults: 15
+
+                // ── Row appearance ───────────────────────────────────────
+                property bool showLaunchCounts: false
+                property bool showDescriptions: true
+                property bool compactRows: false
             }
 
             property JsonObject light: JsonObject {
@@ -441,6 +630,15 @@ Singleton {
 
             property JsonObject notifications: JsonObject {
                 property int timeout: 7000
+                // Shell-played notification sound. Lets the shell be the single,
+                // controllable source of notification sound (respecting per-app
+                // mute + the global silent toggle) — disable the apps' own
+                // sounds (e.g. Telegram) so this isn't doubled.
+                property bool sound: true
+                // freedesktop sound-theme event id (played via canberra-gtk-play,
+                // honours the user's sound theme). e.g. "message-new-instant",
+                // "bell", "dialog-information".
+                property string soundName: "message-new-instant"
             }
 
             property JsonObject osd: JsonObject {
@@ -448,7 +646,13 @@ Singleton {
             }
 
             property JsonObject osk: JsonObject {
-                property string layout: "qwerty_full"
+                // Manual layout, used only when followSystemLayout is false.
+                // Must be a key of onScreenKeyboard/layouts.js `byName`
+                // ("English (US)", "German", "Russian") — the previous default
+                // "qwerty_full" was not one, so it silently fell back.
+                property string layout: "English (US)"
+                // Draw the keymap of the keyboard currently in use.
+                property bool followSystemLayout: true
                 property bool pinnedOnStartup: false
             }
 
@@ -555,6 +759,12 @@ Singleton {
                     property bool enable: false
                     property int delay: 300 // Delay before sending request. Reduces (potential) rate limits and lag.
                 }
+                property JsonObject finance: JsonObject {
+                    // Shown even before a bank is linked, because the tab is
+                    // where the setup lives — gating it on having data made the
+                    // setup screen unreachable.
+                    property bool enable: true
+                }
                 property JsonObject ai: JsonObject {
                     property bool textFadeIn: false
                 }
@@ -632,6 +842,10 @@ Singleton {
 
             property JsonObject screenSnip: JsonObject {
                 property string savePath: "" // only copy to clipboard when empty
+                // Include the mouse cursor in captures (grim -c). Off by default:
+                // a cursor in a UI screenshot is usually noise, but it's the
+                // whole point when documenting a hover or drag.
+                property bool includeCursor: false
             }
 
             property JsonObject sounds: JsonObject {
@@ -668,6 +882,8 @@ Singleton {
             property JsonObject windows: JsonObject {
                 property bool showTitlebar: true // Client-side decoration for shell apps
                 property bool centerTitle: true
+                property bool useThemeColorsForDecorations: false // false = macOS Traffic Lights, true = Material Theme
+                property bool showButtonIconsOnHover: false // false = Always show icons, true = Show icons on hover only
             }
 
             property JsonObject hacks: JsonObject {

@@ -47,6 +47,17 @@ MouseArea {
         _reapplyFilters()
     }
 
+    /* This panel is a general explorer now, so anything that only makes sense
+       for wallpapers is hidden unless you are actually in a wallpaper context:
+       browsing inside the wallpapers tree, or with a media-only filter on.
+       Otherwise the Hub sits in the toolbar while you are looking at, say,
+       ~/Documents, where it means nothing. */
+    readonly property string wallpaperRoot:
+        FileUtils.trimFileProtocol(Directories.pictures).replace(/\/+$/, "") + "/Wallpapers"
+    readonly property bool wallpaperContext:
+        root.typeFilter !== "all"
+        || String(Wallpapers.effectiveDirectory ?? "").startsWith(root.wallpaperRoot)
+
     // Derived extension list — drives Wallpapers.nameFilters indirectly.
     readonly property var activeExtensions: {
         switch (typeFilter) {
@@ -61,12 +72,17 @@ MouseArea {
         function onSearchQueryChanged() { root._reapplyFilters() }
     }
     function _reapplyFilters() {
-        const exts = root.activeExtensions
         const q = (Wallpapers.searchQuery || "").split(" ").filter(s => s.length > 0)
-        const patterns = exts.map(ext =>
-            q.length > 0
-                ? q.map(s => `*${s}*`).join("") + `*.${ext}`
-                : `*.${ext}`)
+        const stem = q.length > 0 ? q.map(s => `*${s}*`).join("") : ""
+        // "all" now means every file, not just media: this panel doubles as a
+        // plain file explorer, and filtering to image/video extensions was why
+        // browsing Home showed folders and nothing else.
+        //
+        // The catch-all must be an explicit "*" - an EMPTY nameFilters list
+        // matches NOTHING in FolderListModel, which reads as an empty folder.
+        const patterns = root.typeFilter === "all"
+            ? [`${stem}*`]
+            : root.activeExtensions.map(ext => `${stem}*.${ext}`)
         Wallpapers.folderModel.nameFilters = patterns
         // FolderListModel sortField: 0 Unsorted, 1 Name, 2 Time, 3 Size, 4 Type.
         switch (root.sortMode) {
@@ -146,6 +162,26 @@ MouseArea {
             }
         }
         return false;
+    }
+
+    // Anything the wallpaper pipeline can actually accept.
+    function _isMedia(path) {
+        const s = String(path).toLowerCase();
+        return Wallpapers.allExtensions.some(ext => s.endsWith("." + ext));
+    }
+
+    /* What activating a row does. Media still goes to the wallpaper path;
+       everything else opens in its default application, because setting a
+       .txt as a wallpaper is not a thing. The explicit "Apply wallpaper"
+       context-menu entry still calls selectWallpaperPath directly. */
+    function activatePath(filePath) {
+        if (!filePath || filePath.length === 0)
+            return;
+        if (root._isMedia(filePath)) {
+            root.selectWallpaperPath(filePath);
+            return;
+        }
+        Quickshell.execDetached(["xdg-open", FileUtils.trimFileProtocol(filePath)]);
     }
 
     function selectWallpaperPath(filePath) {
@@ -629,7 +665,7 @@ notify-send -a "WallTune" -i "color-management" "WallTune" "Applied custom confi
                             pixelSize: Appearance.font.pixelSize.normal
                             weight: Font.Medium
                         }
-                        text: Translation.tr("Pick a wallpaper")
+                        text: Translation.tr("Files")
                     }
                     ListView {
                         // Quick dirs
@@ -637,12 +673,21 @@ notify-send -a "WallTune" -i "color-management" "WallTune" "Applied custom confi
                         Layout.margins: 4
                         implicitWidth: 140
                         clip: true
+                        // Top half mirrors Dolphin's Places, so the two agree
+                        // on what your shortcuts are. Falls back to the XDG
+                        // dirs when that file is absent (no Dolphin, or never
+                        // customised). The wallpaper-specific entries below
+                        // the separator stay ours either way.
                         model: [
-                            { icon: "home", name: "Home", path: Directories.home },
-                            { icon: "docs", name: "Documents", path: Directories.documents },
-                            { icon: "download", name: "Downloads", path: Directories.downloads },
-                            { icon: "image", name: "Pictures", path: Directories.pictures },
-                            { icon: "movie", name: "Videos", path: Directories.videos },
+                            ...(DolphinPlaces.places.length > 0
+                                ? DolphinPlaces.places
+                                : [
+                                    { icon: "home", name: "Home", path: Directories.home },
+                                    { icon: "docs", name: "Documents", path: Directories.documents },
+                                    { icon: "download", name: "Downloads", path: Directories.downloads },
+                                    { icon: "image", name: "Pictures", path: Directories.pictures },
+                                    { icon: "movie", name: "Videos", path: Directories.videos },
+                                ]),
                             { icon: "", name: "---", path: "INTENTIONALLY_INVALID_DIR" },
                             { icon: "wallpaper", name: "Wallpapers", path: `${Directories.pictures}/Wallpapers` },
                             // Direct shortcut to the SkwdWall download folder
@@ -721,6 +766,7 @@ notify-send -a "WallTune" -i "color-management" "WallTune" "Applied custom confi
                     // Open Wallpaper Hub (skwd-wall dube) — local + Wallhaven + Reddit
                     RippleButton {
                         id: hubButton
+                        visible: root.wallpaperContext
                         Layout.alignment: Qt.AlignVCenter
                         Layout.rightMargin: 4
                         implicitHeight: 36
@@ -834,14 +880,14 @@ notify-send -a "WallTune" -i "color-management" "WallTune" "Applied custom confi
 
                                 BottomFadeOverlay {
                                     anchors { left: parent.left; right: parent.right; bottom: parent.bottom }
-                                    visible: rGridHov.hovered
+                                    visible: rGridHov.hovered || Appearance.touchUi
                                     barHeight: 22
                                     elide: Text.ElideMiddle
                                     text: FileUtils.fileNameForPath(modelData)
                                 }
 
                                 HoverHandler { id: rGridHov }
-                                TapHandler { onTapped: root.selectWallpaperPath(modelData) }
+                                TapHandler { onTapped: root.activatePath(modelData) }
                                 MouseArea {
                                     anchors.fill: parent
                                     acceptedButtons: Qt.RightButton
@@ -892,7 +938,7 @@ notify-send -a "WallTune" -i "color-management" "WallTune" "Applied custom confi
 
                         function activateCurrent() {
                             const filePath = grid.model.get(currentIndex, "filePath")
-                            root.selectWallpaperPath(filePath);
+                            root.activatePath(filePath);
                         }
 
                         model: Wallpapers.folderModel
@@ -916,7 +962,7 @@ notify-send -a "WallTune" -i "color-management" "WallTune" "Applied custom confi
                             }
                             
                             onActivated: {
-                                root.selectWallpaperPath(fileModelData.filePath);
+                                root.activatePath(fileModelData.filePath);
                             }
                             onContextRequested: (mx, my) => {
                                 const p = mapToItem(root, mx, my);

@@ -20,6 +20,15 @@ Singleton {
         Quickshell.execDetached(["loginctl", "lock-session"]);
     }
 
+    // Lock the session and blank the displays — a gentle "power off" that
+    // isn't a shutdown. The short delay lets the lock surface come up before
+    // the panels go dark; any input (mouse/key) turns them back on to the
+    // lock screen. Nothing is powered down, so it wakes instantly.
+    function screenOffAndLock() {
+        Quickshell.execDetached(["loginctl", "lock-session"]);
+        Quickshell.execDetached(["bash", "-c", "sleep 0.4; hyprctl dispatch 'hl.dsp.dpms(\"off\")'"]);
+    }
+
     function suspend() {
         Quickshell.execDetached(["bash", "-c", "systemctl suspend || loginctl suspend"]);
     }

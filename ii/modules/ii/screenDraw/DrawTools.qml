@@ -51,11 +51,26 @@ Rectangle {
     
     // Auto-collapse on hover leave, toggle manually on tap.
     property bool manualOpen: false
-    readonly property bool expanded: manualOpen || (hoverArea.hovered && availableWidth >= 440)
+
+    // What the expanded row actually needs, derived from the same numbers the
+    // groups below are built from. The gate used to be a hardcoded 440, which
+    // the 460px left sidebar never reaches once its gaps and margins come off —
+    // so the expand button silently did nothing there.
+    readonly property int btnSize: 36
+    readonly property int btnGap: 4
+    readonly property int historyWidth: btnSize + btnGap + btnSize + btnGap + 1
+    readonly property int toolsWidth: 4 * btnSize + 3 * btnGap
+    readonly property int actionsWidth: 1 + btnGap + btnSize + btnGap + btnSize
+    readonly property int expandedWidth:
+        historyWidth + toolsWidth + btnSize + actionsWidth + 3 * btnGap + 16
+
+    readonly property bool expanded:
+        (manualOpen || hoverArea.hovered) && availableWidth >= root.expandedWidth
 
     implicitHeight: 50
-    implicitWidth: mainRow.implicitWidth + 16
+    implicitWidth: Math.min(mainRow.implicitWidth + 16, Math.max(0, availableWidth - 16))
     radius: 25
+    clip: true
     color: Appearance.m3colors.m3surfaceContainerHigh
     border.width: 1
     border.color: Appearance.colors.colLayer0Border

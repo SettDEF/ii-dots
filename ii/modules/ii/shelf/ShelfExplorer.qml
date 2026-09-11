@@ -129,8 +129,9 @@ Item {
                 opacity: root.navHistory.length > 0 ? 1 : 0.22
                 Behavior on color { animation: Appearance.animation.elementMoveFast.colorAnimation.createObject(this) }
                 Behavior on opacity { NumberAnimation { duration: 150 } }
-                HoverHandler { id: backHov }
+                HoverHandler { margin: Appearance.sizes.touchSlop; id: backHov }
                 TapHandler {
+                    margin: Appearance.sizes.touchSlop
                     enabled: root.navHistory.length > 0
                     onTapped: root.goBack()
                 }

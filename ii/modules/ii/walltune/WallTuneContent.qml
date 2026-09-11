@@ -64,7 +64,11 @@ Rectangle {
     // total — drives the indeterminate-but-not-quite top strip and the button
     // label so the user sees the apply moving, not a frozen spinner.
     property string currentPhase: ""
-    readonly property var phaseOrder: ["start", "remap", "tune", "extract", "apply", "history", "done"]
+    // "apply" sits before "extract": that's the real step order in the
+    // both/wallpaper pipelines (wallpaper switches first, theme follows).
+    // colors-mode runs its instant jq snap-back after extract, which briefly
+    // steps the bar backward — invisible in practice (<50ms step).
+    readonly property var phaseOrder: ["start", "remap", "tune", "apply", "extract", "history", "done"]
     readonly property real progress: {
         if (!processing) return 0
         const i = phaseOrder.indexOf(currentPhase)
@@ -80,6 +84,7 @@ Rectangle {
             case "apply":   return qsTr("Applying wallpaper")
             case "history": return qsTr("Saving snapshot")
             case "done":    return qsTr("Finalising")
+            case "error":   return qsTr("Failed — theme not applied")
             default:        return qsTr("Working")
         }
     }
@@ -184,6 +189,17 @@ Rectangle {
     property bool practicalOpen: false
     property bool curveOpen:     false
     property bool remapOpen:     false
+    // Adjustments was the one section here with no disclosure: ten full-width
+    // sliders, always expanded, directly above Reprocess. Every peer section
+    // collapses, so it now does too — and the header carries a count so a
+    // closed section can still say that something inside it is set.
+    property bool adjustOpen:    false
+    readonly property int adjustChangedCount: {
+        let n = 0
+        for (const d of root.sliderDefs)
+            if (Math.round(root[d.prop] - 50) !== 0) n++
+        return n
+    }
 
     // Palette remap (post-process via rdmcpape)
     property string remapPalette: ""        // "" = off, "matugen", or named ("pastel", etc.)
@@ -434,17 +450,27 @@ Rectangle {
         onRunningChanged: {
             if (running) {
                 root.currentPhase = "start"
+                watchdogTimer.restart()
             } else if (root._rerunPending) {
                 // Cancelled to apply newer state — keep `processing` true so
                 // the button doesn't flash to "Reprocess" between cancel and
                 // restart; rerunTimer will re-enter reprocess().
+                watchdogTimer.stop()
                 root._rerunPending = false
                 root.currentPhase = "start"
                 rerunTimer.restart()
             } else {
+                watchdogTimer.stop()
                 root.processing = false
-                root.currentPhase = "done"
-                phaseClearTimer.restart()
+                if (root.currentPhase === "error") {
+                    // Failed run (ERR trap / watchdog / missing source):
+                    // keep the red "Failed" label up long enough to be seen
+                    // instead of pretending the apply finished.
+                    errorHoldTimer.restart()
+                } else {
+                    root.currentPhase = "done"
+                    phaseClearTimer.restart()
+                }
             }
         }
     }
@@ -452,7 +478,22 @@ Rectangle {
     // then clear so a stale phase doesn't flash on next run before SplitParser
     // delivers the first marker.
     Timer { id: phaseClearTimer; interval: 500; repeat: false; onTriggered: root.currentPhase = "" }
+    Timer { id: errorHoldTimer; interval: 6000; repeat: false; onTriggered: root.currentPhase = "" }
     Timer { id: rerunTimer; interval: 60; repeat: false; onTriggered: root.reprocess() }
+    // Last line of defence: a pipeline that produces no exit for minutes
+    // (hung dbus call, blocked helper, dead pipe) used to freeze the panel
+    // on its last phase forever. Kill it and surface the failure instead.
+    Timer {
+        id: watchdogTimer
+        interval: 180000; repeat: false
+        onTriggered: {
+            if (!reprocessProc.running) return
+            console.warn("[WallTune] reprocess watchdog fired — killing hung pipeline at phase:", root.currentPhase)
+            root.currentPhase = "error"
+            root._rerunPending = false
+            reprocessProc.running = false
+        }
+    }
 
     Process { id: saveProc }
 
@@ -804,7 +845,7 @@ Rectangle {
             pipelineSteps = [
                 ["remap",   preRemapStep],
                 ["tune",    magickArgsColors.map(a => `'${a.replace(/'/g, "'\\''")}'`).join(" ")],
-                ["extract", `'${switchwall}' --image '${colorsTmp}' --mode ${mode} --no-wallpaper-update ${schemeArg} ${theoryArg} ${styleArg} ${practicalArg} ${remapArg} ${mixOrderArg}`],
+                ["extract", `timeout 150 '${switchwall}' --image '${colorsTmp}' --mode ${mode} --no-wallpaper-update ${schemeArg} ${theoryArg} ${styleArg} ${practicalArg} ${remapArg} ${mixOrderArg}`],
                 // Snap wallpaperPath back to the source so the bg layer shows
                 // the un-edited wallpaper.
                 ["apply",   `jq --arg p '${srcWall}' --arg src '${srcWall}' '.background.wallpaperPath = $p | .background.wallpaperSourcePath = $src' '${cfg}' > '${cfg}.tmp' && mv '${cfg}.tmp' '${cfg}'`],
@@ -818,15 +859,21 @@ Rectangle {
                 ["tune",    args.map(a => `'${a.replace(/'/g, "'\\''")}'`).join(" ")],
                 ["apply",   `jq --arg p '${tmp}' --arg src '${srcWall}' '.background.wallpaperPath = $p | .background.wallpaperSourcePath = $src' '${cfg}' > '${cfg}.tmp' && mv '${cfg}.tmp' '${cfg}'`],
                 // Theme reset: matugen on the source wallpaper, no path change.
-                ["extract", `'${switchwall}' --image '${srcWall}' --mode ${mode} --no-wallpaper-update ${schemeArg}`],
+                ["extract", `timeout 150 '${switchwall}' --image '${srcWall}' --mode ${mode} --no-wallpaper-update ${schemeArg}`],
             ]
         } else { // "both"
-            // Remap source → magick adjustments on top → theme from the final.
+            // Remap source → magick adjustments on top → SET WALLPAPER → theme
+            // from the final image. The wallpaper switch runs BEFORE theme
+            // extraction on purpose: extract is the slowest, most failure-prone
+            // step (external helpers, dbus) and when it ran first, any hang or
+            // failure there meant the freshly tuned image never reached the
+            // screen at all. This order also flips the wallpaper instantly —
+            // colors follow a moment later.
             pipelineSteps = [
                 ["remap",   preRemapStep],
                 ["tune",    args.map(a => `'${a.replace(/'/g, "'\\''")}'`).join(" ")],
-                ["extract", `'${switchwall}' --image '${tmp}' --mode ${mode} --no-wallpaper-update ${schemeArg} ${theoryArg} ${styleArg} ${practicalArg} ${remapArg} ${mixOrderArg}`],
                 ["apply",   `jq --arg p '${tmp}' --arg src '${srcWall}' '.background.wallpaperPath = $p | .background.wallpaperSourcePath = $src' '${cfg}' > '${cfg}.tmp' && mv '${cfg}.tmp' '${cfg}'`],
+                ["extract", `timeout 150 '${switchwall}' --image '${tmp}' --mode ${mode} --no-wallpaper-update ${schemeArg} ${theoryArg} ${styleArg} ${practicalArg} ${remapArg} ${mixOrderArg}`],
             ]
         }
 
@@ -846,7 +893,15 @@ Rectangle {
 
         const script = [
             "set -e",
+            // Any step failing (or timing out) prints the error marker so the
+            // panel shows "Failed" instead of silently freezing/no-opping.
+            `trap 'echo "WT_PHASE:error"' ERR`,
             `mkdir -p '${cacheDir}'`,
+            // Guard: a missing/garbage source wallpaper (e.g. config.wallpaperPath
+            // clobbered to "--help") makes magick fail and, under set -e, aborts the
+            // whole pipeline BEFORE switchwall — so colours silently never apply.
+            // Fail loudly with an error phase instead of a confusing no-op.
+            `[ -f '${srcWall}' ] || { echo "WT_PHASE:error"; echo "walltune: source wallpaper not found: '${srcWall}'" >&2; exit 1; }`,
             `echo "WT_PHASE:start"`,
             lutStep,
             ...phasedShell,
@@ -954,18 +1009,21 @@ Rectangle {
         // visible enough that you know *which* stage you're in without
         // scrolling down to the button.
         StyledText {
-            visible: root.processing && root.phaseLabel !== ""
+            // Also shown (in error red) after a failed run, until the
+            // error-hold timer clears the phase — otherwise a failure is
+            // indistinguishable from success.
+            visible: (root.processing || root.currentPhase === "error") && root.phaseLabel !== ""
             text: root.phaseLabel
             font.pixelSize: Appearance.font.pixelSize.smaller - 2
-            color: Appearance.colors.colPrimary
-            opacity: root.processing ? 0.85 : 0
+            color: root.currentPhase === "error" ? Appearance.m3colors.m3error : Appearance.colors.colPrimary
+            opacity: (root.processing || root.currentPhase === "error") ? 0.85 : 0
             Behavior on opacity { NumberAnimation { duration: 180 } }
         }
         Rectangle {
             implicitWidth: 24; implicitHeight: 24; radius: 12
             color: xHov.hovered ? Appearance.colors.colLayer2 : "transparent"
-            HoverHandler { id: xHov }
-            TapHandler { onTapped: GlobalStates.wallTuneOpen = false }
+            HoverHandler { margin: Appearance.sizes.touchSlop; id: xHov }
+            TapHandler { margin: Appearance.sizes.touchSlop; onTapped: GlobalStates.wallTuneOpen = false }
             MaterialSymbol { anchors.centerIn: parent; text: "close"; iconSize: Appearance.font.pixelSize.small; color: Appearance.colors.colOnLayer0; opacity: 0.4 }
         }
     }
@@ -1045,6 +1103,8 @@ Rectangle {
     ColumnLayout {
         id: col
         width: scroll.width
+        // 10, not 13. Every section, card and pill row in the panel sits in
+        // this column, so this one number sets the panel's overall density.
         spacing: 10
 
         // Wallpaper preview
@@ -1098,8 +1158,8 @@ Rectangle {
                 color: cropHov.hovered ? Appearance.colors.colPrimary : Qt.alpha("black", 0.55)
                 border.width: 1; border.color: Qt.alpha("white", 0.25)
                 Behavior on color { ColorAnimation { duration: 140 } }
-                HoverHandler { id: cropHov }
-                TapHandler { onTapped: GlobalStates.requestAdjusterOpen(0) }
+                HoverHandler { margin: Appearance.sizes.touchSlop; id: cropHov }
+                TapHandler { margin: Appearance.sizes.touchSlop; onTapped: GlobalStates.requestAdjusterOpen(0) }
                 MaterialSymbol {
                     anchors.centerIn: parent
                     text: "crop"
@@ -1289,6 +1349,7 @@ Rectangle {
                                 MouseArea {
                                     id: closeMa
                                     anchors.fill: parent
+                                    anchors.margins: -Appearance.sizes.touchSlop
                                     hoverEnabled: true
                                     cursorShape: Qt.PointingHandCursor
                                     preventStealing: true
@@ -1346,7 +1407,7 @@ Rectangle {
                     delegate: Rectangle {
                         required property var modelData
                         readonly property bool active: GlobalStates.wallTransition === modelData.id
-                        implicitWidth: tRow.implicitWidth + 12; implicitHeight: 26; radius: 13
+                        implicitWidth: tRow.implicitWidth + 14; implicitHeight: 28; radius: 14
                         color: active ? Appearance.colors.colSecondaryContainer : (tHov.hovered ? Appearance.colors.colLayer2 : Appearance.colors.colLayer1)
                         Behavior on color { ColorAnimation { duration: 100 } }
                         HoverHandler { id: tHov }
@@ -1453,15 +1514,21 @@ Rectangle {
         // 1.30 = punchy. Off = disable entirely.
         Rectangle {
             Layout.fillWidth: true
-            implicitHeight: parallaxCol.implicitHeight + 14
-            radius: 14
+            // +24 with 12px inner margins, same as the Effect card. It was
+            // +14 with 10px margins, so the two cards sat at visibly
+            // different densities right next to each other.
+            implicitHeight: parallaxCol.implicitHeight + 24
+            // Card chrome, shared with the Effect card below: one radius from
+            // the ramp and one border, instead of 14-with-border here and
+            // 17-without there.
+            radius: Appearance.rounding.normal
             color: Appearance.colors.colLayer1
             border.width: 1
             border.color: Appearance.colors.colLayer0Border
 
             ColumnLayout {
                 id: parallaxCol
-                anchors { left: parent.left; right: parent.right; verticalCenter: parent.verticalCenter; margins: 10 }
+                anchors { left: parent.left; right: parent.right; verticalCenter: parent.verticalCenter; margins: 12 }
                 spacing: 4
 
                 RowLayout {
@@ -1486,6 +1553,7 @@ Rectangle {
                             : Qt.alpha(Appearance.colors.colOnLayer0, 0.20)
                         Behavior on color { ColorAnimation { duration: 140 } }
                         TapHandler {
+                            margin: Appearance.sizes.touchSlop
                             onTapped: Config.options.background.parallax.enableWorkspace =
                                 !Config.options.background.parallax.enableWorkspace
                         }
@@ -1519,11 +1587,43 @@ Rectangle {
                     Slider {
                         id: zoomSlider
                         Layout.fillWidth: true
+                        implicitHeight: 16
                         from: 1.00
                         to:   1.30
                         stepSize: 0.01
                         value: Config.options.background.parallax.workspaceZoom
                         onMoved: Config.options.background.parallax.workspaceZoom = value
+
+                        // Custom M3-style track + thumb (the default QtQuick
+                        // Slider's big dark knob looked out of place next to the
+                        // panel's pill controls). Thin rounded groove, primary
+                        // fill up to the thumb, small primary thumb that grows
+                        // on press.
+                        background: Rectangle {
+                            x: zoomSlider.leftPadding
+                            y: zoomSlider.topPadding + zoomSlider.availableHeight / 2 - height / 2
+                            width: zoomSlider.availableWidth
+                            height: 4
+                            radius: 2
+                            color: Qt.alpha(Appearance.colors.colOnLayer0, 0.15)
+                            Rectangle {
+                                width: zoomSlider.position * parent.width
+                                height: parent.height
+                                radius: parent.radius
+                                color: Appearance.colors.colPrimary
+                            }
+                        }
+                        handle: Rectangle {
+                            x: zoomSlider.leftPadding + zoomSlider.position * (zoomSlider.availableWidth - width)
+                            y: zoomSlider.topPadding + zoomSlider.availableHeight / 2 - height / 2
+                            implicitWidth: 14
+                            implicitHeight: 14
+                            radius: 7
+                            color: Appearance.colors.colPrimary
+                            scale: zoomSlider.pressed ? 1.25 : (zoomHov.hovered ? 1.1 : 1)
+                            Behavior on scale { NumberAnimation { duration: 100; easing.type: Easing.OutCubic } }
+                            HoverHandler { id: zoomHov }
+                        }
                     }
                     StyledText {
                         text: Math.round(Config.options.background.parallax.workspaceZoom * 100) + "%"
@@ -1532,6 +1632,88 @@ Rectangle {
                         Layout.preferredWidth: 38
                         horizontalAlignment: Text.AlignRight
                     }
+                }
+            }
+        }
+
+        // ── Wallpaper effect ────────────────────────────────────────────
+        // A pack effect drawn on the wallpaper layer. Deliberately NOT
+        // decoration:screen_shader: this runs on a surface we already render,
+        // so it costs no damage-tracking, does not fight the colour-grading
+        // sliders, and warps sample the wallpaper directly with no capture.
+        // Effects using theme roles (@primary) recolour with the palette this
+        // panel generates, which is the point of putting it here.
+        Rectangle {
+            Layout.fillWidth: true
+            implicitHeight: wallFxCol.implicitHeight + 24
+            // Matches the parallax card above: same radius, same border.
+            radius: Appearance.rounding.normal
+            color: Appearance.colors.colLayer1
+            border.width: 1
+            border.color: Appearance.colors.colLayer0Border
+
+            ColumnLayout {
+                id: wallFxCol
+                anchors.left: parent.left
+                anchors.right: parent.right
+                anchors.top: parent.top
+                anchors.margins: 12
+                spacing: 8
+
+                RowLayout {
+                    Layout.fillWidth: true
+                    spacing: 7
+                    MaterialSymbol {
+                        text: "animation"; iconSize: 17
+                        color: (Config.options.background.effect ?? "").length > 0
+                            ? Appearance.colors.colPrimary : Appearance.colors.colSubtext
+                    }
+                    StyledText {
+                        Layout.fillWidth: true
+                        text: "Wallpaper Effect"
+                        font.pixelSize: Appearance.font.pixelSize.small
+                        font.bold: true
+                        color: Appearance.colors.colOnLayer1
+                    }
+                    StyledText {
+                        text: (Config.options.background.effect ?? "").length > 0
+                            ? AppDisplay.effectName(Config.options.background.effect) : "off"
+                        font.pixelSize: Appearance.font.pixelSize.smallest
+                        color: (Config.options.background.effect ?? "").length > 0
+                            ? Appearance.colors.colPrimary : Appearance.colors.colSubtext
+                    }
+                }
+
+                // Effect picker — a dropdown rather than a wall of chips,
+                // and the SELECTED effect's variables shown below it. This is
+                // the display-settings shader-list treatment, on the wallpaper
+                // layer: pick one, then tune what it exposes.
+                //
+                // Full width on its own row, at StyledComboBox's own 40px
+                // height. Squeezing it onto the title row shrank it in both
+                // directions and it no longer read as the card's main control.
+                StyledComboBox {
+                    Layout.fillWidth: true
+                    readonly property var opts: [{ name: "Off", path: "" }]
+                        .concat(AppDisplay.effects.map(e => ({ name: e.name, path: e.path })))
+                    model: opts
+                    textRole: "name"
+                    currentIndex: Math.max(0, opts.findIndex(
+                        o => o.path === (Config.options.background.effect ?? "")))
+                    onActivated: idx => Config.options.background.effect = opts[idx].path
+                }
+
+                // The effect's variables live in their own popup (opened
+                // beside this panel) rather than inline — a stack of sliders
+                // and swatch rows made WallTune enormous. Button only shows
+                // when the selected effect actually exposes variables.
+                // The shared panel-action element (same as DisplaySettings' shader "Browse…").
+                PanelActionButton {
+                    Layout.fillWidth: true
+                    visible: WallEffect.hasVariables
+                    iconName: "tune"
+                    buttonLabel: "Variables…"
+                    onClicked: GlobalStates.wallEffectVarsOpen = !GlobalStates.wallEffectVarsOpen
                 }
             }
         }
@@ -1644,7 +1826,7 @@ Rectangle {
                 delegate: Rectangle {
                     required property var modelData
                     readonly property bool active: root.selectedMode === modelData.id
-                    implicitWidth: mRow.implicitWidth + 14; implicitHeight: 24; radius: 12
+                    implicitWidth: mRow.implicitWidth + 14; implicitHeight: 28; radius: 14
                     color: active ? modelData.color : (mHov.hovered ? Appearance.colors.colLayer2 : Appearance.colors.colLayer1)
                     Behavior on color { ColorAnimation { duration: 100 } }
                     HoverHandler { id: mHov }
@@ -1660,6 +1842,19 @@ Rectangle {
                     }
                 }
             }
+        }
+
+        // Divider — separates the live editing controls above from the
+        // saved-history section below, giving the panel a clear two-zone
+        // hierarchy instead of one long undifferentiated scroll.
+        Rectangle {
+            Layout.fillWidth: true
+            Layout.topMargin: 2
+            Layout.bottomMargin: 2
+            implicitHeight: 1
+            color: Appearance.colors.colOutline
+            opacity: 0.15
+            visible: root.history.length > 0
         }
 
         // ── History row ─────────────────────────────────────────────────
@@ -1849,18 +2044,38 @@ Rectangle {
                             }
                         }
 
-                        HoverHandler { id: histChipHov }
-                        TapHandler { onTapped: root.applyHistoryEntry(modelData) }
+                        HoverHandler { margin: Appearance.sizes.touchSlop; id: histChipHov }
+                        TapHandler { margin: Appearance.sizes.touchSlop; onTapped: root.applyHistoryEntry(modelData) }
                     }
                 }
             }
         }
 
+        // ── Per-app colours ──────────────────────────────────────────────
+        // Everything below shapes the one palette every app receives. This
+        // opens the panel that shifts it per app afterwards — a terminal that
+        // wants more contrast than the bar, or a role pinned by hand.
+        PanelActionButton {
+            Layout.fillWidth: true
+            iconName: "palette"
+            buttonLabel: qsTr("Per-app colours…")
+            // Matches the section headers below it (PanelActionButton is 32
+            // by default), so this block reads as one list of rows.
+            implicitHeight: 40
+            onClicked: GlobalStates.appColorsOpen = !GlobalStates.appColorsOpen
+        }
+
         // ── Color Theory dropdown ────────────────────────────────────────
         Rectangle {
             Layout.fillWidth: true
-            height: 26; radius: 13
-            color: thHeadHov.hovered ? Appearance.colors.colLayer2 : "transparent"
+            // 40, not 26. These are the panel's main navigation rows and they
+            // read as thin dividers at 26 next to the 40px buttons around them.
+            height: 40; radius: 20
+            // Square the bottom corners while open so the header and the body
+            // below read as ONE container rather than two stacked pills.
+            bottomLeftRadius:  root.theoryOpen ? 0 : 20
+            bottomRightRadius: root.theoryOpen ? 0 : 20
+            color: (thHeadHov.hovered || thBodyHov.hovered) ? Appearance.colors.colLayer2 : "transparent"
             Behavior on color { ColorAnimation { duration: 100 } }
             HoverHandler { id: thHeadHov }
             TapHandler { onTapped: root.theoryOpen = !root.theoryOpen }
@@ -1896,6 +2111,27 @@ Rectangle {
             Layout.fillWidth: true
             clip: true
             Layout.preferredHeight: root.theoryOpen ? thFlow.implicitHeight : 0
+            // A ColumnLayout puts its spacing on BOTH sides of a zero-height
+            // item, so every closed section still cost 13px above + 13px
+            // below for a 26px header -- half the collapsed area was gap,
+            // six times over. An invisible item is skipped entirely,
+            // spacing included. The epsilon keeps it visible for the whole
+            // collapse animation and drops it only once fully closed.
+            visible: Layout.preferredHeight > 0.5
+            // Pulled up by the column's own spacing so it TOUCHES the header;
+            // otherwise the container highlight would be split by a 10px gap.
+            Layout.topMargin: -col.spacing
+            HoverHandler { id: thBodyHov }
+            Rectangle {
+                anchors.fill: parent
+                z: -1
+                color: (thHeadHov.hovered || thBodyHov.hovered) ? Appearance.colors.colLayer2 : "transparent"
+                topLeftRadius: 0
+                topRightRadius: 0
+                bottomLeftRadius: 20
+                bottomRightRadius: 20
+                Behavior on color { ColorAnimation { duration: 100 } }
+            }
             opacity: root.theoryOpen ? 1 : 0
             Behavior on Layout.preferredHeight { NumberAnimation { duration: 180; easing.type: Easing.OutCubic } }
             Behavior on opacity { NumberAnimation { duration: 140 } }
@@ -1927,8 +2163,14 @@ Rectangle {
         // ── Style dropdown ────────────────────────────────────────────────
         Rectangle {
             Layout.fillWidth: true
-            height: 26; radius: 13
-            color: stHeadHov.hovered ? Appearance.colors.colLayer2 : "transparent"
+            // 40, not 26. These are the panel's main navigation rows and they
+            // read as thin dividers at 26 next to the 40px buttons around them.
+            height: 40; radius: 20
+            // Square the bottom corners while open so the header and the body
+            // below read as ONE container rather than two stacked pills.
+            bottomLeftRadius:  root.styleOpen ? 0 : 20
+            bottomRightRadius: root.styleOpen ? 0 : 20
+            color: (stHeadHov.hovered || stBodyHov.hovered) ? Appearance.colors.colLayer2 : "transparent"
             Behavior on color { ColorAnimation { duration: 100 } }
             HoverHandler { id: stHeadHov }
             TapHandler { onTapped: root.styleOpen = !root.styleOpen }
@@ -1964,6 +2206,22 @@ Rectangle {
             Layout.fillWidth: true
             clip: true
             Layout.preferredHeight: root.styleOpen ? stFlow.implicitHeight : 0
+            // Skipped by the layout when closed, spacing included (see above).
+            visible: Layout.preferredHeight > 0.5
+            // Pulled up by the column's own spacing so it TOUCHES the header;
+            // otherwise the container highlight would be split by a 10px gap.
+            Layout.topMargin: -col.spacing
+            HoverHandler { id: stBodyHov }
+            Rectangle {
+                anchors.fill: parent
+                z: -1
+                color: (stHeadHov.hovered || stBodyHov.hovered) ? Appearance.colors.colLayer2 : "transparent"
+                topLeftRadius: 0
+                topRightRadius: 0
+                bottomLeftRadius: 20
+                bottomRightRadius: 20
+                Behavior on color { ColorAnimation { duration: 100 } }
+            }
             opacity: root.styleOpen ? 1 : 0
             Behavior on Layout.preferredHeight { NumberAnimation { duration: 180; easing.type: Easing.OutCubic } }
             Behavior on opacity { NumberAnimation { duration: 140 } }
@@ -1995,8 +2253,14 @@ Rectangle {
         // ── Practical dropdown ────────────────────────────────────────────
         Rectangle {
             Layout.fillWidth: true
-            height: 26; radius: 13
-            color: prHeadHov.hovered ? Appearance.colors.colLayer2 : "transparent"
+            // 40, not 26. These are the panel's main navigation rows and they
+            // read as thin dividers at 26 next to the 40px buttons around them.
+            height: 40; radius: 20
+            // Square the bottom corners while open so the header and the body
+            // below read as ONE container rather than two stacked pills.
+            bottomLeftRadius:  root.practicalOpen ? 0 : 20
+            bottomRightRadius: root.practicalOpen ? 0 : 20
+            color: (prHeadHov.hovered || prBodyHov.hovered) ? Appearance.colors.colLayer2 : "transparent"
             Behavior on color { ColorAnimation { duration: 100 } }
             HoverHandler { id: prHeadHov }
             TapHandler { onTapped: root.practicalOpen = !root.practicalOpen }
@@ -2032,6 +2296,22 @@ Rectangle {
             Layout.fillWidth: true
             clip: true
             Layout.preferredHeight: root.practicalOpen ? prFlow.implicitHeight : 0
+            // Skipped by the layout when closed, spacing included (see above).
+            visible: Layout.preferredHeight > 0.5
+            // Pulled up by the column's own spacing so it TOUCHES the header;
+            // otherwise the container highlight would be split by a 10px gap.
+            Layout.topMargin: -col.spacing
+            HoverHandler { id: prBodyHov }
+            Rectangle {
+                anchors.fill: parent
+                z: -1
+                color: (prHeadHov.hovered || prBodyHov.hovered) ? Appearance.colors.colLayer2 : "transparent"
+                topLeftRadius: 0
+                topRightRadius: 0
+                bottomLeftRadius: 20
+                bottomRightRadius: 20
+                Behavior on color { ColorAnimation { duration: 100 } }
+            }
             opacity: root.practicalOpen ? 1 : 0
             Behavior on Layout.preferredHeight { NumberAnimation { duration: 180; easing.type: Easing.OutCubic } }
             Behavior on opacity { NumberAnimation { duration: 140 } }
@@ -2063,8 +2343,14 @@ Rectangle {
         // ── Tone Curve dropdown ───────────────────────────────────────────
         Rectangle {
             Layout.fillWidth: true
-            height: 26; radius: 13
-            color: cvHeadHov.hovered ? Appearance.colors.colLayer2 : "transparent"
+            // 40, not 26. These are the panel's main navigation rows and they
+            // read as thin dividers at 26 next to the 40px buttons around them.
+            height: 40; radius: 20
+            // Square the bottom corners while open so the header and the body
+            // below read as ONE container rather than two stacked pills.
+            bottomLeftRadius:  root.curveOpen ? 0 : 20
+            bottomRightRadius: root.curveOpen ? 0 : 20
+            color: (cvHeadHov.hovered || cvBodyHov.hovered) ? Appearance.colors.colLayer2 : "transparent"
             Behavior on color { ColorAnimation { duration: 100 } }
             HoverHandler { id: cvHeadHov }
             TapHandler { onTapped: root.curveOpen = !root.curveOpen }
@@ -2097,6 +2383,22 @@ Rectangle {
             Layout.fillWidth: true
             clip: true
             Layout.preferredHeight: root.curveOpen ? curveBody.implicitHeight : 0
+            // Skipped by the layout when closed, spacing included (see above).
+            visible: Layout.preferredHeight > 0.5
+            // Pulled up by the column's own spacing so it TOUCHES the header;
+            // otherwise the container highlight would be split by a 10px gap.
+            Layout.topMargin: -col.spacing
+            HoverHandler { id: cvBodyHov }
+            Rectangle {
+                anchors.fill: parent
+                z: -1
+                color: (cvHeadHov.hovered || cvBodyHov.hovered) ? Appearance.colors.colLayer2 : "transparent"
+                topLeftRadius: 0
+                topRightRadius: 0
+                bottomLeftRadius: 20
+                bottomRightRadius: 20
+                Behavior on color { ColorAnimation { duration: 100 } }
+            }
             opacity: root.curveOpen ? 1 : 0
             Behavior on Layout.preferredHeight { NumberAnimation { duration: 180; easing.type: Easing.OutCubic } }
             Behavior on opacity { NumberAnimation { duration: 140 } }
@@ -2247,7 +2549,7 @@ Rectangle {
                             border.color: Appearance.colors.colPrimary
                             z: 5
 
-                            HoverHandler { id: dragHov }
+                            HoverHandler { margin: Appearance.sizes.touchSlop; id: dragHov }
 
                             MouseArea {
                                 id: dragArea
@@ -2346,8 +2648,14 @@ Rectangle {
         // ── Palette Remap dropdown ────────────────────────────────────────
         Rectangle {
             Layout.fillWidth: true
-            height: 26; radius: 13
-            color: rmHeadHov.hovered ? Appearance.colors.colLayer2 : "transparent"
+            // 40, not 26. These are the panel's main navigation rows and they
+            // read as thin dividers at 26 next to the 40px buttons around them.
+            height: 40; radius: 20
+            // Square the bottom corners while open so the header and the body
+            // below read as ONE container rather than two stacked pills.
+            bottomLeftRadius:  root.remapOpen ? 0 : 20
+            bottomRightRadius: root.remapOpen ? 0 : 20
+            color: (rmHeadHov.hovered || rmBodyHov.hovered) ? Appearance.colors.colLayer2 : "transparent"
             Behavior on color { ColorAnimation { duration: 100 } }
             HoverHandler { id: rmHeadHov }
             TapHandler { onTapped: root.remapOpen = !root.remapOpen }
@@ -2383,6 +2691,22 @@ Rectangle {
             Layout.fillWidth: true
             clip: true
             Layout.preferredHeight: root.remapOpen ? remapBody.implicitHeight : 0
+            // Skipped by the layout when closed, spacing included (see above).
+            visible: Layout.preferredHeight > 0.5
+            // Pulled up by the column's own spacing so it TOUCHES the header;
+            // otherwise the container highlight would be split by a 10px gap.
+            Layout.topMargin: -col.spacing
+            HoverHandler { id: rmBodyHov }
+            Rectangle {
+                anchors.fill: parent
+                z: -1
+                color: (rmHeadHov.hovered || rmBodyHov.hovered) ? Appearance.colors.colLayer2 : "transparent"
+                topLeftRadius: 0
+                topRightRadius: 0
+                bottomLeftRadius: 20
+                bottomRightRadius: 20
+                Behavior on color { ColorAnimation { duration: 100 } }
+            }
             opacity: root.remapOpen ? 1 : 0
             Behavior on Layout.preferredHeight { NumberAnimation { duration: 180; easing.type: Easing.OutCubic } }
             Behavior on opacity { NumberAnimation { duration: 140 } }
@@ -2492,69 +2816,141 @@ Rectangle {
             }
         }
 
-        // Adjustments label
-        StyledText { text: qsTr("Adjustments"); font.pixelSize: Appearance.font.pixelSize.smaller - 1; color: Appearance.colors.colOnLayer0; opacity: 0.4; font.weight: Font.Medium }
-
-        // Sliders — each delegate reads root.c{i}a / root.c{i}b directly as live bindings
-        Repeater {
-            model: root.sliderDefs
-            delegate: RowLayout {
-                required property var modelData
-                required property int index
-                Layout.fillWidth: true; implicitHeight: 22; spacing: 8
-
-                // Direct property bindings — QML tracks these as reactive dependencies
-                readonly property color ca: root[modelData.ai]
-                readonly property color cb: root[modelData.bi]
-
+        // ── Adjustments dropdown ──────────────────────────────────────────
+        Rectangle {
+            Layout.fillWidth: true
+            // 40, not 26. These are the panel's main navigation rows and they
+            // read as thin dividers at 26 next to the 40px buttons around them.
+            height: 40; radius: 20
+            // Square the bottom corners while open so the header and the body
+            // below read as ONE container rather than two stacked pills.
+            bottomLeftRadius:  root.adjustOpen ? 0 : 20
+            bottomRightRadius: root.adjustOpen ? 0 : 20
+            color: (adjHeadHov.hovered || adjBodyHov.hovered) ? Appearance.colors.colLayer2 : "transparent"
+            Behavior on color { ColorAnimation { duration: 100 } }
+            HoverHandler { id: adjHeadHov }
+            TapHandler { onTapped: root.adjustOpen = !root.adjustOpen }
+            RowLayout {
+                anchors.fill: parent; anchors.leftMargin: 4; anchors.rightMargin: 6; spacing: 6
                 StyledText {
-                    text: modelData.label; font.pixelSize: Appearance.font.pixelSize.smaller - 2
-                    color: Appearance.colors.colOnLayer0; opacity: 0.55; Layout.preferredWidth: 66
-                }
-                Item {
-                    Layout.fillWidth: true; implicitHeight: 18
-
-                    Rectangle {
-                        anchors { left: parent.left; right: parent.right; verticalCenter: parent.verticalCenter }
-                        height: 3; radius: 2; opacity: 0.35
-                        gradient: Gradient {
-                            orientation: Gradient.Horizontal
-                            GradientStop { position: 0; color: ca; Behavior on color { ColorAnimation { duration: 500 } } }
-                            GradientStop { position: 1; color: cb; Behavior on color { ColorAnimation { duration: 500 } } }
-                        }
-                    }
-                    Rectangle {
-                        anchors { left: parent.left; verticalCenter: parent.verticalCenter }
-                        width: (root[modelData.prop] / 100) * parent.width
-                        height: 3; radius: 2
-                        gradient: Gradient {
-                            orientation: Gradient.Horizontal
-                            GradientStop { position: 0; color: ca; Behavior on color { ColorAnimation { duration: 500 } } }
-                            GradientStop { position: 1; color: cb; Behavior on color { ColorAnimation { duration: 500 } } }
-                        }
-                    }
-                    Rectangle {
-                        x: (root[modelData.prop] / 100) * (parent.width - width)
-                        anchors.verticalCenter: parent.verticalCenter
-                        width: 12; height: 12; radius: 6; color: "white"
-                        border.width: 2; border.color: cb
-                        Behavior on border.color { ColorAnimation { duration: 500 } }
-                        Behavior on x { NumberAnimation { duration: 60; easing.type: Easing.OutQuad } }
-                    }
-                    MouseArea {
-                        anchors.fill: parent
-                        function upd(mx) { root[modelData.prop] = Math.max(0, Math.min(100, (mx / width) * 100)) }
-                        onPressed: upd(mouseX)
-                        onPositionChanged: if (pressed) upd(mouseX)
-                    }
+                    text: qsTr("Adjustments")
+                    font.pixelSize: Appearance.font.pixelSize.smaller - 1
+                    font.weight: Font.Medium
+                    color: Appearance.colors.colOnLayer0; opacity: 0.5
                 }
                 StyledText {
-                    readonly property int v: Math.round(root[modelData.prop] - 50)
-                    text: v > 0 ? "+" + v : v
-                    font.pixelSize: Appearance.font.pixelSize.smaller - 3
-                    color: Appearance.colors.colOnLayer0; opacity: 0.35
-                    Layout.preferredWidth: 24; horizontalAlignment: Text.AlignRight
+                    Layout.fillWidth: true
+                    visible: root.adjustChangedCount > 0
+                    text: "\u00b7 " + root.adjustChangedCount + qsTr(" changed")
+                    font.pixelSize: Appearance.font.pixelSize.smaller - 2
+                    color: Appearance.colors.colPrimary; opacity: 0.85
+                    elide: Text.ElideRight
                 }
+                Item { Layout.fillWidth: true; visible: root.adjustChangedCount === 0 }
+                MaterialSymbol {
+                    text: "expand_more"; iconSize: Appearance.font.pixelSize.small
+                    color: Appearance.colors.colOnLayer0; opacity: 0.5
+                    rotation: root.adjustOpen ? 180 : 0
+                    Behavior on rotation { NumberAnimation { duration: 180; easing.type: Easing.OutCubic } }
+                }
+            }
+        }
+
+        // Collapsed by default like every other section here. A bare Repeater
+        // cannot be height-animated on its own -- it has no item of its own in
+        // the layout -- so the sliders live in a ColumnLayout inside a clipped
+        // Item, which is what the Color Theory / Tone Curve sections do too.
+        Item {
+            Layout.fillWidth: true
+            clip: true
+            Layout.preferredHeight: root.adjustOpen ? adjCol.implicitHeight : 0
+            // Skipped by the layout when closed, spacing included (see above).
+            visible: Layout.preferredHeight > 0.5
+            // Pulled up by the column's own spacing so it TOUCHES the header;
+            // otherwise the container highlight would be split by a 10px gap.
+            Layout.topMargin: -col.spacing
+            HoverHandler { id: adjBodyHov }
+            Rectangle {
+                anchors.fill: parent
+                z: -1
+                color: (adjHeadHov.hovered || adjBodyHov.hovered) ? Appearance.colors.colLayer2 : "transparent"
+                topLeftRadius: 0
+                topRightRadius: 0
+                bottomLeftRadius: 20
+                bottomRightRadius: 20
+                Behavior on color { ColorAnimation { duration: 100 } }
+            }
+            opacity: root.adjustOpen ? 1 : 0
+            Behavior on Layout.preferredHeight { NumberAnimation { duration: 180; easing.type: Easing.OutCubic } }
+            Behavior on opacity { NumberAnimation { duration: 140 } }
+            ColumnLayout {
+                id: adjCol
+                width: parent.width
+                spacing: 4
+                // Sliders — each delegate reads root.c{i}a / root.c{i}b directly as live bindings
+                Repeater {
+                    model: root.sliderDefs
+                    delegate: RowLayout {
+                        required property var modelData
+                        required property int index
+                        // No fixed height any more: StyledSlider's handle is 33px
+                        // tall, so pinning the row at 22 clipped it. Let the row
+                        // take the slider's own implicit height.
+                        Layout.fillWidth: true; spacing: 8
+
+                        // Direct property bindings — QML tracks these as reactive dependencies
+                        readonly property color ca: root[modelData.ai]
+                        readonly property color cb: root[modelData.bi]
+
+                        StyledText {
+                            text: modelData.label; font.pixelSize: Appearance.font.pixelSize.smaller - 2
+                            color: Appearance.colors.colOnLayer0; opacity: 0.55; Layout.preferredWidth: 66
+                        }
+                        // The shared M3 slider, same as the per-app colour popup
+                        // uses -- but carrying this row's own gradient endpoints
+                        // instead of the theme accent. This was a hand-rolled 3px
+                        // line with a 12px dot, which read as a hairline next to
+                        // every other slider in the shell.
+                        //
+                        // StyledSlider paints flat fills, not gradients, so the
+                        // far colour drives the fill and handle while the near one
+                        // tints the empty track -- the same two colours, just not
+                        // interpolated across the bar.
+                        StyledSlider {
+                            Layout.fillWidth: true
+                            configuration: StyledSlider.Configuration.S
+                            from: 0
+                            to: 100
+                            value: root[modelData.prop]
+                            highlightColor: cb
+                            handleColor: cb
+                            // Mixed toward the panel's own container colour rather
+                            // than just made transparent. Straight transparency let
+                            // each row's near-colour through at full character, so
+                            // the empty track came out solid olive on Temperature,
+                            // grey on Saturation and invisible on Brightness -- ten
+                            // different chromes down one column. A 25% tint keeps a
+                            // hint of the row's colour on a consistent base.
+                            trackColor: ColorUtils.mix(ca, Appearance.colors.colSecondaryContainer, 0.25)
+                            usePercentTooltip: false
+                            tooltipContent: {
+                                const v = Math.round(root[modelData.prop] - 50)
+                                return v > 0 ? "+" + v : String(v)
+                            }
+                            onMoved: root[modelData.prop] = value
+                            Behavior on highlightColor { ColorAnimation { duration: 500 } }
+                            Behavior on trackColor { ColorAnimation { duration: 500 } }
+                        }
+                        StyledText {
+                            readonly property int v: Math.round(root[modelData.prop] - 50)
+                            text: v > 0 ? "+" + v : v
+                            font.pixelSize: Appearance.font.pixelSize.smaller - 3
+                            color: Appearance.colors.colOnLayer0; opacity: 0.35
+                            Layout.preferredWidth: 24; horizontalAlignment: Text.AlignRight
+                        }
+                    }
+                }
+
             }
         }
 
@@ -2594,7 +2990,9 @@ Rectangle {
             rightMargin: 12
             bottomMargin: 12
         }
-        height: 32
+        // 48, matching the Effect dropdown, so the bar reads as the panel's
+        // primary action rather than a strip of small icons under it.
+        height: 48
 
         RowLayout {
             anchors.fill: parent
@@ -2602,37 +3000,37 @@ Rectangle {
 
             // Reset
             Rectangle {
-                implicitWidth: 32; implicitHeight: 32; radius: 16
+                implicitWidth: 48; implicitHeight: 48; radius: 24
                 color: rstHov.hovered ? Appearance.colors.colLayer2 : Appearance.colors.colLayer1
                 Behavior on color { ColorAnimation { duration: 100 } }
-                HoverHandler { id: rstHov }
-                TapHandler { onTapped: root.resetSliders() }
+                HoverHandler { margin: Appearance.sizes.touchSlop; id: rstHov }
+                TapHandler { margin: Appearance.sizes.touchSlop; onTapped: root.resetSliders() }
                 MaterialSymbol { anchors.centerIn: parent; text: "restart_alt"; iconSize: Appearance.font.pixelSize.normal; color: Appearance.colors.colOnLayer0; opacity: 0.5 }
             }
 
             // Random
             Rectangle {
-                implicitWidth: 32; implicitHeight: 32; radius: 16
+                implicitWidth: 48; implicitHeight: 48; radius: 24
                 color: rndHov.hovered ? Appearance.colors.colLayer2 : Appearance.colors.colLayer1
                 Behavior on color { ColorAnimation { duration: 100 } }
-                HoverHandler { id: rndHov }
-                TapHandler { onTapped: root.randomWall() }
+                HoverHandler { margin: Appearance.sizes.touchSlop; id: rndHov }
+                TapHandler { margin: Appearance.sizes.touchSlop; onTapped: root.randomWall() }
                 MaterialSymbol { anchors.centerIn: parent; text: "shuffle"; iconSize: Appearance.font.pixelSize.normal; color: Appearance.colors.colOnLayer0; opacity: 0.5 }
             }
 
             // Open wallpaper selector
             Rectangle {
-                implicitWidth: 32; implicitHeight: 32; radius: 16
+                implicitWidth: 48; implicitHeight: 48; radius: 24
                 color: wsHov.hovered ? Appearance.colors.colLayer2 : Appearance.colors.colLayer1
                 Behavior on color { ColorAnimation { duration: 100 } }
-                HoverHandler { id: wsHov }
-                TapHandler { onTapped: { GlobalStates.wallpaperSelectorOpen = true; GlobalStates.wallTuneOpen = false } }
+                HoverHandler { margin: Appearance.sizes.touchSlop; id: wsHov }
+                TapHandler { margin: Appearance.sizes.touchSlop; onTapped: { GlobalStates.wallpaperSelectorOpen = true; GlobalStates.wallTuneOpen = false } }
                 MaterialSymbol { anchors.centerIn: parent; text: "wallpaper"; iconSize: Appearance.font.pixelSize.normal; color: Appearance.colors.colOnLayer0; opacity: 0.5 }
             }
 
             // Reprocess
             Rectangle {
-                Layout.fillWidth: true; implicitHeight: 32; radius: Appearance.rounding.full
+                Layout.fillWidth: true; implicitHeight: 48; radius: Appearance.rounding.full
                 color: rpHov.hovered ? Appearance.colors.colPrimary : Qt.alpha(Appearance.colors.colPrimary, 0.15)
                 Behavior on color { ColorAnimation { duration: 150 } }
                 HoverHandler { id: rpHov }
@@ -2659,3 +3057,5 @@ Rectangle {
         }
     }
 }
+
+

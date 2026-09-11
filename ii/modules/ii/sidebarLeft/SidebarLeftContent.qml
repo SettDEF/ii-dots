@@ -19,9 +19,16 @@ Item {
     property bool animeEnabled: Config.options.policies.weeb !== 0
     property bool animeCloset: Config.options.policies.weeb === 2
     property bool drawEnabled: true
-    // Title pill expand state — tapping the "Tools" pill toggles this and
-    // reveals the tab chips inline, growing the pill horizontally. The pill's
-    // grid_view icon rotates as the affordance.
+    // Hidden until finance-sync has written a state file, so a fresh install
+    // does not show a tab that can only say "nothing here".
+    // NOT gated on Finance.loaded: data only exists after setup, and setup
+    // lives inside this tab, so keying visibility off the data made linking a
+    // bank impossible from the UI.
+    property bool financeEnabled: Config.options.sidebar.finance.enable
+    // Title pill expand state — tapping the pill toggles this and reveals the
+    // tab chips inline. The "Tools" label collapses as the chips grow, so the
+    // pill trades one static word for the tabs rather than carrying both; the
+    // grid_view icon rotates as the affordance either way.
     property bool toolsOpen: false
 
     property var pillTabs: []
@@ -30,9 +37,15 @@ Item {
         if (Config.options.policies.ai !== 0) tabs.push({"id": "intelligence", "icon": "neurology", "label": Translation.tr("Intelligence")});
         if (Config.options.sidebar.translator.enable) tabs.push({"id": "translator", "icon": "translate", "label": Translation.tr("Translator")});
         if (Config.options.policies.weeb !== 0 && Config.options.policies.weeb !== 2) tabs.push({"id": "anime", "icon": "bookmark_heart", "label": Translation.tr("Anime")});
+        if (root.financeEnabled) tabs.push({"id": "finance", "icon": "account_balance", "label": Translation.tr("Finance")});
         if (root.drawEnabled) tabs.push({"id": "draw", "icon": "draw", "label": Translation.tr("Draw")});
         pillTabs = tabs;
     }
+    Connections {
+        target: Finance
+        function onLoadedChanged() { root.updatePillTabs(); }
+    }
+
     Component.onCompleted: {
         if (Config.ready) {
             updatePillTabs();
@@ -49,6 +62,7 @@ Item {
         updateActiveTab();
     }
     property int tabCount: swipeView.count
+
 
     function focusActiveItem() {
         if (swipeView.currentItem) {
@@ -163,12 +177,36 @@ Item {
                         rotation: root.toolsOpen ? 45 : 0
                         Behavior on rotation { NumberAnimation { duration: 260; easing.type: Easing.OutCubic } }
                     }
-                    StyledText {
+                    // ── "Tools" label, collapsed while the tabs are out ────
+                    // The label and the chip strip share this Row, and an active
+                    // chip shows its own text. With both up, the pill carried two
+                    // competing labels and ran out of room. The word is the
+                    // affordance for a CLOSED pill; once the tabs are visible they
+                    // name the thing better than a static heading does.
+                    //
+                    // Collapsed by width rather than plain `visible`, so it slides
+                    // out on the same curve the chips slide in on. `visible` is
+                    // gated on width so the Row does not keep an 8px gap where a
+                    // zero-width item used to be.
+                    Item {
+                        id: toolsLabelContainer
                         anchors.verticalCenter: parent.verticalCenter
-                        font.pixelSize: Appearance.font.pixelSize.normal
-                        color: Appearance.colors.colOnLayer0
-                        text: Translation.tr("Tools")
-                        font.weight: Font.DemiBold
+                        height: parent.height
+                        clip: true
+                        width: root.toolsOpen ? 0 : toolsLabel.implicitWidth
+                        opacity: root.toolsOpen ? 0 : 1
+                        visible: width > 0.5
+                        Behavior on width   { NumberAnimation { duration: 260; easing.type: Easing.OutCubic } }
+                        Behavior on opacity { NumberAnimation { duration: 200 } }
+
+                        StyledText {
+                            id: toolsLabel
+                            anchors.verticalCenter: parent.verticalCenter
+                            font.pixelSize: Appearance.font.pixelSize.normal
+                            color: Appearance.colors.colOnLayer0
+                            text: Translation.tr("Tools")
+                            font.weight: Font.DemiBold
+                        }
                     }
 
                     // ── Expanding tab chip strip ───────────────────────────
@@ -193,7 +231,7 @@ Item {
                             anchors.verticalCenter: parent.verticalCenter
                             spacing: 4
 
-                            // Slim vertical divider between "Tools" label and chips.
+                            // Slim vertical divider between the grid toggle and the chips.
                             Rectangle {
                                 anchors.verticalCenter: parent.verticalCenter
                                 width: 1; height: 14
@@ -248,7 +286,7 @@ Item {
                                     }
 
                                     StyledToolTip {
-                                        visible: pillHov.hovered && !pill.active
+                                        visible: (pillHov.hovered || Appearance.touchUi) && !pill.active
                                         text: pill.modelData.label
                                     }
                                 }
@@ -314,6 +352,7 @@ Item {
             SwipeView { // Content pages
                 id: swipeView
                 anchors.fill: parent
+                visible: root.pillTabs.length > 0
                 spacing: 10
 
                 clip: true
@@ -326,28 +365,40 @@ Item {
                     }
                 }
 
+                // The Repeater must be this SwipeView's ONLY child. A
+                // statically-declared sibling — even an inactive Loader — still
+                // counts as a page, so count was always pillTabs.length + 1,
+                // and Qt gives no ordering guarantee when a Container mixes
+                // Repeater-built items with declared ones. That phantom page
+                // could sort to index 0, which shifted every page one place
+                // against the chip strip: picking "Anime" (chip 1) selected
+                // page 1, which was the AI chat. The empty-state placeholder
+                // now lives outside the SwipeView, where it cannot be a page.
                 Repeater {
                     model: root.pillTabs
                     delegate: Loader {
-    id: tabLoader
-    required property var modelData
-    required property int index
-    active: true
-    sourceComponent: {
-        if (modelData.id === "intelligence") return aiChat;
-        if (modelData.id === "translator") return translator;
-        if (modelData.id === "anime") return anime;
-        if (modelData.id === "draw") return drawPage;
-        return placeholder;
-    }
-}
+                        id: tabLoader
+                        required property var modelData
+                        required property int index
+                        active: true
+                        sourceComponent: {
+                            if (modelData.id === "intelligence") return aiChat;
+                            if (modelData.id === "translator") return translator;
+                            if (modelData.id === "anime") return anime;
+                            if (modelData.id === "finance") return financePage;
+                            if (modelData.id === "draw") return drawPage;
+                            return placeholder;
+                        }
+                    }
                 }
+            }
 
-                Loader {
-                    active: root.pillTabs.length === 0
-                    visible: active
-                    sourceComponent: placeholder
-                }
+            // Empty state — a sibling of the SwipeView, never one of its pages.
+            Loader {
+                anchors.fill: parent
+                active: root.pillTabs.length === 0
+                visible: active
+                sourceComponent: placeholder
             }
         }
 
@@ -362,6 +413,10 @@ Item {
         Component {
             id: anime
             Anime {}
+        }
+        Component {
+            id: financePage
+            SidebarFinancePage {}
         }
         Component {
             id: drawPage

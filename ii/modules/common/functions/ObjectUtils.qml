@@ -95,4 +95,24 @@ Singleton {
             }
         }
     }
+
+    /**
+     * Walks up the parent chain and returns the first ancestor that declares
+     * `propName`, or null.
+     *
+     * Both the booru image and the draw page hand-rolled this same loop to find
+     * the sidebar root that owns showContextMenu(); a third copy was about to
+     * appear. Item-tree navigation is not something each caller should reinvent.
+     * @param {Item} item      where to start (its own parent is checked first)
+     * @param {string} propName
+     * @returns {Item|null}
+     */
+    function findAncestorWith(item, propName) {
+        let p = item ? item.parent : null;
+        while (p) {
+            if (p[propName] !== undefined) return p;
+            p = p.parent;
+        }
+        return null;
+    }
 }

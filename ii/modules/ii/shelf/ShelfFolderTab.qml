@@ -118,8 +118,8 @@ Item {
 
             Rectangle {
                 implicitWidth: 24; implicitHeight: 24; radius: 12; color: "transparent"
-                HoverHandler { id: refreshHov }
-                TapHandler { onTapped: root.scan() }
+                HoverHandler { margin: Appearance.sizes.touchSlop; id: refreshHov }
+                TapHandler { margin: Appearance.sizes.touchSlop; onTapped: root.scan() }
                 MaterialSymbol {
                     anchors.centerIn: parent
                     text: "refresh"

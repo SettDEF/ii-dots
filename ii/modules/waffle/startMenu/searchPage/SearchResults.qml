@@ -210,7 +210,7 @@ RowLayout {
                             iconName: isAppEntry ? "open_in_new" : "keyboard_return",
                             iconType: LauncherSearchResult.IconType.Material,
                             execute: () => {
-                                resultPreview.entry.execute();
+                                AppLaunch.launch(resultPreview.entry);
                             }
                         }),
                         ...(isAppEntry ? [

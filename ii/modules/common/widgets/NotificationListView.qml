@@ -8,6 +8,10 @@ import Quickshell
 StyledListView { // Scrollable window
     id: root
     property bool popup: false
+    // A shared PopupContextMenu (mounted by the container, e.g. NotificationList)
+    // that group delegates open for per-app mute options. Null in the toast
+    // popup, where the delegate falls back to a plain mute toggle.
+    property var contextMenu: null
 
     spacing: 3
 

@@ -1,0 +1,4 @@
+module qs.modules.ii.clipboardToast
+ClipboardToast 1.0 ClipboardToast.qml
+ToastButton 1.0 ToastButton.qml
+ShareTarget 1.0 ShareTarget.qml

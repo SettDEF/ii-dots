@@ -1,0 +1,15 @@
+[Unit]
+Description=Periodic bank sync for the quickshell sidebar
+
+[Timer]
+# PSD2 allows roughly four unattended calls per account per day before the
+# bank demands SCA. Every 6h is four, so this sits exactly at the ceiling
+# without tripping it. Do not lower this.
+OnBootSec=3min
+OnUnitActiveSec=6h
+# Spread the wakeup so several accounts do not all fire on the same second.
+RandomizedDelaySec=5min
+Persistent=true
+
+[Install]
+WantedBy=timers.target

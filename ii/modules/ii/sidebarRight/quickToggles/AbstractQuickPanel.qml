@@ -9,7 +9,7 @@ Rectangle {
 
     signal openAudioOutputDialog()
     signal openAudioInputDialog()
-    signal openBluetoothDialog()
+    signal openDevicesDialog()
     signal openNightLightDialog()
     signal openWifiDialog()
     signal openKdeConnectDialog()

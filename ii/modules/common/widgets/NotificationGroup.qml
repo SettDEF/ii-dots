@@ -46,7 +46,7 @@ MouseArea { // Notification group area
             Notifications.cancelTimeout(notif.notificationId);
         });
         else root.notifications.forEach(notif => {
-            Notifications.timeoutNotification(notif.notificationId);
+            Notifications.restartTimeout(notif.notificationId);
         });
     }
 
@@ -183,7 +183,7 @@ MouseArea { // Notification group area
                     RowLayout {
                         id: topTextRow
                         anchors.left: parent.left
-                        anchors.right: expandButton.left
+                        anchors.right: muteButton.left
                         anchors.verticalCenter: parent.verticalCenter
                         spacing: 5
                         StyledText {
@@ -208,6 +208,83 @@ MouseArea { // Notification group area
                             text: NotificationUtils.getFriendlyNotifTimeString(notificationGroup?.time)
                             font.pixelSize: topRow.fontSize
                             color: Appearance.colors.colSubtext
+                        }
+                    }
+                    // Per-app mute toggle: silence future popups from this app
+                    // (they still log to the notification centre).
+                    Rectangle {
+                        id: muteButton
+                        // `hovered` so StyledToolTip (which checks parent.hovered)
+                        // shows only on hover instead of always.
+                        property bool hovered: muteMa.containsMouse
+                        readonly property string appName: root.notificationGroup?.appName ?? ""
+                        // The leading `Notifications.mutedApps,` forces the
+                        // binding to depend on the map (so it re-evaluates on
+                        // change); isAppMuted handles forever(0)/timed/legacy.
+                        readonly property bool muted: (Notifications.mutedApps, Notifications.isAppMuted(appName))
+                        visible: appName !== ""
+                        implicitWidth: appName !== "" ? 26 : 0
+                        implicitHeight: 26
+                        radius: 13
+                        anchors.right: expandButton.left
+                        anchors.rightMargin: 2
+                        anchors.verticalCenter: parent.verticalCenter
+                        color: muteMa.containsMouse ? Appearance.colors.colLayer2Hover : "transparent"
+                        Behavior on color { ColorAnimation { duration: 100 } }
+                        // MouseArea (not TapHandler): it sits on top of the
+                        // group's DragManager MouseArea and actually grabs the
+                        // click — a TapHandler lost the press to the drag area.
+                        MouseArea {
+                            id: muteMa
+                            anchors.fill: parent
+                            hoverEnabled: true
+                            cursorShape: Qt.PointingHandCursor
+                            acceptedButtons: Qt.LeftButton
+                            // Act on press and accept the event (same as
+                            // RippleButton) so the group's DragManager can't
+                            // swallow it before a release-based onClicked fires.
+                            // Opens the per-app mute options menu (mounted on the
+                            // list view); falls back to a plain toggle in the
+                            // toast popup, which has no menu.
+                            onPressed: (event) => {
+                                event.accepted = true
+                                const app = muteButton.appName
+                                if (!app) return
+                                const menu = root.ListView.view?.contextMenu ?? null
+                                if (!menu) { Notifications.toggleAppMute(app); return }
+                                const muted = Notifications.isAppMuted(app)
+                                const soundOff = Notifications.isAppSoundOff(app)
+                                const pt = muteButton.mapToItem(menu, 0, muteButton.height + 2)
+                                const model = []
+                                if (muted) {
+                                    model.push({ icon: "notifications_active", label: Translation.tr("Unmute"),
+                                                 onTriggered: () => Notifications.unmuteApp(app) })
+                                } else {
+                                    model.push({ icon: "schedule", label: Translation.tr("Mute for 15 minutes"),
+                                                 onTriggered: () => Notifications.muteApp(app, 15) })
+                                    model.push({ icon: "schedule", label: Translation.tr("Mute for 1 hour"),
+                                                 onTriggered: () => Notifications.muteApp(app, 60) })
+                                    model.push({ icon: "notifications_off", label: Translation.tr("Mute forever"),
+                                                 onTriggered: () => Notifications.muteApp(app, 0) })
+                                }
+                                model.push({ separator: true })
+                                model.push({ icon: soundOff ? "volume_up" : "volume_off",
+                                             label: soundOff ? Translation.tr("Enable sound") : Translation.tr("Disable sound"),
+                                             onTriggered: () => Notifications.setAppSoundOff(app, !soundOff) })
+                                menu.popup(pt.x, pt.y, model)
+                            }
+                        }
+                        MaterialSymbol {
+                            anchors.centerIn: parent
+                            text: muteButton.muted ? "notifications_off" : "notifications_active"
+                            iconSize: Appearance.font.pixelSize.larger
+                            color: muteButton.muted ? Appearance.m3colors.m3error : Appearance.colors.colSubtext
+                            opacity: muteButton.muted ? 1 : 0.6
+                        }
+                        StyledToolTip {
+                            text: muteButton.muted
+                                ? Translation.tr("Unmute notifications from %1").arg(muteButton.appName)
+                                : Translation.tr("Mute notifications from %1").arg(muteButton.appName)
                         }
                     }
                     NotificationGroupExpandButton {

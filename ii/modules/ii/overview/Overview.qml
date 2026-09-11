@@ -24,7 +24,9 @@ Scope {
         visible: GlobalStates.overviewOpen
 
         WlrLayershell.namespace: "quickshell:overview"
-        WlrLayershell.layer: WlrLayer.Top
+        // Overlay so the launcher floats ABOVE skwd (which sits on Top) — the
+        // bar + subreddit dropdown stay on top of skwd's wallpapers.
+        WlrLayershell.layer: WlrLayer.Overlay
         // Request keyboard focus from the compositor while the overview is
         // open — otherwise typing still goes to whichever window was focused
         // when Super was pressed, and the search field receives no input.
@@ -37,9 +39,17 @@ Scope {
             : WlrKeyboardFocus.None
         color: "transparent"
 
+        // Input region: the bar strip, the (narrow) dropdown and the workspace
+        // grid — masked separately rather than as one bounding box, so the rest
+        // of the screen stays scroll-through and skwd below gets the wheel.
         mask: Region {
-            item: GlobalStates.overviewOpen ? columnLayout : null
+            item: GlobalStates.overviewOpen ? searchWidget : null
+            height: searchWidget.barBandHeight
+            regions: [dropdownRegion, gridRegion, resultsRegion]
         }
+        Region { id: dropdownRegion; item: searchWidget.dropdownItem }
+        Region { id: gridRegion; item: overviewLoader.item }
+        Region { id: resultsRegion; item: searchWidget.resultsItem }
 
         anchors {
             top: true
@@ -56,7 +66,16 @@ Scope {
                     overviewScope.dontAutoCancelSearch = false;
                     GlobalFocusGrab.dismiss();
                 } else {
-                    if (!overviewScope.dontAutoCancelSearch) {
+                    if (WallpaperHub.lastQuery.length > 0) {
+                        // Reopening lands you where you left off: the query is
+                        // back in the field and the wallpapers come back with
+                        // it. skwd restores its own sub/index from Persistent,
+                        // so we don't re-navigate it (that fought fresh typing).
+                        if (WallpaperHub.lastSub.length > 0)
+                            GlobalStates.skwdWallOpen = true;
+                        // Text selected, so typing replaces rather than appends.
+                        searchWidget.restoreSearchingText(WallpaperHub.lastQuery);
+                    } else if (!overviewScope.dontAutoCancelSearch) {
                         searchWidget.cancelSearch();
                     }
                     GlobalFocusGrab.addDismissable(panelWindow);
@@ -68,6 +87,20 @@ Scope {
             target: GlobalFocusGrab
             function onDismissed() {
                 GlobalStates.overviewOpen = false;
+            }
+        }
+
+        // skwd asking for its bar: the launcher opens (if it isn't already)
+        // with the wallpaper query in the field, which puts the bar in skwd
+        // mode. One bar, and it's this one.
+        Connections {
+            target: GlobalStates
+            function onRequestLauncherSearch(text) {
+                overviewScope.dontAutoCancelSearch = true;
+                // Restored text must not pop the dropdown open over skwd.
+                WallpaperHub.dropdownSuppressed = true;
+                searchWidget.restoreSearchingText(text);
+                GlobalStates.overviewOpen = true;
             }
         }
         implicitWidth: columnLayout.implicitWidth
@@ -88,14 +121,11 @@ Scope {
             spacing: -8
 
             Keys.onPressed: event => {
+                // Left/Right workspace stepping lives in SearchBar's handler —
+                // the focused search field consumes arrow keys before they can
+                // bubble up to here.
                 if (event.key === Qt.Key_Escape) {
                     GlobalStates.overviewOpen = false;
-                } else if (event.key === Qt.Key_Left) {
-                    if (!panelWindow.searchingText)
-                        Hyprland.dispatch("workspace r-1");
-                } else if (event.key === Qt.Key_Right) {
-                    if (!panelWindow.searchingText)
-                        Hyprland.dispatch("workspace r+1");
                 }
             }
 
@@ -110,13 +140,23 @@ Scope {
             Loader {
                 id: overviewLoader
                 anchors.horizontalCenter: parent.horizontalCenter
+                // Unload the workspace grid while searching — an invisible item
+                // still takes space, which kept the window mask tall enough to
+                // cover skwd below and swallow its scroll. Gone while typing.
+                // Also gone while the sort & filter dropdown is open — it is a
+                // full-height panel in the launcher, and leaving the workspace
+                // grid below it pushed the dropdown off-screen and looked like
+                // two unrelated surfaces stacked.
                 active: GlobalStates.overviewOpen && (Config?.options.overview.enable ?? true)
+                        && panelWindow.searchingText === ""
+                        && !searchWidget.sortSettingsOpen
                 sourceComponent: OverviewWidget {
                     screen: panelWindow.screen
-                    visible: (panelWindow.searchingText == "")
+                    visible: (panelWindow.searchingText == "") && !searchWidget.sortSettingsOpen
                 }
             }
         }
+
     }
 
     function toggleClipboard() {
@@ -201,6 +241,17 @@ Scope {
                 return;
             }
             GlobalStates.overviewOpen = !GlobalStates.overviewOpen;
+        }
+    }
+    GlobalShortcut {
+        name: "superComboInterrupt"
+        description: "Cancels the pending Super-tap toggle because another key was pressed while Super was held. Bound per-combo (see hypr lua/hyprland/super_interrupts.lua) since 0.56 restricts catchall binds to submaps."
+
+        onPressed: {
+            // No timing guard, unlike searchToggleReleaseInterrupt: this only
+            // ever fires from a real SUPER+<key> bind, so there is no
+            // self-fire from the Super press to filter out.
+            GlobalStates.superReleaseMightTrigger = false;
         }
     }
     GlobalShortcut {

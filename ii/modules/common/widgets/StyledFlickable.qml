@@ -7,6 +7,18 @@ Flickable {
     maximumFlickVelocity: 3500
     boundsBehavior: Flickable.DragOverBounds
 
+    // Touch only. Without a press delay, a finger that lands on a button
+    // inside the list hands the whole gesture to that button and the list
+    // refuses to scroll — the single most common "the touchscreen is broken"
+    // symptom. 80ms is long enough to tell a drag from a tap and short enough
+    // not to feel sticky.
+    //
+    // Gated on the explicit tablet-mode setting rather than auto-detected
+    // InputMode — see Appearance.sizes.touchSlop for why that distinction
+    // matters. pressDelay applies to the mouse too, and 80ms of swallowed
+    // click on a pointer device would be a regression for the commoner input.
+    pressDelay: Appearance.touchUi ? 80 : 0
+
     property real touchpadScrollFactor: Config?.options.interactions.scrolling.touchpadScrollFactor ?? 100
     property real mouseScrollFactor: Config?.options.interactions.scrolling.mouseScrollFactor ?? 50
     property real mouseScrollDeltaThreshold: Config?.options.interactions.scrolling.mouseScrollDeltaThreshold ?? 120

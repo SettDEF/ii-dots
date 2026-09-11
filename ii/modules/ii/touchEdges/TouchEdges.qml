@@ -155,9 +155,24 @@ Scope {
         //
         // An empty Region is the "off" state — a null item would mean the whole
         // surface, which is the opposite of what is wanted here.
-        mask: (InputMode.isTouch || InputMode.isPen) ? maskBand : maskNone
-        Region { id: maskNone }
-        Region { id: maskBand; item: hitBand }
+        // The "off" state is now the WINDOW NOT EXISTING (see the loader in
+        // IllogicalImpulseFamily, gated on Appearance.touchUi) rather than a
+        // live Overlay surface holding an empty mask.
+        //
+        // Why the old shape kept making the bar unclickable is NOT confirmed.
+        // The obvious theory — that an item-less Region means "the whole
+        // surface" — does not survive checking: Overview.qml has used
+        // `item: <cond> ? x : null` in its mask for ages and a closed overview
+        // does not swallow the screen, so a null item reads as empty there.
+        // What IS certain is that the old off-switch was InputMode, which
+        // LATCHES (one touch sets "touch"; only a probed surface sets it
+        // back), and that the same singleton took the bar out again on
+        // 2026-08-19 through a different consumer.
+        //
+        // So this does not claim a root cause. It removes the possibility:
+        // a surface that was never created cannot take input, whatever the
+        // masking semantics turn out to be.
+        mask: Region { item: hitBand }
 
         Item {
             id: hitBand

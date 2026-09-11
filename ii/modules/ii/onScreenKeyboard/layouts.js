@@ -310,3 +310,36 @@ const byName = {
         ]
     }
 }
+
+// ── Mapping a SYSTEM layout onto one of the drawn layouts above ──────────
+//
+// Hyprland reports a human keymap NAME ("English (US)", "German"), while
+// input:kb_layout uses short CODES ("us", "de"). Neither can be turned into a
+// key of `byName` by string surgery: the old code did
+// `currentLayoutName.split(" (")[0]`, which yields "English" — not a key here,
+// since the real one is "English (US)" — so it silently fell back to the
+// default and the on-screen keys never followed the system layout.
+const codeToName = {
+    "us": "English (US)",
+    "de": "German",
+    "at": "German",   // Austrian is QWERTZ; the German keymap is the close fit
+    "ru": "Russian",
+};
+
+/**
+ * Resolve a system layout to a drawn layout key.
+ * @param name human keymap name from Hyprland, e.g. "German (no dead keys)"
+ * @param code short xkb code, e.g. "de"
+ * @returns a key of `byName`, or "" when nothing here matches — the caller
+ *          decides the fallback rather than getting a silently wrong keymap.
+ */
+function resolve(name, code) {
+    if (name && byName.hasOwnProperty(name)) return name;
+    if (code && codeToName.hasOwnProperty(code)) return codeToName[code];
+    const n = (name || "").toLowerCase();
+    if (n.indexOf("german") >= 0 || n.indexOf("deutsch") >= 0
+        || n.indexOf("austrian") >= 0) return "German";
+    if (n.indexOf("russian") >= 0 || n.indexOf("рус") >= 0) return "Russian";
+    if (n.indexOf("english") >= 0) return "English (US)";
+    return "";
+}

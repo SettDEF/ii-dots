@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="96" height="96" viewBox="0 0 96 96" fill="none">
+  <!-- Preview-only headset, on a 96 grid for the same reason as the laptop:
+       at ~150px the 24-grid list icon's stroke scales into a slab.
+
+       Earcup centres: x = 0.190 / 0.810, y = 0.660 of the viewBox.
+       AudioLayout.glyphChannelSpots() must match. -->
+
+  <!-- Headband -->
+  <path d="M13 63V47a35 35 0 0 1 70 0v16"
+        stroke="currentColor" stroke-width="3.2" stroke-linecap="round"/>
+
+  <!-- Earcups: rounded, slightly taller than wide, the way over-ears sit -->
+  <rect x="6" y="49" width="22" height="30" rx="10"
+        stroke="currentColor" stroke-width="3.2"/>
+  <rect x="68" y="49" width="22" height="30" rx="10"
+        stroke="currentColor" stroke-width="3.2"/>
+
+  <!-- Inner pads, so the cups do not read as empty capsules -->
+  <rect x="11" y="55" width="12" height="18" rx="6"
+        stroke="currentColor" stroke-width="1.6" opacity="0.45"/>
+  <rect x="73" y="55" width="12" height="18" rx="6"
+        stroke="currentColor" stroke-width="1.6" opacity="0.45"/>
+</svg>

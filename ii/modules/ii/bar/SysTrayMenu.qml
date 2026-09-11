@@ -1,6 +1,7 @@
 import qs.services
 import qs.modules.common
 import qs.modules.common.widgets
+import qs.modules.common.functions
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
@@ -69,10 +70,22 @@ PopupWindow {
                 margins: root.padding
             }
 
-            color: Appearance.colors.colLayer0
+            // OPAQUE on purpose — the same reasoning as PopupMenuPanel, which
+            // hit this first. colLayer0 is transparentize(colLayer0Base,
+            // backgroundTransparency): an alpha intended for surfaces that sit
+            // on the desktop panel and composite against it. A tray menu is its
+            // own PopupWindow floating over whatever happens to be underneath,
+            // so that alpha shows the wallpaper straight through and the entries
+            // stop being readable. colLayer0Base is the shade the transparency
+            // is solving for, so this is the colour the theme intends, minus the
+            // film — and it still retints with the wallpaper like every role.
+            color: Appearance.colors.colLayer0Base
             radius: Appearance.rounding.windowRounding
             border.width: 1
-            border.color: Appearance.colors.colLayer0Border
+            // colLayer0Border mixes colLayer0 in, so the edge inherited the very
+            // same alpha; mix the opaque base instead.
+            border.color: ColorUtils.mix(Appearance.m3colors.m3outlineVariant,
+                                         Appearance.colors.colLayer0Base, 0.4)
             clip: true
 
             opacity: 0

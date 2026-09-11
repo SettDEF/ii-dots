@@ -83,6 +83,7 @@ Scope { // Scope
                         }
                         Rectangle { // The real rectangle that is visible
                             id: dockVisualBackground
+                            visible: Config.options.dock.showBackground
                             property real margin: Appearance.sizes.elevationMargin
                             anchors.fill: parent
                             anchors.topMargin: Appearance.sizes.elevationMargin
@@ -103,6 +104,7 @@ Scope { // Scope
 
                             VerticalButtonGroup {
                                 Layout.topMargin: Appearance.sizes.hyprlandGapsOut // why does this work
+                                visible: Config.options.dock.showPinButton
                                 GroupButton {
                                     // Pin button
                                     baseWidth: 35
@@ -120,13 +122,22 @@ Scope { // Scope
                                     }
                                 }
                             }
-                            DockSeparator {}
+                            DockSeparator { visible: Config.options.dock.showPinButton }
                             DockApps {
                                 id: dockApps
                                 buttonPadding: dockRow.padding
                             }
-                            DockSeparator {}
+                            DockSeparator { visible: Config.options.dock.showMedia }
+                            DockMedia {
+                                visible: Config.options.dock.showMedia
+                                Layout.fillHeight: true
+                                Layout.topMargin: 12
+                                Layout.bottomMargin: 8
+                                buttonPadding: dockRow.padding
+                            }
+                            DockSeparator { visible: Config.options.dock.showAppsButton }
                             DockButton {
+                                visible: Config.options.dock.showAppsButton
                                 Layout.fillHeight: true
                                 onClicked: GlobalStates.overviewOpen = !GlobalStates.overviewOpen
                                 topInset: Appearance.sizes.hyprlandGapsOut + dockRow.padding

@@ -3,4 +3,5 @@ ScreenDrawContent 1.0 ScreenDrawContent.qml
 ScreenDrawSidebar 1.0 ScreenDrawSidebar.qml
 DrawCanvas 1.0 DrawCanvas.qml
 DrawTools 1.0 DrawTools.qml
+ZenColorPicker 1.0 ZenColorPicker.qml
 ShapedButton 1.0 ShapedButton.qml

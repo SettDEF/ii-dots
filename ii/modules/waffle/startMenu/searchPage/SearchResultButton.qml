@@ -28,7 +28,7 @@ WChoiceButton {
 
     function execute() {
         GlobalStates.searchOpen = false;
-        root.entry.execute();
+        AppLaunch.launch(root.entry);
     }
 
     horizontalPadding: 0

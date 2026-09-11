@@ -2,6 +2,7 @@ pragma ComponentBehavior: Bound
 import qs
 import qs.services
 import qs.modules.common
+import qs.modules.common.functions
 import qs.modules.common.widgets
 import QtQuick
 import QtQuick.Layouts
@@ -9,6 +10,7 @@ import QtQuick.Controls
 import QtMultimedia
 import Quickshell
 import Quickshell.Io
+import Quickshell.Widgets
 import Qt5Compat.GraphicalEffects
 
 Item {
@@ -22,6 +24,10 @@ Item {
 
     // Gap between the centered metadata+search panel and the post panel.
     readonly property real pairGap: 12
+
+    // The focused image's metadata and post now render in the launcher's
+    // details dropdown, not down here — skwd publishes the focus to
+    // WallpaperHub (see detailRow) and the launcher draws it.
 
     readonly property string home: "/home/caesar"
     // local | wallhaven | reddit | videos — owned by WallpaperHub so the
@@ -49,7 +55,13 @@ Item {
     property string whTopRange:   "1M"    // 1d 3d 1w 1M 3M 6M 1y
     property string whRatio:      ""      // 16x9 | 16x10 | 21x9 | 9x16 | …
     property string whAtleast:    ""      // 1920x1080 | 2560x1440 | 3840x2160 | …
-    property bool   whFilterOpen: false
+    // Shared with the launcher's filter button (WallpaperControls) rather than
+    // local, so ONE flag drives both surfaces. It used to be local: pressing
+    // "filter / sort" in the launcher bar while wallhaven was the source
+    // toggled WallpaperHub.filterOpen, whose only renderer is the REDDIT chip
+    // panel in SearchWallpapers — hidden on wallhaven. The button therefore
+    // did nothing at all, with no error to explain it.
+    readonly property bool whFilterOpen: WallpaperHub.filterOpen
     // Reddit filter panel — manual override for the auto-advanced sort
     // cycle. "" = let the auto-cycle pick (hot → top?t=all → … → new).
     // Both live in WallpaperHub: the launcher draws the same chips in its
@@ -311,68 +323,153 @@ Item {
         }
     }
 
-    Process {
-        id: wallhavenProc
-        command: ["bash", "-c", "echo '{}'"]
-        // Whether this fetch is page 1 (replace results) or a follow-up
-        // page (append).  Set by refresh() / loadMoreWallhaven().
-        property bool appendMode: false
-        stdout: StdioCollector {
-            onStreamFinished: {
-                try {
-                    const data = JSON.parse(text)
-                    const fresh = (data.data || []).map(w => ({
-                        id: w.id,
-                        title: w.id,
-                        thumb: w.thumbs?.small ?? w.thumbs?.original ?? w.path,
-                        full:  w.path,
-                        source: "wallhaven",
-                        kind: "pic",
-                        path: w.path,
-                        // 5-color dominant palette from the Wallhaven API.
-                        // Used to render the colored glow + swatch strip
-                        // around the focused carousel item.
-                        palette: Array.isArray(w.colors) ? w.colors.slice(0, 5) : [],
-                    }))
-                    const meta = data.meta ?? {}
-                    const lastPage = meta.last_page ?? 1
-                    root.whHasMore = (root.whPage < lastPage) && fresh.length > 0
-                    if (wallhavenProc.appendMode) {
-                        // Dedupe by id to avoid showing the same image twice
-                        // if the API returned overlap.
-                        const seen = new Set(root.wallpapers.map(w => w.id))
-                        const keepIdx = root.activeIndex
-                        root.wallpapers = root.wallpapers.concat(
-                            fresh.filter(w => !seen.has(w.id)))
-                        // ListView resets currentIndex to 0 when the model
-                        // array reference flips.  Restore the user's spot
-                        // after the binding storm settles.
-                        Qt.callLater(() => {
-                            if (keepIdx >= 0 && keepIdx < root.filtered.length
-                                    && root.activeIndex !== keepIdx)
-                                root.activeIndex = keepIdx
-                        })
-                    } else {
-                        root.wallpapers = fresh
-                    }
-                } catch (e) {
-                    if (!wallhavenProc.appendMode) root.wallpapers = []
-                    root.whHasMore = false
-                }
-                root.loading = false
-                root.whLoadingMore = false
-            }
+    /*
+     * ONE PAGE OF ROWS, INTO THE CAROUSEL.
+     *
+     * This lived inside a Process's stdout handler, which meant the parsing,
+     * the dedupe and the "restore the user's spot" dance were only reachable
+     * by spawning something. It is a function now, called directly by the
+     * socket client — the logic below is unchanged, because it was never the
+     * part that was wrong.
+     */
+    function _applyQuarryPage(data, append) {
+        const fresh = (data.data || []).map(w => ({
+            id: w.id,
+            title: w.title || w.id,
+            thumb: w.thumbs?.small ?? w.thumbs?.original ?? w.path,
+            full:  w.path,
+            // The row says which source it actually came from now — it is not
+            // all wallhaven any more, and the badge should not claim it is.
+            source: w.source || "quarry",
+            kind: w.kind || "pic",
+            path: w.path,
+            // The dominant-colour palette, used for the glow and swatch strip
+            // around the focused item.
+            palette: Array.isArray(w.colors) ? w.colors.slice(0, 5) : [],
+        }))
+        const meta = data.meta ?? {}
+        const lastPage = meta.last_page ?? 1
+        root.whHasMore = (root.whPage < lastPage) && fresh.length > 0
+
+        if (append) {
+            // Dedupe by id so an overlapping page cannot show the same picture
+            // twice.
+            const seen = new Set(root.wallpapers.map(w => w.id))
+            const keepIdx = root.activeIndex
+            root.wallpapers = root.wallpapers.concat(fresh.filter(w => !seen.has(w.id)))
+            // A ListView resets currentIndex when the model array reference
+            // flips; restore the user's spot once the binding storm settles.
+            Qt.callLater(() => {
+                if (keepIdx >= 0 && keepIdx < root.filtered.length
+                        && root.activeIndex !== keepIdx)
+                    root.activeIndex = keepIdx
+            })
+        } else {
+            root.wallpapers = fresh
         }
     }
+
+    /*
+     * ONE FETCH FOR EVERY REMOTE TAB.
+     *
+     * This used to `curl` wallhaven.cc/api/v1/search directly, which meant a
+     * second HTTP client living in a wallpaper picker: its own URL builder, its
+     * own colour codes, its own rate limit, its own remote thumbnails fetched
+     * over the network on every scroll.
+     *
+     * `quarry-rows` answers with the SAME JSON object — `data[]` and `meta` —
+     * so the parser below, the dedupe, the pagination and the palette glow are
+     * untouched. What changes is where it comes from: quarry's catalogue,
+     * across every source it crawls, with thumbnails served from its local
+     * cache as `file://` paths that are already the right size and already
+     * decoded once.
+     *
+     * The tab's own query is what selects the source, so "Wallhaven" still
+     * means wallhaven — it is one row of a query language now rather than one
+     * client.
+     */
+    /// The query this tab is asking quarry for: the tab is the scope, the text
+    /// box is the search.
+    function _quarryQuery(term) {
+        return [(term || "").trim(), root.quarryScope].filter(s => s.length > 0).join(" ")
+    }
+
+    /*
+     * Straight down the socket.
+     *
+     * This was a `bash -c` spawning a helper script per page — a process, a
+     * socat and a JSON parse of ceremony on every scroll, request/response
+     * only. `Quarry` holds one connection for the life of the shell and
+     * answers in single-digit milliseconds, so paging is no longer something
+     * you wait for.
+     *
+     * The reply is the same object the Wallhaven API returned, so everything
+     * that consumed it — the dedupe, the palette glow, `whHasMore` — is
+     * untouched below.
+     */
+    function _fetchQuarry(term, page, append) {
+        if (!Quarry.connected) {
+            // Say so rather than showing an empty tab: the daemon starts on
+            // demand and the retry timer will pick it up within a second.
+            root.loading = false
+            root.whLoadingMore = false
+            return
+        }
+        root.whLoadingMore = append
+        Quarry.page(root._quarryQuery(term), page, 24, function (err, payload) {
+            root.whLoadingMore = false
+            root.loading = false
+            if (err || !payload) return
+            root._applyQuarryPage(payload, append)
+        })
+    }
+
+    /// What this tab is asking quarry for. The tab is the scope; the text box
+    /// is the search — the same split the tab strip already implies.
+    /*
+     * THE TAB IS A QUERY.
+     *
+     * Every tab used to be a separate client: Wallhaven had its own URL builder
+     * and API key of colour codes, Reddit had an OAuth script and a download
+     * directory, Videos read files off disk, Local scanned a folder. Four
+     * mechanisms, four failure modes, one carousel.
+     *
+     * They are one query language now, and the tab picks the scope. Adding a
+     * source to quarry adds it to every tab that wants it, and none of this
+     * has to know.
+     */
+    readonly property string quarryScope: {
+        switch (root.activeSource) {
+        case "wallhaven":
+            return "source:wallhaven kind:wallpaper"
+        case "videos":
+            // Anything that moves, whatever board it came from.
+            return "family:video"
+        case "reddit":
+            return "source:reddit"
+        case "local":
+            return "source:local"
+        default:
+            return "kind:wallpaper"
+        }
+    }
+
+    /// Which tabs are served by the daemon. The rest keep their own fetchers
+    /// until quarry has a source for them — a tab that silently returns
+    /// nothing is worse than one that still works the old way.
+    readonly property bool quarryServes: root.quarrySources.indexOf(root.activeSource) >= 0
+    /// All four, on one socket. Reddit needed an OAuth adapter inside the
+    /// daemon before it could join; it has one now, sharing the very token
+    /// cache the shell scripts use, so the two do not race each other into
+    /// Reddit's rate limit with separate sessions.
+    property var quarrySources: ["wallhaven", "videos", "local", "reddit"]
+
     function loadMoreWallhaven() {
-        if (root.activeSource !== "wallhaven") return
+        if (!root.quarryServes) return
         if (root.loading || root.whLoadingMore || !root.whHasMore) return
         root.whLoadingMore = true
         root.whPage += 1
-        const url = root._buildWallhavenUrl(root.query.trim(), root.whPage)
-        wallhavenProc.appendMode = true
-        wallhavenProc.command = ["bash", "-c", `curl -s --max-time 12 '${url}'`]
-        wallhavenProc.running = true
+        root._fetchQuarry(root.query.trim(), root.whPage, true)
     }
 
     // Reddit pagination state lives in redditAfterBySub, keyed by (sub, sort),
@@ -755,12 +852,6 @@ Item {
             }
         }
     }
-    function formatBytes(n) {
-        if (!n || n <= 0) return "—"
-        if (n >= 1048576) return (n / 1048576).toFixed(1) + " MB"
-        if (n >= 1024)    return (n / 1024).toFixed(0) + " KB"
-        return n + " B"
-    }
 
     function syncReddit() {
         // Robustify input: strip "r/", "/r/", "https://reddit.com/r/", quotes,
@@ -813,7 +904,14 @@ Item {
         redditSyncProc.command = ["bash", "-c",
             `export PATH="$HOME/.local/bin:$HOME/.cargo/bin:/usr/local/bin:/usr/bin:$PATH"
              mkdir -p "$HOME/Pictures/Wallpapers/skwd"
-             timeout 30 '${scriptDir}/fetch_reddit.sh' '${sub}' '${sortDef.path}${sortDef.q}' '${afterToken}' "$HOME/Pictures/Wallpapers/skwd" 2>>"$HOME/.cache/quickshell/skwd-reddit-sync.log"
+             # 100, not 30. fetch_reddit.sh budgets 20s per image and 90s per
+             # video internally, so a 30s outer cap guaranteed every video was
+             # killed mid-download and truncated any image batch that ran long --
+             # fewer wallpapers per page than the 100 actually requested. The
+             # script cannot hang past its own per-file caps, so this is a
+             # backstop, not the real limit. The carousel still fills live: a
+             # rescan every 800ms lists files as they land, not at exit.
+             timeout 100 '${scriptDir}/fetch_reddit.sh' '${sub}' '${sortDef.path}${sortDef.q}' '${afterToken}' "$HOME/Pictures/Wallpapers/skwd" 2>>"$HOME/.cache/quickshell/skwd-reddit-sync.log"
              exit 0`]
         redditSyncProc.running = true
     }
@@ -896,6 +994,21 @@ Item {
     // Stub kept so other references don't break.
     property var redditDrySubs: ({})
 
+    // Which sources can actually fetch another page. "local" is every file in
+    // the folder, already loaded — there is no page 2 — so any load-more
+    // affordance is a lie there. Favourites are a fixed set for the same reason.
+    readonly property bool canLoadMore: root.activeSource === "wallhaven"
+        || root.activeSource === "reddit"
+        || root.activeSource === "videos"
+
+    // Route a "load more" to whichever backend is active. This switch was
+    // written out inline in three places; the overscroll gesture would have
+    // made it four.
+    function loadMoreForSource() {
+        if (root.activeSource === "wallhaven") root.loadMoreWallhaven()
+        else if (root.activeSource === "reddit" || root.activeSource === "videos") root.loadMoreReddit()
+    }
+
     function loadMoreReddit() {
         // Each call advances the per-sub page counter inside syncReddit.
         //
@@ -928,13 +1041,10 @@ Item {
         root.whPage = 1
         root.whHasMore = true
         root.whLoadingMore = false
-        if (activeSource === "local") {
+        if (root.quarryServes) {
+            root._fetchQuarry(query.trim(), 1, false)
+        } else if (activeSource === "local") {
             localScanProc.running = true
-        } else if (activeSource === "wallhaven") {
-            const url = root._buildWallhavenUrl(query.trim(), 1)
-            wallhavenProc.appendMode = false
-            wallhavenProc.command = ["bash", "-c", `curl -s --max-time 12 '${url}'`]
-            wallhavenProc.running = true
         } else if (activeSource === "reddit" || activeSource === "videos") {
             // Read the gallery-dl-populated cache instead of hitting Reddit's
             // 403'd JSON API. The Videos tab uses the same scan + a kind=="vid"
@@ -1324,9 +1434,63 @@ Item {
                        onTriggered: () => Quickshell.execDetached(["wl-copy", "--", md.path]) })
             arr.push({ icon: "folder",       label: "Show in files",
                        onTriggered: () => Quickshell.execDetached(["xdg-open", md.path.substring(0, md.path.lastIndexOf("/")) || "/"]) })
+        } else {
+            // Remote results — wallhaven/reddit hits that are not on disk yet.
+            // These previously offered nothing but "Apply", so there was no way
+            // to view the full image, reach the page it came from, or keep a
+            // copy WITHOUT setting it as your wallpaper first.
+            //
+            // Named for what they do here rather than borrowed wholesale from
+            // the booru menu: this is a wallpaper picker, so a saved file goes
+            // to the Wallpapers folder and the source is a named site.
+            arr.push({ separator: true })
+            arr.push({ icon: "open_in_full", label: "View full size",
+                       onTriggered: () => Qt.openUrlExternally(md.full || md.path) })
+            const page = root.sourcePageUrl(md)
+            if (page.length > 0) {
+                arr.push({ icon: "link",
+                           label: md.source === "wallhaven" ? "View on Wallhaven"
+                                                            : `View r/${md.subreddit ?? ""}`,
+                           onTriggered: () => Qt.openUrlExternally(page) })
+            }
+            arr.push({ icon: "download", label: "Save to Wallpapers",
+                       onTriggered: () => root.saveWallpaperCopy(md) })
+            arr.push({ icon: "content_copy", label: "Copy image link",
+                       onTriggered: () => Quickshell.execDetached(["wl-copy", "--", md.full || md.path]) })
         }
         return arr
     }
+
+    // Wallhaven exposes a per-image page keyed by id; reddit items only carry
+    // the subreddit they were scraped from, not the permalink, so that is the
+    // best target available without another API round-trip.
+    function sourcePageUrl(md) {
+        if (!md) return ""
+        if (md.source === "wallhaven" && md.id) return "https://wallhaven.cc/w/" + md.id
+        if (md.source === "reddit" && md.subreddit) return "https://reddit.com/r/" + md.subreddit
+        return ""
+    }
+
+    // Where a remote item lands once fetched. Both "apply" and "save" used to
+    // derive this independently — same directory, same extension rules, two
+    // copies of it — so a change to either drifted from the other.
+    function wallpaperCachePath(item) {
+        const targetDir = `${root.home}/Pictures/Wallpapers/skwd`
+        let ext = (item.path.match(/\.([a-z0-9]+)(?:\?|$)/i) || [, "jpg"])[1].toLowerCase()
+        if (item.kind === "vid" && ext !== "webm" && ext !== "gif") ext = "mp4"
+        return `${targetDir}/${item.source}_${item.id}.${ext}`
+    }
+
+    // Keep a copy without applying it.
+    function saveWallpaperCopy(md) {
+        if (!md || !md.path) return
+        const target = root.wallpaperCachePath(md)
+        Quickshell.execDetached(["bash", "-c",
+            FileUtils.fetchToFileCommand(md.path, target, { timeout: 60 })
+            + ` && notify-send -a 'skwd' 'Saved to Wallpapers' ${FileUtils.shQuote(target)}`
+            + ` || notify-send -a 'skwd' -u critical 'Save failed' ${FileUtils.shQuote(target)}`])
+    }
+
     function applyAndAdjust(item) {
         applyWallpaper(item)
         GlobalStates.requestAdjusterOpen()
@@ -1343,16 +1507,10 @@ Item {
             applyProc.command = ["bash", "-c",
                 `${Directories.wallpaperSwitchScriptPath} --image '${item.path.replace(/'/g, "'\\''")}'`]
         } else {
-            const targetDir = `${root.home}/Pictures/Wallpapers/skwd`
-            let ext = (item.path.match(/\.([a-z0-9]+)(?:\?|$)/i) || [,"jpg"])[1].toLowerCase()
-            if (item.kind === "vid" && ext !== "webm" && ext !== "gif") {
-                ext = "mp4"
-            }
-            const target = `${targetDir}/${item.source}_${item.id}.${ext}`
+            const target = root.wallpaperCachePath(item)
             applyProc.command = ["bash", "-c",
-                `mkdir -p '${targetDir}' && \\
-                 curl -sL --max-time 30 -A 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36' -o '${target}' '${item.path}' && \\
-                 ${Directories.wallpaperSwitchScriptPath} --image '${target}'`]
+                FileUtils.fetchToFileCommand(item.path, target)
+                + ` && ${Directories.wallpaperSwitchScriptPath} --image ${FileUtils.shQuote(target)}`]
         }
         applyProc.running = true
     }
@@ -1429,8 +1587,9 @@ Item {
                     radius: height / 2
                     color: viewHov.hovered ? Appearance.colors.colLayer2Base : "transparent"
                     Behavior on color { ColorAnimation { duration: 140 } }
-                    HoverHandler { id: viewHov }
+                    HoverHandler { margin: Appearance.sizes.touchSlop; id: viewHov }
                     TapHandler {
+                        margin: Appearance.sizes.touchSlop
                         onTapped: root.viewLayout =
                             root.viewLayout === "carousel" ? "grid" :
                             root.viewLayout === "grid"     ? "hex"  : "carousel"
@@ -1461,8 +1620,8 @@ Item {
                     implicitWidth: 26; implicitHeight: 26
                     radius: height / 2
                     color: tuneHov.hovered ? Appearance.colors.colLayer2Base : "transparent"
-                    HoverHandler { id: tuneHov }
-                    TapHandler { onTapped: root.openWallTune() }
+                    HoverHandler { margin: Appearance.sizes.touchSlop; id: tuneHov }
+                    TapHandler { margin: Appearance.sizes.touchSlop; onTapped: root.openWallTune() }
 
                     MaterialSymbol {
                         anchors.centerIn: parent
@@ -1482,8 +1641,8 @@ Item {
                         ? Qt.alpha(Appearance.m3colors.m3primary, 0.18)
                         : (filtHov.hovered ? Appearance.colors.colLayer2Base : "transparent")
                     Behavior on color { ColorAnimation { duration: 140 } }
-                    HoverHandler { id: filtHov }
-                    TapHandler { onTapped: root.whFilterOpen = !root.whFilterOpen }
+                    HoverHandler { margin: Appearance.sizes.touchSlop; id: filtHov }
+                    TapHandler { margin: Appearance.sizes.touchSlop; onTapped: WallpaperHub.filterOpen = !WallpaperHub.filterOpen }
                     MaterialSymbol {
                         anchors.centerIn: parent
                         text: "filter_list"
@@ -1548,6 +1707,7 @@ Item {
                                       : Appearance.colors.colLayer2Base
                             Behavior on color { ColorAnimation { duration: 140 } }
                             TapHandler {
+                                margin: Appearance.sizes.touchSlop
                                 onTapped: {
                                     const arr = root.whCategories.split("")
                                     arr[modelData.i] = (arr[modelData.i] === "1") ? "0" : "1"
@@ -1591,6 +1751,7 @@ Item {
                                 : Appearance.colors.colLayer2Base
                             Behavior on color { ColorAnimation { duration: 140 } }
                             TapHandler {
+                                margin: Appearance.sizes.touchSlop
                                 onTapped: {
                                     const arr = root.whPurity.split("")
                                     arr[modelData.i] = (arr[modelData.i] === "1") ? "0" : "1"
@@ -1674,6 +1835,7 @@ Item {
                                       : Appearance.colors.colLayer2Base
                             Behavior on color { ColorAnimation { duration: 140 } }
                             TapHandler {
+                                margin: Appearance.sizes.touchSlop
                                 onTapped: { root.whTopRange = modelData; root.refresh() }
                             }
                             StyledText {
@@ -1797,7 +1959,7 @@ Item {
                         color: Appearance.colors.colLayer2Base
                         border.width: 1
                         border.color: Appearance.colors.colLayer0Border
-                        TapHandler { onTapped: WallpaperHub.colors = "" }
+                        TapHandler { margin: Appearance.sizes.touchSlop; onTapped: WallpaperHub.colors = "" }
                         MaterialSymbol {
                             anchors.centerIn: parent
                             text: "close"; iconSize: 12
@@ -1924,14 +2086,86 @@ Item {
 
 
         // ── Carousel (parallelogram) ──────────────────────────────────
-        Item {
+        //
+        // ClippingRectangle rather than Item: the skewed cards run right to the
+        // container edge, and QML's plain `clip` only ever clips to a bounding
+        // RECT, so a Rectangle with a radius would still show square corners.
+        // ClippingRectangle clips to the rounded shape itself.
+        ClippingRectangle {
             id: carouselArea
+            color: "transparent"
+            radius: Appearance.rounding.large
             anchors.horizontalCenter: parent.horizontalCenter
             anchors.top: toolbar.bottom
             anchors.topMargin: 26
             width: Math.min(parent.width - 80, 1400)
-            height: 330
+            // Exactly the card height. This used to be 330 while the cards were
+            // carousel.height * 0.78 (~257), so the container carried ~73px of
+            // dead space split above and below the strip. The 0.78 is gone from
+            // the delegate too, so the cards now fill this box exactly.
+            height: 258
             visible: root.viewLayout === "carousel"
+
+            // Slide-down entrance, matching the detail row below it. The row
+            // already dropped in on open while the wallpapers simply appeared,
+            // so the two halves of the screen arrived by different rules. Same
+            // curve and a shorter travel, started fractionally earlier, so the
+            // carousel leads and the row follows instead of racing it.
+            property real slideY: -34
+            opacity: 0
+            transform: Translate { y: carouselArea.slideY }
+            Component.onCompleted: carouselEntrance.start()
+            ParallelAnimation {
+                id: carouselEntrance
+                NumberAnimation {
+                    target: carouselArea; property: "slideY"
+                    from: -34; to: 0; duration: 420; easing.type: Easing.OutCubic
+                }
+                NumberAnimation {
+                    target: carouselArea; property: "opacity"
+                    from: 0; to: 1; duration: 280; easing.type: Easing.OutCubic
+                }
+            }
+
+            // Left-edge refresh affordance. A sibling overlay rather than the
+            // ListView's `header`: a header shifts originX and the content
+            // start, which would fight preferredHighlightBegin/End and the
+            // restored scroll position. This just watches and draws.
+            Item {
+                z: 10
+                anchors { left: parent.left; top: parent.top; bottom: parent.bottom }
+                width: 104
+                opacity: carousel.refreshProgress
+                visible: opacity > 0.01
+
+                Column {
+                    anchors.centerIn: parent
+                    spacing: 8
+                    MaterialSymbol {
+                        anchors.horizontalCenter: parent.horizontalCenter
+                        text: "refresh"
+                        iconSize: 26
+                        color: carousel.refreshProgress >= 1
+                            ? Appearance.colors.colPrimary
+                            : Appearance.colors.colSubtext
+                        Behavior on color { ColorAnimation { duration: 160 } }
+                        // Winds up as you pull, so the glyph itself shows how
+                        // much further there is to go.
+                        rotation: -carousel.refreshProgress * 180
+                        scale: 0.8 + carousel.refreshProgress * 0.35
+                    }
+                    StyledText {
+                        anchors.horizontalCenter: parent.horizontalCenter
+                        width: 96
+                        horizontalAlignment: Text.AlignHCenter
+                        wrapMode: Text.WordWrap
+                        font.pixelSize: Appearance.font.pixelSize.smaller
+                        color: Appearance.colors.colSubtext
+                        text: carousel.refreshProgress >= 1 ? qsTr("Release to refresh")
+                                                            : qsTr("Pull to refresh")
+                    }
+                }
+            }
 
             ListView {
                 id: carousel
@@ -1949,13 +2183,106 @@ Item {
                 // Half-width of the active card's slot (content + skew + pad),
                 // so the centering band tracks the same geometry the delegate
                 // reserves — the active card stays centered as it grows.
-                readonly property real _activeHalf: (440 + 0.18 * (height * 0.78) + 12) / 2
+                readonly property real _activeHalf: (440 + 0.18 * height + 12) / 2
                 preferredHighlightBegin: width / 2 - _activeHalf
                 preferredHighlightEnd:   width / 2 + _activeHalf
                 highlightRangeMode: ListView.StrictlyEnforceRange
                 highlightFollowsCurrentItem: true
                 snapMode: ListView.SnapOneItem
                 keyNavigationWraps: false
+
+                // ── Pull-past-the-end to load more ───────────────────────
+                // Same shape as the edge-swipe gestures: normalise the drag
+                // against a threshold, fire at >= 1, and let the rubber band
+                // carry it back. DragAndOvershootBounds is what allows the
+                // overshoot at all — without it the strip stops dead at the
+                // last card and there is nothing to pull against.
+                // Trailing affordance. Fixed width on purpose: a footer that
+                // resized with the drag would change contentWidth, which feeds
+                // straight back into overscrollPx — the content moves the thing
+                // measuring it. So the box is constant and only its CONTENT
+                // responds to the pull.
+                footer: Item {
+                    // Only where another page can actually arrive. On "local"
+                    // this used to sit there promising more that could never
+                    // come, because that source has no pagination at all.
+                    // Width collapses with it so it leaves no trailing gap.
+                    visible: root.canLoadMore && root.filtered.length > 0
+                    width: visible ? 104 : 0
+                    height: carousel.height
+
+                    Column {
+                        anchors.centerIn: parent
+                        spacing: 8
+                        opacity: carousel.loadingMore ? 1
+                            : Math.max(0.35, carousel.pullProgress)
+                        Behavior on opacity { NumberAnimation { duration: 160 } }
+
+                        MaterialSymbol {
+                            anchors.horizontalCenter: parent.horizontalCenter
+                            text: carousel.loadingMore ? "progress_activity"
+                                : (carousel.pullProgress >= 1 ? "download" : "chevron_right")
+                            iconSize: 26
+                            color: carousel.pullProgress >= 1 || carousel.loadingMore
+                                ? Appearance.colors.colPrimary
+                                : Appearance.colors.colSubtext
+                            Behavior on color { ColorAnimation { duration: 160 } }
+                            // Past the threshold the arrow has turned into the
+                            // download glyph, so stop rotating and let it sit.
+                            rotation: carousel.pullProgress >= 1 ? 0
+                                : carousel.pullProgress * 90
+                            scale: 1 + carousel.pullProgress * 0.25
+                            Behavior on scale { NumberAnimation { duration: 220; easing.type: Easing.OutCubic } }
+
+                            RotationAnimator on rotation {
+                                running: carousel.loadingMore
+                                loops: Animation.Infinite
+                                from: 0; to: 360; duration: 900
+                            }
+                        }
+                        StyledText {
+                            anchors.horizontalCenter: parent.horizontalCenter
+                            width: 96
+                            horizontalAlignment: Text.AlignHCenter
+                            wrapMode: Text.WordWrap
+                            font.pixelSize: Appearance.font.pixelSize.smaller
+                            color: Appearance.colors.colSubtext
+                            text: carousel.loadingMore ? qsTr("Loading…")
+                                : (carousel.pullProgress >= 1 ? qsTr("Release to load")
+                                                              : qsTr("Pull for more"))
+                        }
+                    }
+                }
+
+                readonly property real pullThreshold: 90
+                readonly property real overscrollPx:
+                    Math.max(0, contentX + width - Math.max(contentWidth, width))
+                readonly property real pullProgress:
+                    Math.min(1, overscrollPx / pullThreshold)
+                // Same gesture at the START of the strip. There is nothing
+                // "before" the first item to page in, so pulling back is a
+                // refresh — re-fetch page 1 — which is the one action that
+                // works on every source, "local" included.
+                readonly property real pullBackPx:
+                    Math.max(0, originX - contentX)
+                readonly property real refreshProgress:
+                    Math.min(1, pullBackPx / pullThreshold)
+                readonly property bool loadingMore:
+                    root.loading || root.whLoadingMore || redditSyncProc.running
+                // Latched so one drag fires once: the release handler would
+                // otherwise re-trigger on every bounce oscillation.
+                property bool _pullFired: false
+                onDraggingChanged: {
+                    if (dragging) { _pullFired = false; return }
+                    if (_pullFired || loadingMore) return
+                    if (pullProgress >= 1) {
+                        _pullFired = true
+                        root.loadMoreForSource()
+                    } else if (refreshProgress >= 1) {
+                        _pullFired = true
+                        root.refresh()
+                    }
+                }
                 // Jumping many items at once shouldn't crawl across every card
                 // in between: a fixed short slide, not a fixed pixel speed.
                 highlightMoveVelocity: -1
@@ -2007,7 +2334,12 @@ Item {
                         _syncingFromRoot = false
                     }
                 }
-                boundsBehavior: Flickable.StopAtBounds
+                // DragAndOvershoot, not StopAtBounds. StopAtBounds is what made the
+                // strip halt dead at the last card — there was nothing to pull
+                // against, so no gesture could exist there. Overshoot is drag-only,
+                // so an inertial flick still stops cleanly at the end rather than
+                // bouncing on its own.
+                boundsBehavior: Flickable.DragOverBounds
                 // Phone-style inertial flick: low deceleration → long
                 // glide that gradually fades, snap settles on whichever
                 // item the cursor lands on after coast.
@@ -2071,7 +2403,7 @@ Item {
                     // fixed 120 slot and covers its neighbours. Content width
                     // plus the parallelogram's horizontal skew spread
                     // (0.18 · frameHeight) plus a little breathing room.
-                    readonly property real frameHeight: carousel.height * 0.78
+                    readonly property real frameHeight: carousel.height
                     readonly property real skewPad: 0.18 * frameHeight
                     width: (active ? 440 : 110) + skewPad + 12
                     height: carousel.height
@@ -2170,6 +2502,24 @@ Item {
                                         audioOutput: AudioOutput { muted: true; volume: 0 }
                                         videoOutput: vidOut
                                         Component.onCompleted: play()
+                                        // A rescan reassigns root.wallpapers,
+                                        // which shifts every index, so this
+                                        // delegate's modelData — and therefore
+                                        // `source` — can change under a player
+                                        // that already exists. setSource()
+                                        // resets playbackState to Stopped, and
+                                        // Component.onCompleted fired long ago,
+                                        // so nothing restarted it: the card sat
+                                        // on its poster frame looking "not
+                                        // playing". Measured 0/12 without this,
+                                        // 12/12 with it. Re-issue play() every
+                                        // time media becomes ready.
+                                        onMediaStatusChanged: {
+                                            if ((mediaStatus === MediaPlayer.LoadedMedia
+                                                 || mediaStatus === MediaPlayer.BufferedMedia)
+                                                && playbackState !== MediaPlayer.PlayingState)
+                                                play()
+                                        }
                                         onErrorOccurred: (err, msg) => console.warn("skwd video:", err, msg)
                                     }
                                     VideoOutput {
@@ -2201,8 +2551,9 @@ Item {
                             width: 26; height: 26; radius: 13
                             readonly property bool on: WallpaperHub.isFavorite(modelData?.path ?? "")
                             color: Qt.alpha("black", favHov.hovered ? 0.75 : 0.5)
-                            HoverHandler { id: favHov }
+                            HoverHandler { margin: Appearance.sizes.touchSlop; id: favHov }
                             TapHandler {
+                                margin: Appearance.sizes.touchSlop
                                 onTapped: WallpaperHub.toggleFavorite(modelData?.path ?? "")
                             }
                             MaterialSymbol {
@@ -2298,10 +2649,11 @@ Item {
                                 color: Qt.color(modelData)
                                 border.width: 1
                                 border.color: Qt.alpha("black", 0.25)
-                                HoverHandler { id: palHov }
+                                HoverHandler { margin: Appearance.sizes.touchSlop; id: palHov }
                                 scale: palHov.hovered ? 1.18 : 1
                                 Behavior on scale { NumberAnimation { duration: 140 } }
                                 TapHandler {
+                                    margin: Appearance.sizes.touchSlop
                                     onTapped: {
                                         // Snap to nearest wallhaven palette
                                         // code and append to the filter.
@@ -2574,7 +2926,7 @@ Item {
             }
         }
 
-        // ── Detail row: metadata | search | post ─────────────────────
+        // ── Detail row: the search field and its completions ─────────
         // Three equal-height panels in one centered row BELOW the carousel:
         // the focused image's metadata (left), the search field with its
         // completion entries beneath it (middle), and the focused post's
@@ -2586,7 +2938,11 @@ Item {
                 && root.activeIndex >= 0 && root.activeIndex < root.filtered.length)
                 ? root.filtered[root.activeIndex] : null
             readonly property var meta: root.metaFor(md)
-            onMdChanged: if (md) focusSettle.restart()
+            onMdChanged: {
+                if (md) focusSettle.restart()
+                WallpaperHub.focusedItem = md
+            }
+            onMetaChanged: WallpaperHub.focusedMeta = meta
             readonly property bool hasSearch: root.activeSource !== "local"
             // Sized to the launcher's type scale — the old 232/9px
             // panels read as fine print next to the bar above them.
@@ -2617,105 +2973,11 @@ Item {
                 }
             }
 
-            readonly property var rows: {
-                const m = detailRow.md
-                if (!m) return []
-                const meta = detailRow.meta
-                const local = (m.path || "").startsWith("/")
-                return [
-                    { k: qsTr("Title"),      v: m.title || "—" },
-                    { k: qsTr("Source"),     v: (m.source || "—")
-                        + (m.subreddit ? "  ·  r/" + m.subreddit : "") },
-                    { k: qsTr("Type"),       v: (m.kind || "pic").toUpperCase() },
-                    { k: qsTr("Resolution"), v: meta && meta.dims ? meta.dims
-                        : (local ? "…" : qsTr("(remote)")) },
-                    { k: qsTr("Format"),     v: meta && meta.format ? meta.format
-                        : (local ? "…" : "—") },
-                    { k: qsTr("Size"),       v: meta ? root.formatBytes(meta.bytes)
-                        : (local ? "…" : "—") },
-                    { k: qsTr("ID"),         v: m.id || "—" },
-                    { k: qsTr("Path"),       v: m.path || "—" },
-                ]
-            }
 
             Row {
                 anchors.horizontalCenter: parent.horizontalCenter
                 spacing: root.pairGap
 
-                // 1 ── METADATA ─────────────────────────────────────────
-                Rectangle {
-                    width: 330
-                    height: detailRow.panelH
-                    radius: Appearance.rounding.normal
-                    color: Appearance.colors.colLayer0
-                    border.width: 1
-                    border.color: Appearance.colors.colLayer0Border
-                    clip: true
-
-                    // Right-click the metadata for the same menu the cards
-                    // have — including the KIO properties dialog.
-                    TapHandler {
-                        acceptedButtons: Qt.RightButton
-                        onTapped: (eventPoint) => {
-                            const md = detailRow.md
-                            if (!md) return
-                            const g = parent.mapToItem(root, eventPoint.position.x, eventPoint.position.y)
-                            skwdCtxMenu.popup(g.x, g.y, root.menuForCarouselItem(md))
-                        }
-                    }
-
-                    Column {
-                        anchors.fill: parent
-                        anchors.margins: 16
-                        spacing: 6
-                        StyledText {
-                            text: qsTr("IMAGE INFO")
-                            font.pixelSize: Appearance.font.pixelSize.smaller
-                            font.weight: Font.Bold
-                            font.letterSpacing: 1.2
-                            color: Appearance.colors.colPrimary
-                        }
-                        Rectangle {
-                            width: parent.width; height: 1
-                            color: Appearance.colors.colLayer0Border
-                        }
-                        Repeater {
-                            model: detailRow.rows
-                            delegate: RowLayout {
-                                required property var modelData
-                                width: parent.width
-                                spacing: 8
-                                StyledText {
-                                    text: modelData.k
-                                    font.pixelSize: Appearance.font.pixelSize.smaller
-                                    color: Appearance.colors.colSubtext
-                                    Layout.preferredWidth: 82
-                                    Layout.alignment: Qt.AlignTop
-                                }
-                                StyledText {
-                                    text: modelData.v
-                                    font.pixelSize: Appearance.font.pixelSize.smaller
-                                    font.weight: Font.Medium
-                                    color: Appearance.colors.colOnLayer1
-                                    elide: Text.ElideMiddle
-                                    maximumLineCount: 2
-                                    wrapMode: Text.WrapAnywhere
-                                    Layout.fillWidth: true
-                                }
-                            }
-                        }
-                        StyledText {
-                            width: parent.width
-                            visible: detailRow.md === null
-                            text: qsTr("Focus an image in the carousel.")
-                            font.pixelSize: Appearance.font.pixelSize.smaller
-                            color: Appearance.colors.colSubtext
-                            wrapMode: Text.WordWrap
-                        }
-                    }
-                }
-
-                // 2 ── SEARCH + entries ─────────────────────────────────
                 Rectangle {
                     id: searchPanel
                     width: 360
@@ -2894,112 +3156,7 @@ Item {
                     }
                 }
 
-                // 3 ── POST (swipeable + dots) ──────────────────────────
-                Item {
-                    id: postPanel
-                    width: 400
-                    height: detailRow.panelH
-                    readonly property var md: detailRow.md
-                    readonly property var images: {
-                        const m = postPanel.md
-                        if (!m) return []
-                        if (Array.isArray(m.gallery) && m.gallery.length > 0) return m.gallery
-                        const one = m.full || m.thumb || ""
-                        return one.length ? [one] : []
-                    }
-
-                    Rectangle {
-                        anchors.fill: parent
-                        radius: Appearance.rounding.normal
-                        color: Appearance.colors.colLayer0
-                        border.width: 1
-                        border.color: Appearance.colors.colLayer0Border
-                        clip: true
-
-                        Column {
-                            anchors.fill: parent
-                            anchors.margins: 14
-                            spacing: 10
-
-                            StyledText {
-                                text: postPanel.images.length > 1
-                                    ? qsTr("POST · %1 images").arg(postPanel.images.length)
-                                    : qsTr("POST")
-                                font.pixelSize: Appearance.font.pixelSize.smaller
-                                font.weight: Font.Bold
-                                font.letterSpacing: 1.2
-                                color: Appearance.colors.colPrimary
-                            }
-
-                            StyledText {
-                                width: parent.width
-                                height: parent.height - 42
-                                visible: postPanel.images.length === 0
-                                text: qsTr("Focus an image to see its post")
-                                font.pixelSize: Appearance.font.pixelSize.smaller
-                                color: Appearance.colors.colSubtext
-                                horizontalAlignment: Text.AlignHCenter
-                                verticalAlignment: Text.AlignVCenter
-                                wrapMode: Text.WordWrap
-                            }
-
-                            ListView {
-                                id: postView
-                                visible: postPanel.images.length > 0
-                                width: parent.width
-                                height: parent.height - 42
-                                orientation: ListView.Horizontal
-                                snapMode: ListView.SnapOneItem
-                                highlightRangeMode: ListView.StrictlyEnforceRange
-                                boundsBehavior: Flickable.StopAtBounds
-                                clip: true
-                                model: postPanel.images
-                                Connections {
-                                    target: postPanel
-                                    function onMdChanged() { postView.currentIndex = 0 }
-                                }
-                                delegate: Rectangle {
-                                    required property var modelData
-                                    width: postView.width
-                                    height: postView.height
-                                    radius: Appearance.rounding.small
-                                    color: Appearance.colors.colLayer2
-                                    clip: true
-                                    Image {
-                                        anchors.fill: parent
-                                        source: modelData
-                                        fillMode: Image.PreserveAspectFit
-                                        asynchronous: true
-                                        cache: true
-                                        sourceSize.width: 640
-                                    }
-                                }
-                            }
-
-                            Row {
-                                anchors.horizontalCenter: parent.horizontalCenter
-                                spacing: 5
-                                visible: postPanel.images.length > 1
-                                Repeater {
-                                    model: postPanel.images.length
-                                    delegate: Rectangle {
-                                        required property int index
-                                        readonly property bool current: index === postView.currentIndex
-                                        width: current ? 16 : 6
-                                        height: 6
-                                        radius: 3
-                                        color: current ? Appearance.colors.colPrimary
-                                                       : Appearance.colors.colLayer2
-                                        Behavior on width { NumberAnimation { duration: 150; easing.type: Easing.OutCubic } }
-                                        Behavior on color { ColorAnimation { duration: 130 } }
-                                        TapHandler { onTapped: postView.currentIndex = index }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
+}
         }
     }
 }

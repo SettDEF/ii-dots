@@ -318,6 +318,15 @@ MouseArea {
             text: "dark_mode"
         }
 
+        // Hibernate: save RAM to disk and fully power off, WITHOUT killing
+        // processes — they're restored on next boot. (Needs a disk swap +
+        // resume= setup to actually work; see note.)
+        IconToolbarButton {
+            id: hibernateButton
+            onClicked: Session.hibernate()
+            text: "ac_unit"
+        }
+
         PasswordGuardedIconToolbarButton {
             id: powerButton
             text: "power_settings_new"

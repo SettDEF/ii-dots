@@ -76,8 +76,23 @@ Button {
             const {x,y} = event
             startRipple(x, y)
         }
+        // Long-press is the touch spelling of right-click. Every altAction in
+        // the shell was reachable only with a real mouse button before this,
+        // which on a tablet means the per-entry menus simply did not exist.
+        // `holdFired` suppresses the click that the release would otherwise
+        // emit, so a hold opens the menu instead of also activating the button.
+        property bool holdFired: false
+        pressAndHoldInterval: 450
+        onPressAndHold: (event) => {
+            if (event.button !== Qt.LeftButton) return;
+            if (!root.altAction) return;
+            holdFired = true;
+            root.down = false;
+            root.altAction(event);
+        }
         onReleased: (event) => {
             root.down = false
+            if (holdFired) { holdFired = false; if (root.rippleEnabled) rippleFadeAnim.restart(); return; }
             if (event.button != Qt.LeftButton) return;
             if (root.releaseAction) root.releaseAction();
             root.click() // Because the MouseArea already consumed the event
@@ -86,6 +101,7 @@ Button {
         }
         onCanceled: (event) => {
             root.down = false
+            holdFired = false
             if (!root.rippleEnabled) return;
             rippleFadeAnim.restart();
         }
@@ -134,7 +150,10 @@ Button {
     background: Rectangle {
         id: buttonBackground
         radius: root.buttonEffectiveRadius
-        implicitHeight: 30
+        // 30px is about 5.5mm on this panel — under the ~9mm a fingertip
+        // actually needs. Buttons that set their own implicitHeight override
+        // this; the ones that just take the default get a usable target.
+        implicitHeight: Appearance.touchUi ? 40 : 30
 
         color: root.buttonColor
         Behavior on color {

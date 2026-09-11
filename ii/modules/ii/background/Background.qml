@@ -18,6 +18,14 @@ import Quickshell.Hyprland
 import qs.modules.ii.background.widgets
 import qs.modules.ii.background.widgets.clock
 import qs.modules.ii.background.widgets.weather
+import qs.modules.ii.background.widgets.resources
+import qs.modules.ii.background.widgets.timers
+import qs.modules.ii.background.widgets.calendar
+import qs.modules.ii.background.widgets.todo
+import qs.modules.ii.background.widgets.usercard
+import qs.modules.ii.background.widgets.images
+import qs.modules.ii.background.widgets.visualizer
+import qs.modules.ii.background.widgets.worldclock
 
 Variants {
     id: root
@@ -133,6 +141,17 @@ Variants {
             left: true
             right: true
         }
+
+        // Feeds InputMode. Without a probe instantiated SOMEWHERE, InputMode
+        // never leaves "mouse" — which meant every touch adaptation in the
+        // shell (and TouchEdges' whole input region, which gates on isTouch)
+        // was dead code. Passive: HoverHandler does not block, and the
+        // TapHandler uses DragThreshold so it never takes an exclusive grab.
+        // z below the desktop widgets: at the component default (999) this
+        // filled the window above them and swallowed every press, so no
+        // widget could be dragged. It still sees anything that reaches the
+        // wallpaper, which is all the touch probe needs.
+        InputModeProbe { z: -1 }
         color: {
             if (!bgRoot.wallpaperSafetyTriggered || bgRoot.wallpaperIsVideo)
                 return "transparent";
@@ -241,14 +260,6 @@ Variants {
         Item {
             anchors.fill: parent
             clip: true
-
-            // Second InputMode reporter, alongside the one in the bar. The bar
-            // alone is too small a target: with only that, touching anywhere
-            // else left InputMode on "mouse", so the first edge swipe after
-            // using a mouse would silently do nothing. The desktop is the other
-            // always-present surface, so between them a finger is noticed
-            // wherever it lands outside a window. Passive — see the component.
-            InputModeProbe {}
 
             // ── Wallpaper effect ────────────────────────────────────
             // A pack effect running on the wallpaper itself. Sampling effects
@@ -652,6 +663,54 @@ Variants {
                         wallpaperSafetyTriggered: bgRoot.wallpaperSafetyTriggered
                     }
                 }
+
+                // Every desktop widget wants the same five geometry values.
+                // Written once here so adding one is a single line below.
+                QtObject {
+                    id: geo
+                    readonly property real w: bgRoot.screen.width
+                    readonly property real h: bgRoot.screen.height
+                    readonly property real sw: bgRoot.screen.width / bgRoot.effectiveWallpaperScale
+                    readonly property real sh: bgRoot.screen.height / bgRoot.effectiveWallpaperScale
+                    readonly property real scale: bgRoot.effectiveWallpaperScale
+                }
+
+                component Slot: FadeLoader {
+                    required property string key
+                    shown: Config.options.background.widgets[key].enable
+                }
+
+                Slot { key: "resources"; sourceComponent: ResourcesWidget {
+                    screenWidth: geo.w; screenHeight: geo.h; scaledScreenWidth: geo.sw
+                    scaledScreenHeight: geo.sh; wallpaperScale: geo.scale } }
+
+                Slot { key: "timers"; sourceComponent: TimerWidget {
+                    screenWidth: geo.w; screenHeight: geo.h; scaledScreenWidth: geo.sw
+                    scaledScreenHeight: geo.sh; wallpaperScale: geo.scale } }
+
+                Slot { key: "calendar"; sourceComponent: CalendarWidget {
+                    screenWidth: geo.w; screenHeight: geo.h; scaledScreenWidth: geo.sw
+                    scaledScreenHeight: geo.sh; wallpaperScale: geo.scale } }
+
+                Slot { key: "todo"; sourceComponent: TodoWidget {
+                    screenWidth: geo.w; screenHeight: geo.h; scaledScreenWidth: geo.sw
+                    scaledScreenHeight: geo.sh; wallpaperScale: geo.scale } }
+
+                Slot { key: "userCard"; sourceComponent: UserCardWidget {
+                    screenWidth: geo.w; screenHeight: geo.h; scaledScreenWidth: geo.sw
+                    scaledScreenHeight: geo.sh; wallpaperScale: geo.scale } }
+
+                Slot { key: "customImage"; sourceComponent: CustomImage {
+                    screenWidth: geo.w; screenHeight: geo.h; scaledScreenWidth: geo.sw
+                    scaledScreenHeight: geo.sh; wallpaperScale: geo.scale } }
+
+                Slot { key: "visualizer"; sourceComponent: VisualizerWidget {
+                    screenWidth: geo.w; screenHeight: geo.h; scaledScreenWidth: geo.sw
+                    scaledScreenHeight: geo.sh; wallpaperScale: geo.scale } }
+
+                Slot { key: "worldClock"; sourceComponent: WorldClockWidget {
+                    screenWidth: geo.w; screenHeight: geo.h; scaledScreenWidth: geo.sw
+                    scaledScreenHeight: geo.sh; wallpaperScale: geo.scale } }
             }
         }
     }

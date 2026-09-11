@@ -30,4 +30,29 @@ TextField {
         color: Appearance.colors.colLayer1
         radius: Appearance.rounding.full
     }
+
+    // Opt-out for hosts that want Qt's stock menu (or none at all).
+    property bool themedContextMenu: true
+
+    // Qt 6.9+ ships TextField with its own unstyled context menu and exposes no
+    // property to disable it. This MouseArea sits ABOVE the field's content and
+    // accepts ONLY the right button, so the press never reaches QQuickTextField's
+    // own handler — the left button, drag-select and hover all still fall through
+    // untouched because they are not in acceptedButtons.
+    MouseArea {
+        anchors.fill: parent
+        z: 10
+        enabled: filterField.themedContextMenu
+        acceptedButtons: Qt.RightButton
+        onPressed: mouse => {
+            filterField.forceActiveFocus()
+            textMenu.openAt(mouse.x, mouse.y)
+            mouse.accepted = true
+        }
+    }
+
+    TextFieldContextMenu {
+        id: textMenu
+        field: filterField
+    }
 }

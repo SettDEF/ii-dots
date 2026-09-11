@@ -17,17 +17,97 @@ Item { // Wrapper
 
     readonly property string xdgConfigHome: Directories.config
     readonly property int typingDebounceInterval: 200
-    readonly property int typingResultLimit: 15 // Should be enough to cover the whole view
+    // Was hardcoded 15. Now driven by the "Maximum results" setting in the
+    // sort & filter panel, so that control actually does something.
+    readonly property int typingResultLimit: Config.options?.launcher?.maxResults ?? 15
 
     property string searchingText: LauncherSearch.query
     property bool showResults: searchingText != ""
     // Theme/wallpaper picker mode — query starts with the theme prefix.
     readonly property bool themeMode: searchingText.startsWith(Config.options.search.prefix.theme)
+    // skwd wallpaper-hub mode — `/skwd <sub>` or `r/<sub>`. The searchbar stays
+    // put but shrinks to make room for skwd's source icons + colour columns
+    // (see SearchBar), and the result list is replaced by a wallpaper grid.
+    readonly property bool skwdMode: {
+        const t = searchingText.toLowerCase();
+        return t.startsWith("/skwd") || t.startsWith("r/");
+    }
+    readonly property string skwdSub: {
+        const t = searchingText;
+        let s = "";
+        if (t.toLowerCase().startsWith("/skwd")) s = t.slice(5).trim();
+        else if (t.toLowerCase().startsWith("r/")) s = t.slice(2).trim();
+        return s.replace(/[^A-Za-z0-9_]/g, "");
+    }
+    // Exposed so the subreddit dropdown can gate on the search input's focus.
+    readonly property bool searchInputFocused: searchBar.searchInput.activeFocus
+
+    // Remember the last skwd query so reopening the launcher restores it. A
+    // non-skwd search clears it; an empty field (close) leaves it intact.
+    onSearchingTextChanged: {
+        if (skwdMode) WallpaperHub.lastQuery = searchingText;
+        else if (searchingText.length > 0) WallpaperHub.lastQuery = "";
+
+        // Typing means you want RESULTS, not settings — close the panel rather
+        // than leaving you staring at switches. `/sort` is exempt: that command
+        // is how the panel gets opened in the first place.
+        // NOTE: merged into this existing handler on purpose. A second
+        // onSearchingTextChanged on the same object silently REPLACES this one.
+        if (GlobalStates.launcherSortOpen
+            && !searchingText.startsWith((Config.options.search.prefix.action ?? "/") + "sort"))
+            GlobalStates.launcherSortOpen = false;
+
+        // Emptying the field activates overviewLoader, and instantiating the
+        // workspace grid takes focus off the input — so clearing the query left
+        // you typing into nothing. callLater so this runs after that load.
+        if (searchingText.length === 0 && GlobalStates.overviewOpen)
+            Qt.callLater(root.focusSearchInput);
+    }
+    // Exposed for the launcher window's input region: the bar strip and the
+    // dropdown are masked separately so everything else stays scroll-through.
+    readonly property real barBandHeight: searchBar.height + searchBar.verticalPadding * 2
+        + Appearance.sizes.elevationMargin * 2
+    // Open state for the sort & filter dropdown. Read straight off GlobalStates
+    // (single source of truth) so the `/sort` command drives it as well as the
+    // toolbar button — no local mirror to fall out of sync.
+    readonly property bool sortSettingsOpen: GlobalStates.launcherSortOpen
+
+    // Exposed to the launcher window's input mask. Must cover whichever
+    // dropdown is currently showing, or its controls render but never receive
+    // clicks (the window masks input to the bar band plus named regions).
+    readonly property Item dropdownItem: root.sortSettingsOpen
+        ? sortSettingsLoader.item
+        : wallpapersLoader.item
+
+    // Also exposed to the mask — and this one was simply missing.
+    //
+    // The window masks input to `searchWidget` CLIPPED TO barBandHeight (the
+    // search bar strip), plus the dropdown and the workspace grid. The result
+    // rows sit below that band and belonged to no region at all, so they
+    // rendered perfectly and received nothing: no click to launch, no hover,
+    // and no right-click — which is why the per-entry ranking menu could
+    // never open and "prioritised" stayed at 0 no matter what you did.
+    readonly property Item resultsItem: appResults.visible ? appResults : null
+
     implicitWidth: searchWidgetContent.implicitWidth + Appearance.sizes.elevationMargin * 2
     implicitHeight: searchWidgetContent.implicitHeight + searchBar.verticalPadding * 2 + Appearance.sizes.elevationMargin * 2
 
     function focusFirstItem() {
         appResults.currentIndex = 0;
+    }
+
+    // Tab / Shift+Tab: step the selection and mirror it into the input.
+    function stepResult(back) {
+        const n = appResults.count;
+        if (n <= 0)
+            return;
+        appResults.currentIndex = back
+            ? (appResults.currentIndex - 1 + n) % n
+            : (appResults.currentIndex + 1) % n;
+
+        const sel = resultModel.values[appResults.currentIndex];
+        if (sel && sel.name)
+            searchBar.previewText(sel.name);
     }
 
     function focusSearchInput() {
@@ -47,6 +127,15 @@ Item { // Wrapper
     function setSearchingText(text) {
         searchBar.searchInput.text = text;
         LauncherSearch.query = text;
+    }
+
+    // Restore text but select it all, so the user's next keystroke REPLACES it
+    // instead of appending (which produced malformed queries like
+    // "r/wallpaper/wallpapers").
+    function restoreSearchingText(text) {
+        searchBar.searchInput.text = text;
+        LauncherSearch.query = text;
+        searchBar.searchInput.selectAll();
     }
 
     // Drill into a command group: selecting a group result asks LauncherSearch
@@ -190,6 +279,12 @@ Item { // Wrapper
             SearchBar {
                 id: searchBar
                 property real verticalPadding: 4
+                // The dropdown lives here, so this owns the open state; the bar
+                // only reflects it (for the button's toggled look) and asks to
+                // flip it.
+                sortSettingsOpen: root.sortSettingsOpen
+                onSortSettingsToggled: GlobalStates.launcherSortOpen = !GlobalStates.launcherSortOpen
+                onTabNavigate: back => root.stepResult(back)
                 Layout.fillWidth: true
                 Layout.leftMargin: 10
                 Layout.rightMargin: 4
@@ -201,8 +296,9 @@ Item { // Wrapper
             }
 
             Rectangle {
-                // Separator
-                visible: root.showResults
+                // Separator — hidden in skwd mode, where the dropdown collapses
+                // to 0 and this 1px line would otherwise linger under the bar.
+                visible: root.showResults && !root.skwdMode
                 Layout.fillWidth: true
                 height: 1
                 color: Appearance.colors.colOutlineVariant
@@ -221,11 +317,52 @@ Item { // Wrapper
                 }
             }
 
+            // skwd subreddit dropdown — one element inside the launcher.
+            // Collapses to 0 height when not showing, so the launcher shrinks
+            // back to just the bar (skwd shows below).
+            Loader {
+                id: wallpapersLoader
+                visible: root.skwdMode
+                active: root.skwdMode && GlobalStates.overviewOpen
+                Layout.fillWidth: true
+                Layout.preferredHeight: (item ? item.implicitHeight : 0)
+                Behavior on Layout.preferredHeight {
+                    NumberAnimation { duration: 200; easing.type: Easing.OutCubic }
+                }
+                sourceComponent: SearchWallpapers {
+                    sub: root.skwdSub
+                    inputFocused: searchBar.searchInput.activeFocus
+                }
+            }
+
+            // Sort & filter settings — replaces the result list while open,
+            // same as the theme/wallpaper pickers above, so it reads as part
+            // of the launcher rather than a menu floating over it.
+            Loader {
+                id: sortSettingsLoader
+                visible: root.sortSettingsOpen
+                active: root.sortSettingsOpen && GlobalStates.overviewOpen
+                Layout.fillWidth: true
+                Layout.preferredHeight: (item ? item.implicitHeight : 0)
+                Behavior on Layout.preferredHeight {
+                    NumberAnimation { duration: 200; easing.type: Easing.OutCubic }
+                }
+                sourceComponent: SearchSortSettings {
+                    onRequestClose: GlobalStates.launcherSortOpen = false
+                }
+            }
+
             ListView { // App results
                 id: appResults
-                visible: root.showResults && !root.themeMode
+                // Deliberately NOT hidden while the settings panel is open:
+                // seeing the list re-order as you change sort mode is the whole
+                // point. The panel caps its own height to leave room.
+                visible: root.showResults && !root.themeMode && !root.skwdMode
                 Layout.fillWidth: true
-                implicitHeight: Math.min(600, appResults.contentHeight + topMargin + bottomMargin)
+                // Shorter while the settings panel is open, so both fit and the
+                // live re-ordering stays on screen.
+                implicitHeight: Math.min(root.sortSettingsOpen ? 260 : 600,
+                    appResults.contentHeight + topMargin + bottomMargin)
                 clip: true
                 topMargin: 10
                 bottomMargin: 10
@@ -303,13 +440,8 @@ Item { // Wrapper
 
                     Keys.onPressed: event => {
                         if (event.key === Qt.Key_Tab) {
-                            if (LauncherSearch.results.length === 0)
-                                return;
-                            const tabbedText = searchItem.modelData.name;
-                            LauncherSearch.query = tabbedText;
-                            searchBar.searchInput.text = tabbedText;
+                            root.stepResult((event.modifiers & Qt.ShiftModifier) !== 0);
                             event.accepted = true;
-                            root.focusSearchInput();
                         }
                     }
                 }

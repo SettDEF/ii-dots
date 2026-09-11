@@ -20,7 +20,7 @@ DelegateChooser {
     property bool inTray: false
     signal openAudioOutputDialog()
     signal openAudioInputDialog()
-    signal openBluetoothDialog()
+    signal openDevicesDialog()
     signal openNightLightDialog()
     signal openWifiDialog()
     signal openKdeConnectDialog()
@@ -97,7 +97,7 @@ DelegateChooser {
         cellSpacing: root.spacing
         cellSize: modelData.size
         onOpenMenu: {
-            root.openBluetoothDialog()
+            root.openDevicesDialog()
         }
     } }
 
@@ -567,7 +567,7 @@ DelegateChooser {
         cellSize: 1               // forced 1×1 — drawer hosts the rich content
     } }
 
-    DelegateChoice { roleValue: "bluetoothDevices"; AndroidBluetoothDevicesToggle {
+    DelegateChoice { roleValue: "devices"; AndroidDevicesToggle {
         required property int index
         required property var modelData
         buttonIndex: root.startingIndex + index
@@ -580,6 +580,26 @@ DelegateChooser {
         baseCellHeight: root.baseCellHeight
         cellSpacing: root.spacing
         cellSize: modelData.size
+        onOpenMenu: root.openDevicesDialog()
+    } }
+
+    // Saved layouts predate the rename. Keeping the old key mapped to the same
+    // delegate means an existing grid keeps its tile instead of silently losing
+    // it; nothing has to migrate.
+    DelegateChoice { roleValue: "bluetoothDevices"; AndroidDevicesToggle {
+        required property int index
+        required property var modelData
+        buttonIndex: root.startingIndex + index
+        buttonData: modelData
+        editMode: root.editMode
+        tabIndex: root.tabIndex
+        inTray: root.inTray
+        expandedSize: modelData.size > 1
+        baseCellWidth: root.baseCellWidth
+        baseCellHeight: root.baseCellHeight
+        cellSpacing: root.spacing
+        cellSize: modelData.size
+        onOpenMenu: root.openDevicesDialog()
     } }
 
     DelegateChoice { roleValue: "midi"; AndroidMidiToggle {
