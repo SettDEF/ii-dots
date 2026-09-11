@@ -581,12 +581,29 @@ Scope {
             Item {   // collapsible channels body
                 Layout.fillWidth: true
                 clip: true
+                // Height is NOT tweened, and that is the whole point. This Item
+                // feeds col -> card -> the PanelWindow's implicitHeight, so an
+                // animated height reconfigures the layer-shell surface on every
+                // frame of the tween and reallocates its buffer with it. The card
+                // already refuses to animate its own height for exactly this
+                // reason; animating a section's height put the cost straight back.
+                //
+                // So the space appears at once and the CONTENT slides into it.
+                // One surface resize per toggle, and the motion is pure
+                // compositing inside a surface that is not changing size.
                 implicitHeight: win.channelsOpen ? chBody.implicitHeight : 0
-                Behavior on implicitHeight {
-                    animation: Appearance.animation.elementMove.numberAnimation.createObject(this)
-                }
-                ColumnLayout {
+                                ColumnLayout {
                     id: chBody
+                    // Slides into the space rather than growing it - see the note
+                    // on the parent's height.
+                    y: win.channelsOpen ? 0 : -chBody.implicitHeight
+                    opacity: win.channelsOpen ? 1 : 0
+                    Behavior on y {
+                        animation: Appearance.animation.elementMove.numberAnimation.createObject(this)
+                    }
+                    Behavior on opacity {
+                        animation: Appearance.animation.elementMoveFast.numberAnimation.createObject(this)
+                    }
                     width: parent.width
                     spacing: 4
             Repeater {
@@ -732,11 +749,18 @@ Scope {
                     Layout.fillWidth: true
                     clip: true
                     implicitHeight: win.sinkOpen ? sinkList.implicitHeight : 0
-                    Behavior on implicitHeight {
-                        animation: Appearance.animation.elementMove.numberAnimation.createObject(this)
-                    }
-                    ColumnLayout {
+                                        ColumnLayout {
                         id: sinkList
+                        // Slides into the space rather than growing it - see the note
+                        // on the parent's height.
+                        y: win.sinkOpen ? 0 : -sinkList.implicitHeight
+                        opacity: win.sinkOpen ? 1 : 0
+                        Behavior on y {
+                            animation: Appearance.animation.elementMove.numberAnimation.createObject(this)
+                        }
+                        Behavior on opacity {
+                            animation: Appearance.animation.elementMoveFast.numberAnimation.createObject(this)
+                        }
                         width: parent.width
                         spacing: 3
                         Repeater {
@@ -858,11 +882,18 @@ Scope {
                 clip: true
                 visible: Audio.outputAppNodes.length > 0
                 implicitHeight: win.appsOpen ? appBody.implicitHeight : 0
-                Behavior on implicitHeight {
-                    animation: Appearance.animation.elementMove.numberAnimation.createObject(this)
-                }
-                ColumnLayout {
+                                ColumnLayout {
                     id: appBody
+                    // Slides into the space rather than growing it - see the note
+                    // on the parent's height.
+                    y: win.appsOpen ? 0 : -appBody.implicitHeight
+                    opacity: win.appsOpen ? 1 : 0
+                    Behavior on y {
+                        animation: Appearance.animation.elementMove.numberAnimation.createObject(this)
+                    }
+                    Behavior on opacity {
+                        animation: Appearance.animation.elementMoveFast.numberAnimation.createObject(this)
+                    }
                     width: parent.width
                     spacing: 3
             Repeater {
@@ -939,11 +970,17 @@ Scope {
                         Layout.fillWidth: true
                         clip: true
                         implicitHeight: app.routeOpen ? routeList.implicitHeight : 0
-                        Behavior on implicitHeight {
-                            animation: Appearance.animation.elementMove.numberAnimation.createObject(this)
-                        }
-                        ColumnLayout {
+                                                ColumnLayout {
                             id: routeList
+                            // Slides in; the space is reserved instantly - see the note above.
+                            y: app.routeOpen ? 0 : -routeList.implicitHeight
+                            opacity: app.routeOpen ? 1 : 0
+                            Behavior on y {
+                                animation: Appearance.animation.elementMove.numberAnimation.createObject(this)
+                            }
+                            Behavior on opacity {
+                                animation: Appearance.animation.elementMoveFast.numberAnimation.createObject(this)
+                            }
                             width: parent.width
                             spacing: 3
                             Rectangle {
@@ -1048,11 +1085,18 @@ Scope {
                 Layout.fillWidth: true
                 clip: true
                 implicitHeight: win.pluginsOpen ? pluginBody.implicitHeight : 0
-                Behavior on implicitHeight {
-                    animation: Appearance.animation.elementMove.numberAnimation.createObject(this)
-                }
-                ColumnLayout {
+                                ColumnLayout {
                     id: pluginBody
+                    // Slides into the space rather than growing it - see the note
+                    // on the parent's height.
+                    y: win.pluginsOpen ? 0 : -pluginBody.implicitHeight
+                    opacity: win.pluginsOpen ? 1 : 0
+                    Behavior on y {
+                        animation: Appearance.animation.elementMove.numberAnimation.createObject(this)
+                    }
+                    Behavior on opacity {
+                        animation: Appearance.animation.elementMoveFast.numberAnimation.createObject(this)
+                    }
                     width: parent.width
                     spacing: 4
 
@@ -1143,11 +1187,18 @@ Scope {
                                 Layout.fillWidth: true
                                 clip: true
                                 implicitHeight: prof.open ? chainCol.implicitHeight : 0
-                                Behavior on implicitHeight {
-                                    animation: Appearance.animation.elementMove.numberAnimation.createObject(this)
-                                }
-                                ColumnLayout {
+                                                                ColumnLayout {
                                     id: chainCol
+                                    // Slides into the space rather than growing it - see the note
+                                    // on the parent's height.
+                                    y: prof.open ? 0 : -chainCol.implicitHeight
+                                    opacity: prof.open ? 1 : 0
+                                    Behavior on y {
+                                        animation: Appearance.animation.elementMove.numberAnimation.createObject(this)
+                                    }
+                                    Behavior on opacity {
+                                        animation: Appearance.animation.elementMoveFast.numberAnimation.createObject(this)
+                                    }
                                     width: parent.width
                                     spacing: 2
 
