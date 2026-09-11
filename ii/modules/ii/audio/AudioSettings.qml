@@ -94,6 +94,12 @@ Scope {
             // Collapsible section state (Channels / Apps foldouts).
             property bool channelsOpen: false
             property bool appsOpen: false
+            property bool pluginsOpen: false
+            // Which profile's chain is expanded, by id. One at a time: the
+            // panel is narrow and two open chains push everything off-screen.
+            property string openProfileId: ""
+            // Which profile is being added to, so the picker knows its target.
+            property string pickerForId: ""
 
             Process { id: routeProc }
             // Pin an app's stream to a specific sink (or clear → automatic).
@@ -998,6 +1004,307 @@ Scope {
             }
                 }   // appBody
             }       // collapsible apps body
+
+            // -- Plugins (collapsible) ---------------------------------------
+            // Profiles: a named plugin chain, meant to be pointed at a stream.
+            // Routing is not reinvented here - the Apps section above already
+            // writes target.object, so a profile only has to exist as somewhere
+            // to send audio.
+            Rectangle {   // clickable section header
+                Layout.fillWidth: true
+                Layout.topMargin: 4
+                implicitHeight: 30
+                radius: Appearance.rounding.small
+                color: pluginHdrHov.hovered ? Appearance.colors.colLayer1Hover : "transparent"
+                Behavior on color {
+                    animation: Appearance.animation.elementMoveFast.colorAnimation.createObject(this)
+                }
+                HoverHandler { id: pluginHdrHov; cursorShape: Qt.PointingHandCursor }
+                TapHandler { onTapped: win.pluginsOpen = !win.pluginsOpen }
+                RowLayout {
+                    anchors.fill: parent; anchors.leftMargin: 2; anchors.rightMargin: 6; spacing: 6
+                    StyledText {
+                        text: Translation.tr("Plugins")
+                        font.pixelSize: Appearance.font.pixelSize.smaller
+                        color: Appearance.colors.colSubtext
+                    }
+                    StyledText {
+                        text: "(" + AudioPlugins.profiles.length + ")"
+                        font.pixelSize: Appearance.font.pixelSize.smallest
+                        color: Appearance.colors.colSubtext
+                    }
+                    Item { Layout.fillWidth: true }
+                    MaterialSymbol {
+                        text: "expand_more"; iconSize: 18
+                        color: Appearance.colors.colSubtext
+                        rotation: win.pluginsOpen ? 180 : 0
+                        Behavior on rotation {
+                            animation: Appearance.animation.elementMoveFast.numberAnimation.createObject(this)
+                        }
+                    }
+                }
+            }
+            Item {   // collapsible plugins body
+                Layout.fillWidth: true
+                clip: true
+                implicitHeight: win.pluginsOpen ? pluginBody.implicitHeight : 0
+                Behavior on implicitHeight {
+                    animation: Appearance.animation.elementMove.numberAnimation.createObject(this)
+                }
+                ColumnLayout {
+                    id: pluginBody
+                    width: parent.width
+                    spacing: 4
+
+                    // Host state. Said plainly rather than hidden: without a host
+                    // a chain cannot be heard, and a UI that lets you build one
+                    // anyway while silently doing nothing is worse than a warning.
+                    Rectangle {
+                        Layout.fillWidth: true
+                        visible: AudioPlugins.hostChecked && !AudioPlugins.hostAvailable
+                        implicitHeight: hostWarn.implicitHeight + 12
+                        radius: Appearance.rounding.small
+                        color: ColorUtils.transparentize(Appearance.m3colors.m3error, 0.86)
+                        RowLayout {
+                            id: hostWarn
+                            anchors { left: parent.left; right: parent.right; verticalCenter: parent.verticalCenter
+                                      leftMargin: 8; rightMargin: 8 }
+                            spacing: 6
+                            MaterialSymbol {
+                                text: "warning"; iconSize: 15
+                                color: Appearance.m3colors.m3error
+                            }
+                            StyledText {
+                                Layout.fillWidth: true
+                                text: Translation.tr("No plugin host - chains will not be applied. Reinstall carla and python-pyqt5.")
+                                wrapMode: Text.Wrap
+                                font.pixelSize: Appearance.font.pixelSize.smallest
+                                color: Appearance.colors.colOnLayer0
+                            }
+                        }
+                    }
+
+                    // Profile rows
+                    Repeater {
+                        model: AudioPlugins.profiles
+                        delegate: ColumnLayout {
+                            id: prof
+                            required property var modelData
+                            readonly property string pid: String(prof.modelData?.id ?? "")
+                            readonly property bool open: win.openProfileId === prof.pid
+                            Layout.fillWidth: true
+                            spacing: 3
+
+                            Rectangle {
+                                Layout.fillWidth: true
+                                implicitHeight: 30
+                                radius: Appearance.rounding.small
+                                color: profHov.hovered ? Appearance.colors.colLayer1Hover
+                                                       : Appearance.colors.colLayer1
+                                HoverHandler { id: profHov; cursorShape: Qt.PointingHandCursor }
+                                TapHandler {
+                                    onTapped: win.openProfileId = prof.open ? "" : prof.pid
+                                }
+                                RowLayout {
+                                    anchors.fill: parent
+                                    anchors.leftMargin: 8; anchors.rightMargin: 6
+                                    spacing: 6
+                                    MaterialSymbol {
+                                        text: "graphic_eq"; iconSize: 15
+                                        color: Appearance.colors.colPrimary
+                                    }
+                                    StyledText {
+                                        Layout.fillWidth: true
+                                        text: prof.modelData?.name ?? ""
+                                        elide: Text.ElideRight
+                                        font.pixelSize: Appearance.font.pixelSize.smallest
+                                        color: Appearance.colors.colOnLayer0
+                                    }
+                                    StyledText {
+                                        text: (prof.modelData?.chain?.length ?? 0) + Translation.tr(" plugins")
+                                        font.pixelSize: 9
+                                        color: Appearance.colors.colSubtext
+                                    }
+                                    MaterialSymbol {
+                                        text: "delete"; iconSize: 15
+                                        color: Appearance.colors.colSubtext
+                                        TapHandler {
+                                            onTapped: {
+                                                if (win.openProfileId === prof.pid) win.openProfileId = ""
+                                                AudioPlugins.removeProfile(prof.pid)
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+
+                            // The chain, plus a picker to extend it.
+                            Item {
+                                Layout.fillWidth: true
+                                clip: true
+                                implicitHeight: prof.open ? chainCol.implicitHeight : 0
+                                Behavior on implicitHeight {
+                                    animation: Appearance.animation.elementMove.numberAnimation.createObject(this)
+                                }
+                                ColumnLayout {
+                                    id: chainCol
+                                    width: parent.width
+                                    spacing: 2
+
+                                    Repeater {
+                                        model: prof.modelData?.chain ?? []
+                                        delegate: RowLayout {
+                                            required property var modelData
+                                            required property int index
+                                            Layout.fillWidth: true
+                                            Layout.leftMargin: 16
+                                            spacing: 6
+                                            StyledText {
+                                                text: (index + 1) + "."
+                                                font.pixelSize: 9
+                                                color: Appearance.colors.colSubtext
+                                            }
+                                            StyledText {
+                                                Layout.fillWidth: true
+                                                text: modelData?.name ?? ""
+                                                elide: Text.ElideRight
+                                                font.pixelSize: Appearance.font.pixelSize.smallest
+                                                color: Appearance.colors.colOnLayer0
+                                            }
+                                            StyledText {
+                                                text: (modelData?.format ?? "").toUpperCase()
+                                                font.pixelSize: 9
+                                                color: Appearance.colors.colSubtext
+                                            }
+                                            MaterialSymbol {
+                                                text: "close"; iconSize: 13
+                                                color: Appearance.colors.colSubtext
+                                                TapHandler {
+                                                    onTapped: AudioPlugins.removeFromChain(prof.pid, index)
+                                                }
+                                            }
+                                        }
+                                    }
+
+                                    StyledText {
+                                        visible: (prof.modelData?.chain?.length ?? 0) === 0
+                                        Layout.leftMargin: 16
+                                        text: Translation.tr("Empty chain")
+                                        font.pixelSize: 9
+                                        color: Appearance.colors.colSubtext
+                                    }
+
+                                    // Add-plugin toggle
+                                    Rectangle {
+                                        Layout.fillWidth: true
+                                        Layout.leftMargin: 16
+                                        implicitHeight: 24
+                                        radius: Appearance.rounding.small
+                                        color: addHov.hovered ? Appearance.colors.colLayer1Hover : "transparent"
+                                        HoverHandler { id: addHov; cursorShape: Qt.PointingHandCursor }
+                                        TapHandler {
+                                            onTapped: win.pickerForId =
+                                                win.pickerForId === prof.pid ? "" : prof.pid
+                                        }
+                                        RowLayout {
+                                            anchors.fill: parent; spacing: 4
+                                            MaterialSymbol {
+                                                text: "add"; iconSize: 14
+                                                color: Appearance.colors.colSubtext
+                                            }
+                                            StyledText {
+                                                Layout.fillWidth: true
+                                                text: Translation.tr("Add plugin (%1 found)").arg(AudioPlugins.pluginCount)
+                                                font.pixelSize: 9
+                                                color: Appearance.colors.colSubtext
+                                            }
+                                        }
+                                    }
+
+                                    // Picker. Capped and scrollable: 87 plugins is
+                                    // a list, not a menu.
+                                    Flickable {
+                                        id: pick
+                                        Layout.fillWidth: true
+                                        Layout.leftMargin: 16
+                                        visible: win.pickerForId === prof.pid
+                                        implicitHeight: visible ? Math.min(contentHeight, 160) : 0
+                                        contentWidth: width
+                                        contentHeight: pickCol.implicitHeight
+                                        clip: true
+                                        boundsBehavior: Flickable.StopAtBounds
+                                        onContentHeightChanged: Qt.callLater(returnToBounds)
+                                        ColumnLayout {
+                                            id: pickCol
+                                            width: pick.width
+                                            spacing: 1
+                                            Repeater {
+                                                model: AudioPlugins.plugins
+                                                delegate: Rectangle {
+                                                    required property var modelData
+                                                    Layout.fillWidth: true
+                                                    implicitHeight: 22
+                                                    radius: Appearance.rounding.small
+                                                    color: pHov.hovered ? Appearance.colors.colLayer1Hover : "transparent"
+                                                    HoverHandler { id: pHov; cursorShape: Qt.PointingHandCursor }
+                                                    TapHandler {
+                                                        onTapped: {
+                                                            AudioPlugins.addToChain(prof.pid, modelData)
+                                                            win.pickerForId = ""
+                                                        }
+                                                    }
+                                                    RowLayout {
+                                                        anchors.fill: parent
+                                                        anchors.leftMargin: 4; anchors.rightMargin: 4
+                                                        spacing: 6
+                                                        StyledText {
+                                                            Layout.fillWidth: true
+                                                            text: modelData?.name ?? ""
+                                                            elide: Text.ElideRight
+                                                            font.pixelSize: 9
+                                                            color: Appearance.colors.colOnLayer0
+                                                        }
+                                                        StyledText {
+                                                            text: (modelData?.format ?? "").toUpperCase()
+                                                            font.pixelSize: 8
+                                                            color: Appearance.colors.colSubtext
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    // New profile
+                    Rectangle {
+                        Layout.fillWidth: true
+                        implicitHeight: 26
+                        radius: Appearance.rounding.small
+                        color: newHov.hovered ? Appearance.colors.colLayer1Hover : "transparent"
+                        HoverHandler { id: newHov; cursorShape: Qt.PointingHandCursor }
+                        TapHandler {
+                            onTapped: win.openProfileId = AudioPlugins.addProfile("")
+                        }
+                        RowLayout {
+                            anchors.fill: parent; anchors.leftMargin: 4; spacing: 4
+                            MaterialSymbol {
+                                text: "add_circle"; iconSize: 15
+                                color: Appearance.colors.colPrimary
+                            }
+                            StyledText {
+                                Layout.fillWidth: true
+                                text: Translation.tr("New profile")
+                                font.pixelSize: Appearance.font.pixelSize.smallest
+                                color: Appearance.colors.colPrimary
+                            }
+                        }
+                    }
+                }
+            }
         }
     }
 }
