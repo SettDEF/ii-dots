@@ -37,7 +37,11 @@ Rectangle {
     property string filter: ""
 
     radius: Appearance.rounding.normal
-    color: Appearance.colors.colLayer1
+    // colLayer1Base, not colLayer1. colLayer1 is solved to look correct when
+    // composited over colLayer0Base and is therefore SEMI-TRANSPARENT - fine for
+    // a card sitting on the panel background, wrong for a sheet sitting on the
+    // panel's widgets, which showed straight through it.
+    color: Appearance.colors.colLayer1Base
     border.width: 1
     border.color: Appearance.colors.colLayer0Border
 

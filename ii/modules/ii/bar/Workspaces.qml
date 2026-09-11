@@ -748,11 +748,25 @@ Item {
                 verticalCenter: parent.verticalCenter
             }
             height: 12
-            active: Config.options.bar.showVisualizer
+
+            // Built ONLY while it is actually on screen.
+            //
+            // This used to be `active: showVisualizer`, so the spectrum existed
+            // permanently and stayed bound to CavaService, which pushes a new
+            // frame ~60x/s for as long as anything is playing. The bindings
+            // re-ran every one of those frames even in the modes where the
+            // widget is fully transparent and nothing is drawn. Measured: the
+            // bar accounted for ~44 points of idle CPU, and the spectrum was
+            // most of it.
+            //
+            // `|| opacity > 0.01` keeps it alive through the fade-out, so
+            // disappearing still animates rather than popping.
+            readonly property bool onScreen: root.contextMode === "media-wavy"
+                                          || root.contextMode === "media-collapsed"
+            active: (Config.options.bar.showVisualizer && onScreen) || opacity > 0.01
             // Collapsed too, not just the 2 s wavy window — otherwise it
             // would flash past once a track and never be seen.
-            opacity: (root.contextMode === "media-wavy"
-                   || root.contextMode === "media-collapsed") ? 1 : 0
+            opacity: (Config.options.bar.showVisualizer && onScreen) ? 1 : 0
             Behavior on opacity { NumberAnimation { duration: 180 } }
             visible: opacity > 0
 
