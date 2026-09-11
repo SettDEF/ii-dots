@@ -50,6 +50,19 @@ PanelWindow {
     // Extra header controls, inserted left of the close button.
     property list<Item> headerItems
     default property alias content: contentHolder.data
+
+    /// An optional sheet shown OVER this panel, dimming it.
+    ///
+    /// Some things do not fit a settings panel: a plugin picker is a hundred
+    /// rows, and a panel is narrow because everything else in it is a row of
+    /// controls. A full-screen modal is the wrong answer too - it covers the
+    /// very thing being configured. So the sheet is confined to this card: the
+    /// panel behind it dims, the rest of the desktop carries on, and the panel
+    /// keeps its place in the stack.
+    property Component sheet: null
+    property bool sheetOpen: false
+    function openSheet() { win.sheetOpen = true }
+    function closeSheet() { win.sheetOpen = false }
     signal requestClose()
 
     WlrLayershell.namespace: "quickshell:" + win.panelId
@@ -112,7 +125,12 @@ PanelWindow {
     Item {
         anchors.fill: parent
         focus: true
-        Keys.onEscapePressed: win.requestClose()
+        // Esc closes the sheet first. Closing the whole panel out from under an
+        // open sheet loses both, and the sheet is what has focus.
+        Keys.onEscapePressed: {
+            if (win.sheetOpen) win.sheetOpen = false
+            else win.requestClose()
+        }
     }
 
     // Slides in, the same way the corner popups do (they animate their own
@@ -149,7 +167,11 @@ PanelWindow {
         // Size to content, capped at the available screen height (same as the
         // right sidebar): a short panel stays short, and only a panel that
         // actually overflows grows to full height and lets the flickable scroll.
-        implicitHeight: Math.min(col.implicitHeight + 32, ScreenFit.maxHeight(win))
+        // A sheet needs room even when the panel behind it is short, so an open
+        // sheet sets a floor. Still capped at the screen, and still not animated.
+        implicitHeight: Math.min(
+            Math.max(col.implicitHeight + 32, win.sheetOpen ? 460 : 0),
+            ScreenFit.maxHeight(win))
         // Height is NOT animated. Animating it resizes the layer-shell surface on
         // every frame of the tween, which the compositor must honour each time —
         // that cost is what made expanding a section feel like dragging.
@@ -166,6 +188,52 @@ PanelWindow {
         color: Appearance.colors.colLayer0Base
         border.width: 1
         border.color: Appearance.colors.colLayer0Border
+
+        // Dims only this card, and follows its corners so it never paints past
+        // the rounded edge.
+        Rectangle {
+            id: sheetScrim
+            anchors.fill: parent
+            radius: card.radius
+            color: Appearance.colors.colScrim
+            opacity: win.sheetOpen ? 1 : 0
+            visible: win.sheet !== null && opacity > 0.01
+            z: 10
+            Behavior on opacity {
+                NumberAnimation { duration: 160; easing.type: Easing.OutCubic }
+            }
+            // Takes clicks as well as light: tapping the dimmed panel dismisses,
+            // and nothing underneath reacts to a click aimed at the scrim.
+            TapHandler { onTapped: win.sheetOpen = false }
+        }
+
+        Loader {
+            id: sheetLoader
+            z: 11
+            // Kept alive through the fade-out so it does not vanish instantly.
+            active: win.sheet !== null && (win.sheetOpen || opacity > 0.01)
+            anchors.fill: parent
+            anchors.margins: 12
+            sourceComponent: win.sheet
+            // A sheet closes itself by signal rather than by walking up to find
+            // this panel; connected here so the slot owns the contract.
+            onLoaded: if (item && item.requestClose)
+                item.requestClose.connect(() => win.sheetOpen = false)
+            opacity: win.sheetOpen ? 1 : 0
+            visible: opacity > 0.01
+            transform: Scale {
+                origin.x: sheetLoader.width / 2
+                origin.y: sheetLoader.height / 2
+                xScale: win.sheetOpen ? 1 : 0.97
+                yScale: xScale
+                Behavior on xScale {
+                    NumberAnimation { duration: 160; easing.type: Easing.OutCubic }
+                }
+            }
+            Behavior on opacity {
+                NumberAnimation { duration: 160; easing.type: Easing.OutCubic }
+            }
+        }
 
         StyledFlickable {
             id: scroller

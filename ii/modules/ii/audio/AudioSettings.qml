@@ -61,6 +61,10 @@ Scope {
             panelId: "audio"
             title: Translation.tr("Audio")
             icon: "graphic_eq"
+            // Plugin profiles live over this panel rather than inside it: the
+            // picker is ~90 rows, which does not fit a panel whose every other
+            // element is a row of controls.
+            sheet: Component { AudioPluginsSheet {} }
             // Start below the corner popup while it is open, so the two read
             // as a stack rather than one floating over the other. Falls back
             // to flush with the bar the moment it closes.
@@ -1051,7 +1055,7 @@ Scope {
                     animation: Appearance.animation.elementMoveFast.colorAnimation.createObject(this)
                 }
                 HoverHandler { id: pluginRowHov; cursorShape: Qt.PointingHandCursor }
-                TapHandler { onTapped: GlobalStates.audioPluginsOpen = true }
+                TapHandler { onTapped: win.openSheet() }
                 RowLayout {
                     anchors.fill: parent
                     anchors.leftMargin: 10; anchors.rightMargin: 8
