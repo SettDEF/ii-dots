@@ -152,17 +152,21 @@ Singleton {
         root.scanning = true
         // One find per format, tagged so a single stdout can carry them all.
         // VST3 and LV2 are bundle DIRECTORIES; CLAP and VST2 are plain files.
+        //
+        // -mindepth 1 is load-bearing: the search directory itself matches its
+        // own pattern (~/.vst3 matches *.vst3), which listed a plugin whose
+        // basename was ".vst3" and so displayed with no name at all.
         const parts = []
         for (const fmt of root.formatsInOrder) {
             const dirs = root.searchPaths[fmt].map(d => `'${d}'`).join(" ")
             if (fmt === "vst3")
-                parts.push(`find ${dirs} -maxdepth 2 -name '*.vst3' -printf 'vst3\\t%f\\t%p\\n' 2>/dev/null`)
+                parts.push(`find ${dirs} -mindepth 1 -maxdepth 2 -name '*.vst3' -printf 'vst3\\t%f\\t%p\\n' 2>/dev/null`)
             else if (fmt === "lv2")
-                parts.push(`find ${dirs} -maxdepth 1 -name '*.lv2' -printf 'lv2\\t%f\\t%p\\n' 2>/dev/null`)
+                parts.push(`find ${dirs} -mindepth 1 -maxdepth 1 -name '*.lv2' -printf 'lv2\\t%f\\t%p\\n' 2>/dev/null`)
             else if (fmt === "clap")
-                parts.push(`find ${dirs} -maxdepth 2 -name '*.clap' -printf 'clap\\t%f\\t%p\\n' 2>/dev/null`)
+                parts.push(`find ${dirs} -mindepth 1 -maxdepth 2 -name '*.clap' -printf 'clap\\t%f\\t%p\\n' 2>/dev/null`)
             else
-                parts.push(`find ${dirs} -maxdepth 3 -name '*.so' -printf 'vst2\\t%f\\t%p\\n' 2>/dev/null`)
+                parts.push(`find ${dirs} -mindepth 1 -maxdepth 3 -name '*.so' -printf 'vst2\\t%f\\t%p\\n' 2>/dev/null`)
         }
         scanProc.command = ["bash", "-c", parts.join("; ")]
         scanProc.running = true
@@ -177,6 +181,10 @@ Singleton {
                     if (line.length === 0) continue
                     const f = line.split("\t")
                     if (f.length < 3) continue
+                    // Carla's own bridges and internal racks live in the same
+                    // directories but are the host's plumbing, not something to
+                    // put in a chain.
+                    if (/\/carla\//.test(f[2]) || /^(carla|Carla)/.test(f[1])) continue
                     out.push({
                         format: f[0],
                         // Strip the extension for display; the path keeps the truth.
@@ -277,8 +285,13 @@ Singleton {
         return root.profiles.find(p => p.id === id) ?? null
     }
 
-    Component.onCompleted: {
+    /// Re-probe and re-scan. Called when the plugins UI opens: the probe used to
+    /// run only at startup, so installing the host afterwards left the warning up
+    /// for the rest of the session with no way to clear it.
+    function refresh() {
         root.checkHost()
         root.scan()
     }
+
+    Component.onCompleted: root.refresh()
 }

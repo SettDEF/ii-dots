@@ -143,6 +143,7 @@ Scope {
     // Visibility-driven like the connectivity popup, not gated by a Loader:
     // it drives its own `visible` per screen, so it wants to exist already.
     PanelLoader { component: AppColors {} }
+    PanelLoader { component: AudioPluginsDialog {} }
     LazyPanelLoader { isOpen: GlobalStates.rogPowerOpen;          idleMs: 30 * 1000; component: RogPower {} }
     PanelLoader { component: SkwdWall {} }
     LazyPanelLoader { isOpen: GlobalStates.wallpaperAdjusterOpen; idleMs: 30 * 1000; component: WallpaperAdjuster {} }

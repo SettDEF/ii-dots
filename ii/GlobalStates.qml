@@ -125,6 +125,7 @@ Singleton {
     // WallTune, dismissed by clicking away — the shape the connectivity
     // popup uses — rather than a docked panel in the settings stack.
     property bool appColorsOpen: false
+    property bool audioPluginsOpen: false
     // Colour-grading values pushed from outside the display panel (the
     // launcher's `/display --saturation=1.4` and friends). The panel owns the
     // real state and watches this, so typed values and slider drags cannot

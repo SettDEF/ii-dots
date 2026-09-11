@@ -1,2 +1,3 @@
 module qs.modules.ii.audio
 AudioSettings 1.0 AudioSettings.qml
+AudioPluginsDialog 1.0 AudioPluginsDialog.qml
