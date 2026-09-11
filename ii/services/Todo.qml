@@ -22,9 +22,13 @@ Singleton {
         todoFileView.setText(JSON.stringify(root.list))
     }
 
-    function addTask(desc) {
+    // title is the task name (required); desc is an optional description.
+    // Legacy items stored only "content" (no "title"); the delegate treats
+    // a title-less item's content as its title, so old tasks still render.
+    function addTask(title, desc) {
         const item = {
-            "content": desc,
+            "title": title,
+            "content": desc ?? "",
             "done": false,
         }
         addItem(item)

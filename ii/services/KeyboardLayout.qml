@@ -131,14 +131,18 @@ Singleton {
     }
 
     // ── All installed XKB layouts (for the picker popup) ──────────────
-    // Flat list of every (layout, variant) combo from /usr/share/X11/xkb/
-    // rules/evdev.lst. Used by KeyboardLayoutPicker.
+    // Flat list of every (layout, variant) combo. Used by KeyboardLayoutPicker.
+    //
+    // Reads evdev.xml + evdev.extras.xml via `iris`, not evdev.lst via the
+    // old python script: the XML carries the extras layouts and ISO-639 codes
+    // the .lst has not (753 entries vs 598), and it returns in ~4ms not ~36ms.
+    // Absolute path because a Process does not inherit the login PATH.
     property var allLayouts: []
-    readonly property string allLayoutsScript: FileUtils.trimFileProtocol(`${Directories.scriptPath}/hyprland/get_xkb_layouts.py`)
+    readonly property string allLayoutsScript: FileUtils.trimFileProtocol(`${Directories.home}/.local/bin/iris`)
     Process {
         id: allLayoutsProc
         running: true
-        command: [root.allLayoutsScript]
+        command: [root.allLayoutsScript, "layouts", "--json"]
         stdout: StdioCollector {
             onStreamFinished: {
                 try { root.allLayouts = JSON.parse(text) }
@@ -147,10 +151,45 @@ Singleton {
         }
     }
 
+    // ── Persisting a layout list to the Hyprland config ──────────────────
+    //
+    // This USED to write only `hyprland/shellOverrides/main.conf` and then
+    // `hyprctl reload`. Since the Lua migration that file is dead: the live
+    // config is `hyprland.lua`, which does
+    //     require("lua.hyprland.shellOverrides.main")
+    // i.e. it reads `lua/hyprland/shellOverrides/main.lua`. Only the retired
+    // `hyprland.conf` ever sourced the .conf. So every pick wrote a file
+    // nothing read, reloaded, and switched to an index that was never added —
+    // all steps "succeeding" while the layout never changed. (The .conf on
+    // disk still said `us,at` while Hyprland was running plain `us`.)
+    //
+    // Both files are written so the two configs can't drift apart again if
+    // the .conf one is ever restored; the .lua is the one that takes effect.
+    // `hl.config` types: kb_layout/kb_variant are STRINGS — a wrongly typed
+    // field is silently ignored while the request still answers `ok`.
+    //
+    // Callers must pass strings already validated by `xkbcli compile-keymap`.
+    function _persistCmd(layoutStr, variantStr) {
+        const luaPath  = "~/.config/hypr/lua/hyprland/shellOverrides/main.lua"
+        const confPath = "~/.config/hypr/hyprland/shellOverrides/main.conf"
+        return (
+            `echo -e '-- Written by quickshell (KeyboardLayout.qml). Edits are overwritten.\\n`
+            + `hl.config({\\n    input = {\\n`
+            + `        kb_layout = "${layoutStr}",\\n`
+            + `        kb_variant = "${variantStr}",\\n`
+            + `    },\\n})' > ${luaPath} && `
+            + `echo -e 'input {\\n    kb_layout = ${layoutStr}\\n    kb_variant = ${variantStr}\\n}' > ${confPath} && `
+            // Apply live through the `eval` request rather than `hyprctl
+            // reload`: reload re-runs the whole config (re-applying monitors,
+            // shaders, device rules), which is a lot of collateral for a
+            // keyboard change. `hyprctl keyword` is NOT an option here — it
+            // answers `unknown request` on the Lua config.
+            + `hyprctl eval 'hl.config({ input = { kb_layout = "${layoutStr}", kb_variant = "${variantStr}" } })' >/dev/null`
+        )
+    }
+
     // Switch Hyprland to (layoutCode, variantCode). If the combo isn't in
-    // input:kb_layout/kb_variant yet, append it via `hyprctl keyword` first.
-    // Session-only — to make it stick across reloads, add it to your hypr
-    // conf's input { kb_layout = ... } too.
+    // input:kb_layout/kb_variant yet, it is appended and persisted first.
     function setLayout(layoutCode, variantCode) {
         if (!layoutCode) return
         const v = variantCode || ""
@@ -170,8 +209,7 @@ Singleton {
             cmd =
                 `if xkbcli compile-keymap --layout='${layoutStr}' `
                 + `--variant='${variantStr}' >/dev/null 2>&1; then `
-                +   `echo -e 'input {\\n    kb_layout = ${layoutStr}\\n    kb_variant = ${variantStr}\\n}' > ~/.config/hypr/hyprland/shellOverrides/main.conf && `
-                +   `hyprctl reload >/dev/null && `
+                +   root._persistCmd(layoutStr, variantStr) + ` && `
                 +   `hyprctl switchxkblayout all ${idx} >/dev/null; `
                 + `else `
                 +   `notify-send -u critical -a 'Keyboard layout' `
@@ -210,8 +248,7 @@ Singleton {
         const cmd =
             `if xkbcli compile-keymap --layout='${layoutStr}' `
             + `--variant='${variantStr}' >/dev/null 2>&1; then `
-            +   `echo -e 'input {\\n    kb_layout = ${layoutStr}\\n    kb_variant = ${variantStr}\\n}' > ~/.config/hypr/hyprland/shellOverrides/main.conf && `
-            +   `hyprctl reload >/dev/null; `
+            +   root._persistCmd(layoutStr, variantStr) + `; `
             + `else `
             +   `notify-send -u critical -a 'Keyboard layout' `
             +   `'Removing layout failed XKB validation'; `

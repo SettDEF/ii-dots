@@ -1,6 +1,7 @@
 pragma Singleton
 import qs.modules.common
 import QtQuick
+import qs.services
 import Quickshell
 import Quickshell.Io
 import Quickshell.Hyprland
@@ -66,8 +67,10 @@ Singleton {
     property var floatedByUs: ({})
 
     function setMasterOrientation(dir) {
-        Hyprland.dispatch("exec hyprctl keyword general:layout master")
-        Hyprland.dispatch("exec hyprctl keyword master:orientation " + dir)
+        // Was `exec hyprctl keyword ...`, which shells out to a request this
+        // Hyprland answers with "unknown request" — silently, exit code 0.
+        HyprDispatch.config("general:layout", "master")
+        HyprDispatch.config("master:orientation", dir)
     }
 
     // Float every currently-tiled window on the focused workspace and remember
@@ -119,7 +122,7 @@ for c in json.load(sys.stdin):
         break
 ")
                 if [ "$state" = "1" ]; then
-                    hyprctl dispatch setfloating address:$a
+                    hyprctl dispatch "hl.dsp.window.float({ action = \"set\", window = \"address:$a\" })"
                 fi
             done`]
         exitFloatingProc.running = true
@@ -151,10 +154,10 @@ for c in json.load(sys.stdin):
         case "tileleft":   setMasterOrientation("left");   break
         case "tiletop":    setMasterOrientation("top");    break
         case "tilebottom": setMasterOrientation("bottom"); break
-        case "dwindle":    Hyprland.dispatch("exec hyprctl keyword general:layout dwindle"); break
+        case "dwindle":    HyprDispatch.config("general:layout", "dwindle"); break
         case "max":
-            Hyprland.dispatch("exec hyprctl keyword general:layout dwindle")
-            Hyprland.dispatch("fullscreen 0")
+            HyprDispatch.config("general:layout", "dwindle")
+            HyprDispatch.run("fullscreen 0")
             break
         case "floating":
             // floating geometry is already set by enterFloating; nothing else to do
@@ -179,7 +182,7 @@ for c in json.load(sys.stdin):
     // sticks until you change global state elsewhere.
     //
     // The "max" auto-fullscreen on activeToplevelChanged was removed for the
-    // same reason — `Hyprland.dispatch("fullscreen 0")` fired on every focus
+    // same reason — `HyprDispatch.run("fullscreen 0")` fired on every focus
     // change, including focus events that originate on other monitors.
 
     // ── Persistence ───────────────────────────────────────────────────

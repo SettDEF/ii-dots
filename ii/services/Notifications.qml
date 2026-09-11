@@ -67,6 +67,12 @@ Singleton {
             const index = root.list.findIndex((notif) => notif.notificationId === notificationId);
             const notifObject = root.list[index];
             print("[Notifications] Notification timer triggered for ID: " + notificationId + ", transient: " + notifObject?.isTransient);
+            // The notification can be gone before its 7s timer fires — the
+            // user dismissed it, or the app closed it — and then findIndex
+            // returns -1 and the lookup is undefined. The line above already
+            // used `?.` for exactly that reason; the line below did not, so
+            // every early dismissal threw.
+            if (!notifObject) { destroy(); return; }
             if (notifObject.isTransient) root.discardNotification(notificationId);
             else root.timeoutNotification(notificationId);
             destroy()
@@ -74,6 +80,60 @@ Singleton {
     }
 
     property bool silent: false
+
+    // Per-app mute + sound control. Persisted to muted-apps.json beside the
+    // notifications store so it survives restarts.
+    //   mutedApps[app]  = 0 (forever) | epoch-ms expiry (timed) | true (legacy)
+    //   soundOffApps[app] = true → popups still show but no shell sound.
+    // A muted app's notifications still log to history; they just don't pop up.
+    property var mutedApps: ({})
+    property var soundOffApps: ({})
+    readonly property string mutedAppsPath: String(Directories.notificationsPath).replace(/notifications\.json$/, "muted-apps.json")
+
+    function isAppMuted(appName) {
+        if (!appName) return false;
+        const e = root.mutedApps[appName];
+        return e !== undefined && (e === 0 || e === true || e > Date.now());
+    }
+    function isAppSoundOff(appName) { return !!(appName && root.soundOffApps[appName]); }
+    function mutedRemainingMs(appName) {   // for UI labels; 0/forever -> -1
+        const e = root.mutedApps[appName];
+        return (e && e !== true) ? Math.max(0, e - Date.now()) : -1;
+    }
+    function _persistMute() {
+        mutedAppsView.setText(JSON.stringify({ muted: root.mutedApps, soundOff: root.soundOffApps }));
+    }
+    // minutes 0 / omitted = mute forever (until manually unmuted).
+    function muteApp(appName, minutes) {
+        if (!appName) return;
+        const m = Object.assign({}, root.mutedApps);
+        m[appName] = (minutes && minutes > 0) ? (Date.now() + minutes * 60000) : 0;
+        root.mutedApps = m; root._persistMute();
+    }
+    function unmuteApp(appName) {
+        if (!appName) return;
+        const m = Object.assign({}, root.mutedApps); delete m[appName];
+        root.mutedApps = m; root._persistMute();
+    }
+    function toggleAppMute(appName) { root.isAppMuted(appName) ? root.unmuteApp(appName) : root.muteApp(appName, 0); }
+    function setAppSoundOff(appName, off) {
+        if (!appName) return;
+        const s = Object.assign({}, root.soundOffApps);
+        if (off) s[appName] = true; else delete s[appName];
+        root.soundOffApps = s; root._persistMute();
+    }
+
+    // Expire timed mutes (and refresh the bell icons) ~every 20s.
+    Timer {
+        interval: 20000; running: true; repeat: true
+        onTriggered: {
+            const now = Date.now(); let changed = false;
+            const m = Object.assign({}, root.mutedApps);
+            for (const k in m) { if (m[k] !== 0 && m[k] !== true && m[k] <= now) { delete m[k]; changed = true; } }
+            if (changed) { root.mutedApps = m; root._persistMute(); }
+        }
+    }
+
     property int unread: 0
     property var filePath: Directories.notificationsPath
     property list<Notif> list: []
@@ -168,8 +228,8 @@ Singleton {
             });
 			root.list = [...root.list, newNotifObject];
 
-            // Popup
-            if (!root.popupInhibited) {
+            // Popup — suppressed for muted apps (they still log to history).
+            if (!root.popupInhibited && !root.isAppMuted(newNotifObject.appName)) {
                 newNotifObject.popup = true;
                 if (notification.expireTimeout != 0) {
                     newNotifObject.timer = notifTimerComponent.createObject(root, {
@@ -178,6 +238,17 @@ Singleton {
                     });
                 }
                 root.unread++;
+                // Shell-owned notification sound. In the same branch as the
+                // popup, so it inherits the gating: no sound when globally
+                // silent, when the sidebar is open, or when this app is muted.
+                // Played via canberra (honours the user's sound theme); falls
+                // back to an Oxygen message sound. Disable apps' own sounds
+                // (e.g. Telegram) so this isn't doubled.
+                if ((Config?.options.notifications.sound ?? false) && !root.isAppSoundOff(newNotifObject.appName)) {
+                    const ev = (Config?.options.notifications.soundName ?? "message-new-instant").replace(/'/g, "");
+                    Quickshell.execDetached(["bash", "-c",
+                        `canberra-gtk-play -i '${ev}' 2>/dev/null || paplay /usr/share/sounds/Oxygen-Im-Message-In.ogg 2>/dev/null`]);
+                }
             }
             root.notify(newNotifObject);
             // console.log(notifToString(newNotifObject));
@@ -216,8 +287,14 @@ Singleton {
 
     function cancelTimeout(id) {
         const index = root.list.findIndex((notif) => notif.notificationId === id);
-        if (root.list[index] != null)
+        if (root.list[index] != null && root.list[index].timer != null)
             root.list[index].timer.stop();
+    }
+
+    function restartTimeout(id) {
+        const index = root.list.findIndex((notif) => notif.notificationId === id);
+        if (root.list[index] != null && root.list[index].timer != null)
+            root.list[index].timer.restart();
     }
 
     function timeoutNotification(id) {
@@ -300,6 +377,26 @@ Singleton {
             } else {
                 console.log("[Notifications] Error loading file: " + error)
             }
+        }
+    }
+
+    // Persisted per-app mute set.
+    FileView {
+        id: mutedAppsView
+        path: Qt.resolvedUrl(root.mutedAppsPath)
+        onLoaded: {
+            try {
+                const o = JSON.parse(mutedAppsView.text());
+                if (o && typeof o === "object") {
+                    // New format: { muted:{...}, soundOff:{...} }. Legacy format
+                    // was the muted map directly.
+                    root.mutedApps = (o.muted ?? (o.soundOff ? {} : o)) ?? {};
+                    root.soundOffApps = o.soundOff ?? {};
+                }
+            } catch (e) { /* ignore malformed */ }
+        }
+        onLoadFailed: (error) => {
+            if (error == FileViewError.FileNotFound) mutedAppsView.setText("{}");
         }
     }
 }

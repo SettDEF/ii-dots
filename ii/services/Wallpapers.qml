@@ -109,8 +109,19 @@ Singleton {
         id: validateDirProc
         property string nicePath: ""
         function setDirectoryIfValid(path) {
-            validateDirProc.nicePath = FileUtils.trimFileProtocol(path).replace(/\/+$/, "")
-            if (/^\/*$/.test(validateDirProc.nicePath)) validateDirProc.nicePath = "/";
+            // An empty path used to land here and match /^\/*$/ along with a
+            // real "/", so it was rewritten to the filesystem root — and since
+            // "/" genuinely IS a directory, every later validity check waved it
+            // through. That is how the picker ended up stranded at "/" showing
+            // nothing. Empty means "no path given", not "root".
+            const raw = FileUtils.trimFileProtocol(path ?? "")
+            if (raw.length === 0) {
+                console.log("[Wallpapers] Ignoring empty path")
+                return
+            }
+            validateDirProc.nicePath = raw.replace(/\/+$/, "")
+            // Only a genuinely slash-only input ("/", "//") means root.
+            if (validateDirProc.nicePath.length === 0) validateDirProc.nicePath = "/";
             validateDirProc.exec([
                 "bash", "-c",
                 `if [ -d "${validateDirProc.nicePath}" ]; then echo dir; elif [ -f "${validateDirProc.nicePath}" ]; then echo file; else echo invalid; fi`
@@ -118,13 +129,20 @@ Singleton {
         }
         stdout: StdioCollector {
             onStreamFinished: {
-                    root.directory = Qt.resolvedUrl(validateDirProc.nicePath)
+                // The assignment used to sit ABOVE this check, so the path was
+                // adopted before anything had decided it was valid — which made
+                // the "invalid" branch below dead code. Clicking a place whose
+                // folder no longer exists (Homework, if ~/Pictures/homework was
+                // never created) navigated there anyway and showed an empty
+                // grid, and an empty path normalises to "/" a few lines up, so
+                // it could also strand the browser at the filesystem root.
                 const result = text.trim()
                 if (result === "dir") {
+                    root.directory = Qt.resolvedUrl(validateDirProc.nicePath)
                 } else if (result === "file") {
                     root.directory = Qt.resolvedUrl(FileUtils.parentDirectory(validateDirProc.nicePath))
                 } else {
-                    // Ignore
+                    console.log("[Wallpapers] Ignoring invalid path:", validateDirProc.nicePath)
                 }
             }
         }
@@ -164,11 +182,33 @@ Singleton {
 
     // Skip if a run for the same (dir, size) is already in flight —
     // killing it would orphan magick children mid-decode.
+    // Pixel size per spec directory, so the daemon is asked for the same
+    // dimensions the script would have produced.
+    readonly property var _thumbPixels: ({ "normal": 128, "large": 256, "x-large": 512, "xx-large": 1024 })
+
+    /*
+     * quarryd first, the scripts as the fallback.
+     *
+     * The script path spawns a bash wrapper, activates a Python virtualenv and
+     * runs an interpreter before a single pixel is resized — for work quarryd
+     * does in a process that is already running, in Rust, with a cache. It
+     * writes to the freedesktop path this service's readers already compute, so
+     * nothing downstream changes.
+     *
+     * If the daemon is not there, `Quarry.connected` is false and this is the
+     * code it always was. Losing thumbnails when a picture daemon is down is
+     * acceptable; losing the wallpaper picker is not.
+     */
     function generateThumbnail(size: string) {
         if (!["normal", "large", "x-large", "xx-large"].includes(size)) throw new Error("Invalid thumbnail size");
         const dir = FileUtils.trimFileProtocol(root.directory)
         const key = dir + "|" + size
         if (thumbgenProc.running && thumbgenProc._key === key) return
+
+        if (Quarry.connected) {
+            root._generateViaQuarry(dir, size)
+            return
+        }
         thumbgenProc.directory = dir
         thumbgenProc._key = key
         thumbgenProc.running = false
@@ -180,6 +220,33 @@ Singleton {
         root.thumbnailGenerationProgress = 0
         thumbgenProc.running = true
     }
+    /// One request per file, progress reported as they land — the same two
+    /// signals the script path emits, so every consumer is unchanged.
+    function _generateViaQuarry(dir, size) {
+        const pixels = root._thumbPixels[size] || 256
+        const files = []
+        for (let i = 0; i < folderModel.count; i++) {
+            const f = FileUtils.trimFileProtocol(String(folderModel.get(i, "fileURL")))
+            if (f.length > 0) files.push(f)
+        }
+        if (files.length === 0) {
+            root.thumbnailGenerated(dir)
+            return
+        }
+        root.thumbnailGenerationProgress = 0
+        let done = 0
+        for (const file of files) {
+            Quarry.thumbPath(file, pixels, function (err, payload) {
+                done++
+                root.thumbnailGenerationProgress = done / files.length
+                if (!err && payload && payload.path)
+                    root.thumbnailGeneratedFile(payload.path)
+                if (done === files.length)
+                    root.thumbnailGenerated(dir)
+            }, "freedesktop")
+        }
+    }
+
     Process {
         id: thumbgenProc
         property string directory

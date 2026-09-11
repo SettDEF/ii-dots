@@ -16,6 +16,22 @@ Singleton {
     property var cachedLayoutCodes: ({})
     property string currentLayoutName: ""
     property string currentLayoutCode: ""
+    /**
+     * Name of the keyboard that most recently produced a layout event.
+     *
+     * With several keyboards attached (laptop, external, Bluetooth) each holds
+     * its OWN active layout, so "the current layout" is only meaningful per
+     * device. Hyprland's `activelayout` event carries "KEYBOARD_NAME,LAYOUT",
+     * and the old code discarded the keyboard half and always fell back to
+     * whichever device is flagged `main` — so the reported layout could belong
+     * to a keyboard you were not typing on.
+     *
+     * Caveat: Hyprland emits no per-keystroke device event, so this tracks the
+     * last keyboard to CHANGE layout, not literally the last key pressed. That
+     * is still input-driven (a layout switch is a keypress on that device), but
+     * typing on a second keyboard without switching layout cannot be observed.
+     */
+    property string lastKeyboardName: ""
     // For the service
     property var baseLayoutFilePath: "/usr/share/X11/xkb/rules/base.lst"
     property bool needsLayoutRefresh: false
@@ -81,10 +97,21 @@ Singleton {
         stdout: StdioCollector {
             id: devicesCollector
             onStreamFinished: {
-                const parsedOutput = JSON.parse(devicesCollector.text);
-                const hyprlandKeyboard = parsedOutput["keyboards"].find(kb => kb.main === true);
-                root.layoutCodes = hyprlandKeyboard["layout"].split(",");
-                root.currentLayoutName = hyprlandKeyboard["active_keymap"];
+                let parsedOutput;
+                try { parsedOutput = JSON.parse(devicesCollector.text); }
+                catch (e) { return; }
+                const keyboards = parsedOutput["keyboards"] ?? [];
+                if (keyboards.length === 0) return;
+                // Prefer the keyboard actually being used over the `main` flag;
+                // fall back to `main`, then to whatever exists.
+                const hyprlandKeyboard =
+                    (root.lastKeyboardName
+                        ? keyboards.find(kb => kb.name === root.lastKeyboardName) : null)
+                    ?? keyboards.find(kb => kb.main === true)
+                    ?? keyboards[0];
+                if (!hyprlandKeyboard) return;
+                root.layoutCodes = (hyprlandKeyboard["layout"] ?? "us").split(",");
+                root.currentLayoutName = hyprlandKeyboard["active_keymap"] ?? "";
                 // console.log("[HyprlandXkb] Fetched | Layouts (multiple: " + (root.layoutCodes.length > 1) + "): "
                 //     + root.layoutCodes.join(", ") + " | Active: " + root.currentLayoutName);
             }
@@ -96,20 +123,33 @@ Singleton {
         target: Hyprland
         function onRawEvent(event) {
             if (event.name === "activelayout") {
+                // "KEYBOARD_NAME,LAYOUT_NAME" — both halves matter: the layout
+                // is per-device, so we record which device this one belongs to.
+                const dataString = event.data ?? "";
+                const sep = dataString.indexOf(",");
+                if (sep >= 0) {
+                    root.lastKeyboardName = dataString.substring(0, sep);
+                    root.currentLayoutName = dataString.substring(sep + 1);
+                }
+
                 if (root.needsLayoutRefresh) {
                     root.needsLayoutRefresh = false;
                     fetchLayoutsProc.running = true;
                 }
 
-                // If there's only one layout, the updated layout is always the same
-                if (root.layoutCodes.length <= 1) return;
-
-                // Update when layout might have changed
-                const dataString = event.data;
-                root.currentLayoutName = dataString.substring(dataString.indexOf(",") + 1);
-
-                // Update layout for on-screen keyboard (osk)
-                Config.options.osk.layout = root.currentLayoutName.split(" (")[0];
+                // NOTE: there used to be an early `return` here when only one
+                // layout was configured, on the assumption that the layout then
+                // never changes. But this handler is also what tells the OSK
+                // which keymap to DRAW, and that still has to be resolved on a
+                // single-layout setup — so bailing out left the on-screen keys
+                // stuck on the default forever.
+                //
+                // The OSK layout is no longer written into Config from here
+                // either. Deriving a value and persisting it into the user's
+                // config meant a bad derivation (see below) got saved to disk:
+                // `currentLayoutName.split(" (")[0]` turned "English (US)" into
+                // "English", which is not a valid drawn-layout key. OskContent
+                // now resolves this live instead.
             } else if (event.name == "configreloaded") {
                 // Mark layout code list to be updated when config is reloaded
                 root.needsLayoutRefresh = true;

@@ -12,9 +12,17 @@ Singleton {
 
     property list<real> visualizerPoints: []
 
+    // The bar and desktop spectrums live on screen rather than in a popup, so
+    // they need the feed while anything plays. Gated on their switches, so
+    // both off never spawns cava.
+    readonly property bool visualizerWants: MprisController.anyPlaying
+        && ((Config.options?.bar?.showVisualizer ?? false)
+            || (Config.options?.background?.widgets?.visualizer?.enable ?? false))
+
     readonly property bool active: GlobalStates.mediaControlsOpen
         || GlobalStates.cornerPopupOpen
         || ShelfPlayer.isPlaying
+        || visualizerWants
 
     Process {
         id: cavaProc

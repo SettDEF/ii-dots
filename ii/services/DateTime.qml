@@ -10,6 +10,8 @@ import Quickshell.Io
  * A nice wrapper for date and time strings.
  */
 Singleton {
+    id: root
+
     property var clock: SystemClock {
         id: clock
         precision: {
@@ -25,15 +27,30 @@ Singleton {
     property string collapsedCalendarFormat: Qt.locale().toString(clock.date, "dddd, MMMM dd")
     property string uptime: "0h, 0m"
 
+    // The tick only ASKS for a re-read; the value is computed in onLoaded.
+    //
+    // It used to call reload() and then text() on the same line. reload() is
+    // asynchronous, so text() returned whatever was there before the read
+    // finished — empty on the first tick, which parsed to 0 and rendered
+    // "Up 0m" on a machine that had been up for hours. Whether you saw the
+    // real figure or a zero came down to timing.
     Timer {
         interval: 60000
         running: true
         repeat: true
         triggeredOnStart: true
-        onTriggered: {
-            fileUptime.reload();
-            const textUptime = fileUptime.text();
-            const uptimeSeconds = Number(textUptime.split(" ")[0] ?? 0);
+        onTriggered: fileUptime.reload()
+    }
+
+    FileView {
+        id: fileUptime
+
+        path: "/proc/uptime"
+
+        onLoaded: {
+            const uptimeSeconds = Number(String(fileUptime.text()).split(" ")[0]);
+            if (!isFinite(uptimeSeconds) || uptimeSeconds <= 0)
+                return;   // a bad read is not "the machine just booted"
 
             // Convert seconds to days, hours, and minutes
             const days = Math.floor(uptimeSeconds / 86400);
@@ -48,13 +65,7 @@ Singleton {
                 formatted += `${formatted ? ", " : ""}${hours}h`;
             if (minutes > 0 || !formatted)
                 formatted += `${formatted ? ", " : ""}${minutes}m`;
-            uptime = formatted;
+            root.uptime = formatted;
         }
-    }
-
-    FileView {
-        id: fileUptime
-
-        path: "/proc/uptime"
     }
 }

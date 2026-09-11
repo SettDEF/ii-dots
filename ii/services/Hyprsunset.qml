@@ -2,6 +2,7 @@ pragma Singleton
 
 import QtQuick
 import qs.modules.common
+import qs.services
 import Quickshell
 import Quickshell.Io
 import Quickshell.Hyprland
@@ -79,16 +80,61 @@ Singleton {
 
     function load() { } // Dummy to force init
 
+    // Empty while the backend is healthy; otherwise why it isn't. Without
+    // this a broken hyprsunset just left the toggle sitting on "inactive"
+    // with no way to tell that the binary never started — which is exactly
+    // what a partial Hypr upgrade does (it links a libhyprutils soname that
+    // no longer exists).
+    property string backendError: ""
+    // undefined = not probed yet, so the first enable() checks once.
+    property var backendOk: undefined
+
+    Process {
+        id: backendProbe
+        command: ["bash", "-c", "hyprsunset --help >/dev/null 2>&1"]
+        stderr: StdioCollector { id: probeErr }
+        onExited: (code, status) => {
+            root.backendOk = (code === 0);
+            if (root.backendOk) {
+                root.backendError = "";
+                root._startHyprsunset();
+            } else {
+                const why = (probeErr.text || "").trim();
+                root.backendError = why.length > 0 ? why : `hyprsunset exited ${code}`;
+                console.warn("[Hyprsunset] backend unusable:", root.backendError,
+                             "— falling back to redshift");
+                root._startFallback();
+            }
+        }
+    }
+
+    function _startHyprsunset() {
+        Quickshell.execDetached(["bash", "-c",
+            `pidof hyprsunset || hyprsunset --temperature ${root.colorTemperature}`]);
+    }
+
+    // redshift sets the gamma ramp once and exits, so it needs re-applying
+    // whenever the temperature changes — cheap, and it keeps working when
+    // hyprsunset can't start.
+    function _startFallback() {
+        Quickshell.execDetached(["bash", "-c",
+            `command -v redshift >/dev/null && redshift -P -O ${root.colorTemperature} >/dev/null 2>&1`]);
+    }
+
     function enable() {
         root.active = true;
-        // console.log("[Hyprsunset] Enabling");
-        Quickshell.execDetached(["bash", "-c", `pidof hyprsunset || hyprsunset --temperature ${root.colorTemperature}`]);
+        if (root.backendOk === undefined) {
+            backendProbe.running = true;   // probes, then starts the right one
+            return;
+        }
+        if (root.backendOk) root._startHyprsunset();
+        else root._startFallback();
     }
 
     function disable() {
         root.active = false;
-        // console.log("[Hyprsunset] Disabling");
-        Quickshell.execDetached(["bash", "-c", `pkill hyprsunset`]);
+        Quickshell.execDetached(["bash", "-c",
+            "pkill hyprsunset; command -v redshift >/dev/null && redshift -x >/dev/null 2>&1"]);
     }
 
     function fetchState() {
@@ -132,7 +178,11 @@ Singleton {
         target: Config.options.light.night
         function onColorTemperatureChanged() {
             if (!root.active) return;
-            Hyprland.dispatch(`hyprctl hyprsunset temperature ${Config.options.light.night.colorTemperature}`);
+            if (root.backendOk === false) {
+                root._startFallback();   // redshift: re-apply the new temperature
+                return;
+            }
+            HyprDispatch.run(`hyprctl hyprsunset temperature ${Config.options.light.night.colorTemperature}`);
             Quickshell.execDetached(["hyprctl", "hyprsunset", "temperature", `${Config.options.light.night.colorTemperature}`]);
         }
     }

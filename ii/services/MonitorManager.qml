@@ -20,9 +20,43 @@ import Quickshell.Io
 Singleton {
     id: root
 
-    // Raw monitor records — bound to HyprlandData.monitors so refreshes
-    // there propagate here automatically.
-    readonly property var monitors: HyprlandData.monitors
+    // Raw monitor records.
+    //
+    // HyprlandData polls `hyprctl monitors -j`, which lists only ACTIVE
+    // outputs — a disabled monitor vanishes from it entirely. That made
+    // `disabled` here permanently false and left no way to see, let alone
+    // re-enable, a display you had just turned off. `monitors all -j` is the
+    // variant that keeps them, so this owns a second, on-demand poll rather
+    // than widening HyprlandData's for every other consumer of that list
+    // (the arrangement view, bounds maths, per-app overlays) which all mean
+    // "monitors you can currently draw on".
+    property var allRaw: []
+    readonly property var monitors:
+        (root.allRaw && root.allRaw.length > 0) ? root.allRaw : HyprlandData.monitors
+
+    // Re-poll whenever the active list changes, so the two stay in step.
+    Connections {
+        target: HyprlandData
+        function onMonitorsChanged() { allProc.running = true }
+    }
+    Component.onCompleted: allProc.running = true
+
+    Process {
+        id: allProc
+        command: ["hyprctl", "monitors", "all", "-j"]
+        stdout: StdioCollector {
+            onStreamFinished: {
+                try {
+                    const parsed = JSON.parse(String(text));
+                    if (Array.isArray(parsed)) root.allRaw = parsed;
+                } catch (e) {
+                    // Leave the previous list in place; a half-written reply is
+                    // not a reason to claim every monitor disappeared.
+                    console.warn("[MonitorManager] could not parse `monitors all`:", e);
+                }
+            }
+        }
+    }
 
     // Decorated list with `kind` ("internal" / "external") and `enabled`.
     readonly property var friendly: (monitors ?? []).map(m => ({

@@ -20,6 +20,26 @@ Singleton {
     property var responses: []
     property int runningRequests: 0
     property var defaultUserAgent: Config.options?.networking?.userAgent || "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36"
+
+    // Danbooru 403s the spoofed Chrome-on-Windows string above — verified:
+    // that exact UA returns 403 while "Qt/6.11.2", a plain Linux UA, or any
+    // descriptive one returns 200. Their API asks you to identify your client
+    // rather than impersonate a browser, and they enforce it. This was
+    // breaking every Danbooru request, not just the tag suggestions.
+    //
+    // Zerochan already had its own string (it wants your username), so the
+    // per-provider override belongs in one resolver rather than an if-chain
+    // at each of the four call sites.
+    readonly property var providerUserAgents: ({
+        "danbooru": "illogical-impulse-shell/1.0 (desktop booru viewer)"
+    })
+    function userAgentFor(providerId) {
+        if (providerId === "zerochan") {
+            const u = Config.options?.sidebar?.booru?.zerochan?.username;
+            return u ? `Desktop sidebar booru viewer - username: ${u}` : root.defaultUserAgent;
+        }
+        return root.providerUserAgents[providerId] ?? root.defaultUserAgent;
+    }
     property var providerList: Object.keys(providers).filter(provider => provider !== "system" && providers[provider].api)
     property var providers: {
         "system": { "name": Translation.tr("System") },
@@ -48,6 +68,7 @@ Singleton {
                 })
             },
             "tagSearchTemplate": "https://yande.re/tag.json?order=count&limit=10&name={{query}}*",
+            "popularTagsTemplate": "https://yande.re/tag.json?order=count&limit=24",
             "tagMapFunc": (response) => {
                 return response.map(item => {
                     return {
@@ -57,10 +78,15 @@ Singleton {
                 })
             }
         },
+        // konachan.COM, not .net. The .net mirror serves only rating:safe, so
+        // the "Allow NSFW" toggle could never do anything here — a query for
+        // rating:explicit returns 0 there and 5 on .com. SFW mode is unaffected
+        // because constructRequestUrl() already appends rating:safe when the
+        // toggle is off, so .com is correct for both states.
         "konachan": {
             "name": "Konachan",
-            "url": "https://konachan.net",
-            "api": "https://konachan.net/post.json",
+            "url": "https://konachan.com",
+            "api": "https://konachan.com/post.json",
             "description": Translation.tr("For desktop wallpapers | Good quality"),
             "mapFunc": (response) => {
                 return response.map(item => {
@@ -81,7 +107,8 @@ Singleton {
                     }
                 })
             },
-            "tagSearchTemplate": "https://konachan.net/tag.json?order=count&limit=10&name={{query}}*",
+            "tagSearchTemplate": "https://konachan.com/tag.json?order=count&limit=10&name={{query}}*",
+            "popularTagsTemplate": "https://konachan.com/tag.json?order=count&limit=24",
             "tagMapFunc": (response) => {
                 return response.map(item => {
                     return {
@@ -143,6 +170,7 @@ Singleton {
                 })
             },
             "tagSearchTemplate": "https://danbooru.donmai.us/tags.json?limit=10&search[name_matches]={{query}}*",
+            "popularTagsTemplate": "https://danbooru.donmai.us/tags.json?limit=24&search%5Border%5D=count&search%5Bhide_empty%5D=yes",
             "tagMapFunc": (response) => {
                 return response.map(item => {
                     return {
@@ -178,6 +206,7 @@ Singleton {
                 })
             },
             "tagSearchTemplate": "https://gelbooru.com/index.php?page=dapi&s=tag&q=index&json=1&orderby=count&limit=10&name_pattern={{query}}%",
+            "popularTagsTemplate": "https://gelbooru.com/index.php?page=dapi&s=tag&q=index&json=1&orderby=count&limit=24",
             "tagMapFunc": (response) => {
                 return response.tag.map(item => {
                     return {
@@ -387,10 +416,12 @@ Singleton {
                     // console.log("[Booru] Mapped response: " + JSON.stringify(response))
                     newResponse.images = response
                     newResponse.message = response.length > 0 ? "" : root.failMessage
+                    if (response.length === 0) root.fetchPopularTags()
                     
                 } catch (e) {
                     console.log("[Booru] Failed to parse response: " + e)
                     newResponse.message = root.failMessage
+                    root.fetchPopularTags()
                 } finally {
                     root.runningRequests--;
                     root.responses = [...root.responses, newResponse]
@@ -399,6 +430,7 @@ Singleton {
             else if (xhr.readyState === XMLHttpRequest.DONE) {
                 console.log("[Booru] Request failed with status: " + xhr.status)
                 newResponse.message = root.failMessage
+                root.fetchPopularTags()
                 root.runningRequests--;
                 root.responses = [...root.responses, newResponse]
             }
@@ -406,19 +438,72 @@ Singleton {
         }
 
         try {
-            // Required for danbooru
-            if (currentProvider == "danbooru") {
-                xhr.setRequestHeader("User-Agent", defaultUserAgent)
-            }
-            else if (currentProvider == "zerochan") {
-                const userAgent = Config.options?.sidebar?.booru?.zerochan?.username ? `Desktop sidebar booru viewer - username: ${Config.options.sidebar.booru.zerochan.username}` : defaultUserAgent
-                xhr.setRequestHeader("User-Agent", userAgent)
-            }
+            xhr.setRequestHeader("User-Agent", root.userAgentFor(currentProvider))
             root.runningRequests++;
             xhr.send()
         } catch (error) {
             console.log("Could not set User-Agent:", error)
         } 
+    }
+
+    // ── Example tags ────────────────────────────────────────────────────
+    // A failed search used to offer only prose ("check your tags"), which is
+    // no help when the problem is not knowing what a booru tag looks like.
+    // Free-form words mostly are not tags: `wife`, `boobies` and `nsfw` all
+    // return nothing, while `nude` and `breasts` return a full page. So on a
+    // miss we ask the provider for its own most-used tags and show those.
+    //
+    // Filtered on count > 0 deliberately. The tag tables carry stale entries —
+    // konachan's tag.json reports `nsfw` as having 25 posts while the search
+    // returns none — and an example that leads to another empty page is worse
+    // than no example at all.
+    property var popularTags: []
+    property string popularTagsFor: ""
+    property var currentPopularRequest: null
+
+    function fetchPopularTags(force = false) {
+        const provider = providers[currentProvider];
+        if (!provider) return;
+        // Cached per provider: these shift over months, not between searches.
+        if (!force && root.popularTagsFor === currentProvider && root.popularTags.length > 0) return;
+        if (provider.fixedTags) {
+            root.popularTags = provider.fixedTags;
+            root.popularTagsFor = currentProvider;
+            return;
+        }
+        if (!provider.popularTagsTemplate) {
+            root.popularTags = [];
+            root.popularTagsFor = currentProvider;
+            return;
+        }
+        if (root.currentPopularRequest) root.currentPopularRequest.abort();
+
+        const requestedFor = currentProvider;
+        const xhr = new XMLHttpRequest();
+        root.currentPopularRequest = xhr;
+        xhr.open("GET", provider.popularTagsTemplate);
+        xhr.onreadystatechange = function() {
+            if (xhr.readyState !== XMLHttpRequest.DONE) return;
+            root.currentPopularRequest = null;
+            if (xhr.status !== 200) {
+                console.log("[Booru] Popular tag request failed: " + xhr.status);
+                return;
+            }
+            try {
+                let mapped = provider.tagMapFunc(JSON.parse(xhr.responseText));
+                mapped = mapped.filter(t => t && t.name && (t.count === undefined || t.count > 0));
+                root.popularTags = mapped;
+                root.popularTagsFor = requestedFor;
+            } catch (e) {
+                console.log("[Booru] Failed to parse popular tags: " + e);
+            }
+        };
+        try {
+            xhr.setRequestHeader("User-Agent", root.userAgentFor(currentProvider));
+            xhr.send();
+        } catch (error) {
+            console.log("[Booru] Popular tag request error:", error);
+        }
     }
 
     property var currentTagRequest: null
@@ -460,7 +545,7 @@ Singleton {
         try {
             // Required for danbooru
             if (currentProvider == "danbooru") {
-                xhr.setRequestHeader("User-Agent", defaultUserAgent)
+                xhr.setRequestHeader("User-Agent", root.userAgentFor(currentProvider))
             }
             xhr.send()
         } catch (error) {

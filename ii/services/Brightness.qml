@@ -150,9 +150,26 @@ Singleton {
                 const rawValueRounded = Math.max(Math.floor(brightnessValue * monitor.rawMaxBrightness), 1);
                 setProc.exec(["ddcutil", "-b", busNum, "setvcp", "10", rawValueRounded]);
             } else {
-                const valuePercentNumber = Math.floor(brightnessValue * 100);
+                let valuePercentNumber = Math.floor(brightnessValue * 100);
+
+                // This panel's firmware brightness curve folds over at the top.
+                // amdgpu logs "Using custom brightness curve" and reports the
+                // scale as non-linear. Measured on the raw device (max 65535),
+                // reading actual_brightness back after each write:
+                //     64224  (98%) -> actual 65290   brightest, stable
+                //     64450        -> actual 65535   last good value
+                //     64550        -> actual     0   backlight OFF
+                //     65535 (100%) -> actual     0   backlight OFF
+                // Anything above ~64500 physically switches the backlight off,
+                // which is why a slider reading 100 looked darker than 0 (at 0
+                // the panel still clamps to a lit floor of ~3084). Cap at 98%:
+                // that is 99.6% of maximum light, with margin before the hole.
+                if (valuePercentNumber > 98) valuePercentNumber = 98;
                 let valuePercent = `${valuePercentNumber}%`;
-                if (valuePercentNumber == 0) valuePercent = "1"; // Prevent fully black
+                // Keep a sliver of light at the dimmest setting.
+                // "1%" not "1": brightnessctl reads a bare number as RAW, so
+                // "1" means 1/65535 — indistinguishable from a dead backlight.
+                if (valuePercentNumber == 0) valuePercent = "1%";
                 setProc.exec(["brightnessctl", "--class", "backlight", "s", valuePercent, "--quiet"])
             }
         }
@@ -175,7 +192,9 @@ Singleton {
 
     // Anti-flashbang
     property int workspaceAnimationDelay: 500
-    property int contentSwitchDelay: 30
+    property int contentSwitchDelay: 400 // was 30 — a full-screen grim|magick per
+    // monitor fired on every window/title change; a title storm ran it back to
+    // back. 400ms coalesces the burst into one capture.
     property string screenshotDir: "/tmp/quickshell/brightness/antiflashbang"
     function brightnessMultiplierForLightness(x: real): real {
         // I hand picked some values and fitted an exponential curve for this

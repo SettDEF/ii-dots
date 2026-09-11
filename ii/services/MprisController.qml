@@ -120,6 +120,17 @@ Singleton {
 	}
 
 	property bool isPlaying: this.activePlayer && this.activePlayer.isPlaying;
+	// Is anything audible at all? `activePlayer` can sit on a paused player
+	// while another one plays. Deliberately the raw bus list, not `players`:
+	// that one drops Firefox-family buses as plasma duplicates, which is
+	// right for a player UI and wrong here — Zen is exactly such a bus, and
+	// filtering it made a playing track read as silence.
+	property bool anyPlaying: {
+		const ps = Mpris.players.values;
+		for (let i = 0; i < ps.length; i++)
+			if (ps[i]?.isPlaying) return true;
+		return false;
+	}
 	property bool canTogglePlaying: this.activePlayer?.canTogglePlaying ?? false;
 	function togglePlaying() {
 		if (this.canTogglePlaying) this.activePlayer.togglePlaying();

@@ -136,11 +136,18 @@ Singleton {
 
     Timer {
         // 15 s — and only while the right sidebar is actually open.
-        // ROG profile / GPU / battery / charge change on user input,
-        // not autonomously, so background polling is wasted.
+        //
+        // These do NOT only change on user input, despite what this comment
+        // used to claim: asusd flips the platform profile by itself on every
+        // AC/battery transition (change_platform_profile_on_ac). Polling only
+        // while the sidebar is open is still the right call for battery, but
+        // without triggeredOnStart the first refresh was a full interval away,
+        // so opening the sidebar showed a value up to 15 s stale — which is how
+        // the tile came to read "Balanced" while the machine was on Quiet.
         interval: 15000
         running: GlobalStates.sidebarRightOpen
         repeat: true
+        triggeredOnStart: true
         onTriggered: root.poll()
     }
     Component.onCompleted: root.poll()

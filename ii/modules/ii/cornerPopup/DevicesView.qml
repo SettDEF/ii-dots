@@ -114,10 +114,10 @@ Rectangle {
                 readonly property string addr: card.dev?.address ?? ""
                 readonly property string devName: modelData?.name ?? "?"
                 // Battery and its provenance are resolved by the service: BlueZ
-                // where it publishes one, Harman's BLE control service for the
-                // speakers where BlueZ never will.
+                // where it publishes one, a vendor provider for the devices
+                // where BlueZ never will.
                 readonly property int bat: modelData?.battery ?? -1
-                readonly property bool batFromHarman: modelData?.batteryFromHarman ?? false
+                readonly property bool batFromProvider: modelData?.batteryFromProvider ?? false
                 readonly property bool viaUsb: (modelData?.transport ?? "") === "usb"
                 property bool expanded: false
 
@@ -193,7 +193,7 @@ Rectangle {
                                 StyledText {
                                     visible: card.bat >= 0
                                     text: "·  " + card.bat + "%"
-                                           + (card.batFromHarman && Devices.busy ? " …" : "")
+                                           + (card.batFromProvider && Devices.busy ? " …" : "")
                                     font.pixelSize: 9
                                     color: card.bat <= 20
                                         ? Appearance.m3colors.m3error

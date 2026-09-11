@@ -222,7 +222,7 @@ Singleton {
         }
     }
     Timer {
-        interval: 2000
+        interval: 3000 // was 2000 — a per-app mute indicator doesn't need 2s
         running: true
         repeat: true
         onTriggered: muteScanProc.running = true

@@ -128,8 +128,8 @@ ApiStrategy {
             }
             
             // Function call handling
-            if (dataJson.candidates[0]?.content?.parts[0]?.functionCall) {
-                const functionCall = dataJson.candidates[0]?.content?.parts[0]?.functionCall;
+            if (dataJson.candidates[0]?.content?.parts?.[0]?.functionCall) {
+                const functionCall = dataJson.candidates[0]?.content?.parts?.[0]?.functionCall;
                 message.functionName = functionCall.name;
                 message.functionCall = functionCall.name;
                 const newContent = `\n\n[[ Function: ${functionCall.name}(${JSON.stringify(functionCall.args, null, 2)}) ]]\n`
@@ -138,10 +138,17 @@ ApiStrategy {
                 return { functionCall: { name: functionCall.name, args: functionCall.args }, finished: finished };
             }
 
-            // Normal text response
-            const responseContent = dataJson.candidates[0]?.content?.parts[0]?.text
-            message.rawContent += responseContent;
-            message.content += responseContent;
+            // Normal text response.
+            //
+            // The terminating chunk has content: { role: "model" } with no
+            // `parts` at all, so this must tolerate both a missing parts array
+            // and a missing text field — otherwise it appends the literal
+            // string "undefined" to the reply.
+            const responseContent = dataJson.candidates[0]?.content?.parts?.[0]?.text;
+            if (responseContent) {
+                message.rawContent += responseContent;
+                message.content += responseContent;
+            }
             
             // Handle annotations and metadata
             const annotationSources = dataJson.candidates[0]?.groundingMetadata?.groundingChunks?.map(chunk => {
@@ -179,9 +186,13 @@ ApiStrategy {
             }
             
         } catch (e) {
-            console.log("[AI] Gemini: Could not parse buffer: ", e);
-            message.rawContent += buffer;
-            message.content += buffer;
+            // Deliberately NOT appended to the message. This used to do
+            // `message.content += buffer`, which pasted raw API JSON —
+            // candidates, usageMetadata, responseId — into the visible reply
+            // whenever a chunk failed to parse. A parse failure is a bug to log,
+            // never something to show as if the model had said it.
+            console.log("[AI] Gemini: could not parse chunk:", e,
+                        "| buffer head:", buffer.slice(0, 200));
         } finally {
             buffer = "";
         }

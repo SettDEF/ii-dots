@@ -139,4 +139,59 @@ Singleton {
     function stopwatchRecordLap() {
         Persistent.states.timer.stopwatch.laps.push(stopwatchTime);
     }
+
+    // Countdown
+    property bool countdownRunning: Persistent.states.timer.countdown.running
+    property int countdownDuration: Persistent.states.timer.countdown.duration
+    property int countdownSecondsLeft: countdownDuration
+
+    function refreshCountdown() {
+        const left = Persistent.states.timer.countdown.endsAt - getCurrentTimeInSeconds();
+        countdownSecondsLeft = Math.max(0, left);
+        if (left <= 0 && Persistent.states.timer.countdown.running) {
+            Persistent.states.timer.countdown.running = false;
+            Quickshell.execDetached(["notify-send", "-a", "Timer", "-u", "critical",
+                "Countdown finished", formatSeconds(countdownDuration)]);
+        }
+    }
+
+    Timer {
+        interval: 250
+        running: root.countdownRunning
+        repeat: true
+        onTriggered: root.refreshCountdown()
+    }
+
+    function toggleCountdown() {
+        if (Persistent.states.timer.countdown.running) {
+            Persistent.states.timer.countdown.duration = countdownSecondsLeft;
+            Persistent.states.timer.countdown.running = false;
+            return;
+        }
+        if (countdownSecondsLeft <= 0)
+            countdownSecondsLeft = countdownDuration;
+        Persistent.states.timer.countdown.endsAt = getCurrentTimeInSeconds() + countdownSecondsLeft;
+        Persistent.states.timer.countdown.running = true;
+    }
+
+    function resetCountdown() {
+        Persistent.states.timer.countdown.running = false;
+        countdownSecondsLeft = countdownDuration;
+    }
+
+    function addCountdownMinutes(minutes) {
+        const added = Math.round(minutes * 60);
+        countdownSecondsLeft = Math.max(0, countdownSecondsLeft + added);
+        Persistent.states.timer.countdown.duration = countdownSecondsLeft;
+        if (Persistent.states.timer.countdown.running)
+            Persistent.states.timer.countdown.endsAt += added;
+    }
+
+    function formatSeconds(s) {
+        const t = Math.max(0, Math.floor(s));
+        const mm = String(Math.floor((t % 3600) / 60)).padStart(2, "0");
+        const ss = String(t % 60).padStart(2, "0");
+        const h = Math.floor(t / 3600);
+        return h > 0 ? `${h}:${mm}:${ss}` : `${mm}:${ss}`;
+    }
 }

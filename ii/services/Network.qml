@@ -23,35 +23,259 @@ Singleton {
     property WifiAccessPoint wifiConnectTarget
     readonly property list<WifiAccessPoint> wifiNetworks: []
     readonly property WifiAccessPoint active: wifiNetworks.find(n => n.active) ?? null
+    // ── Saved profiles & preference ─────────────────────────────────────
+    // NetworkManager already has the concept we want: connection.autoconnect-
+    // priority. Higher wins when several known networks are in range, so
+    // "prefer this one" is a real setting the daemon acts on, not something
+    // this shell has to re-implement or enforce itself.
+    //
+    // Keyed by SSID, but the VALUE carries the profile name, because the two
+    // are not the same thing: a profile may be named anything ("WLAN-246200-5G"
+    // for a band-locked one). Modifying by SSID would edit the wrong profile or
+    // none at all, so every write goes through the stored name.
+    property var savedProfiles: ({})    // ssid -> {name, priority, autoconnect}
+
+    readonly property int preferredPriority: 20
+
+    function profileFor(ssid) {
+        return root.savedProfiles[ssid] ?? null;
+    }
+    function isSaved(ssid) {
+        return root.savedProfiles[ssid] !== undefined;
+    }
+    function priorityOf(ssid) {
+        return root.savedProfiles[ssid]?.priority ?? 0;
+    }
+    function isPreferred(ssid) {
+        return root.priorityOf(ssid) > 0;
+    }
+    function autoconnectOf(ssid) {
+        return root.savedProfiles[ssid]?.autoconnect ?? false;
+    }
+    function bandLockOf(ssid) {
+        return root.savedProfiles[ssid]?.band ?? "";
+    }
+
+    // ── Frequency → human terms ─────────────────────────────────────────
+    // nmcli reports a frequency in MHz; nobody thinks in MHz. The channel and
+    // band are what let you spot the actual problems — a repeater sharing its
+    // backhaul channel, or a 2.4GHz association you did not intend.
+    function bandFor(freq) {
+        if (freq >= 5925) return "6 GHz";
+        if (freq >= 4900) return "5 GHz";
+        return "2.4 GHz";
+    }
+    function channelFor(freq) {
+        if (freq === 2484) return 14;                 // the one that breaks the formula
+        if (freq >= 5925) return Math.round((freq - 5950) / 5);
+        if (freq >= 4900) return Math.round((freq - 5000) / 5);
+        return Math.round((freq - 2407) / 5);
+    }
+    // nmcli's SIGNAL is a percentage, not dBm. The conversion NetworkManager
+    // itself uses is linear over -100..-50, so this is a faithful inverse
+    // rather than a guess — but it is still a derived figure, and the live
+    // link below reports the real thing for the connected network.
+    function approxDbm(pct) {
+        return Math.round(pct / 2 - 100);
+    }
+
+    function setAutoconnect(ssid, on) {
+        const p = root.profileFor(ssid);
+        if (!p) return;
+        profileEditProc.exec(["nmcli", "connection", "modify", p.name,
+                              "connection.autoconnect", on ? "yes" : "no"]);
+    }
+    function setPriority(ssid, n) {
+        const p = root.profileFor(ssid);
+        if (!p) return;
+        profileEditProc.exec(["nmcli", "connection", "modify", p.name,
+                              "connection.autoconnect-priority", String(n)]);
+    }
+    // Pinning a profile to one band is the direct fix for the case where a
+    // 5GHz AP and a 2.4GHz AP share an SSID and the adapter keeps choosing the
+    // slower one. "" clears the lock.
+    function setBandLock(ssid, band) {
+        const p = root.profileFor(ssid);
+        if (!p) return;
+        profileEditProc.exec(["nmcli", "connection", "modify", p.name,
+                              "802-11-wireless.band", band]);
+    }
+
+    Process {
+        id: profileEditProc
+        onExited: savedProfilesProc.running = true
+    }
+
+    // ── Live link detail for the connected network ──────────────────────
+    // nmcli's scan list cannot tell you any of this: it reports what the AP
+    // advertises, not what your adapter negotiated. The real dBm, the rate
+    // actually in use and the retry count are the numbers that distinguish "a
+    // strong link" from "a link that works" — a -49 dBm association through a
+    // repeater reads perfect here and still stutters, which is exactly why
+    // retries and the channel are worth surfacing.
+    property var linkInfo: ({})
+
+    Process {
+        id: linkInfoProc
+        environment: ({ LANG: "C", LC_ALL: "C" })
+        command: ["bash", "-c",
+            "d=$(nmcli -t -f DEVICE,TYPE,STATE d status | awk -F: '$2==\"wifi\" && $3==\"connected\"{print $1; exit}'); "
+            + "[ -n \"$d\" ] || exit 0; "
+            + "l=$(iw dev \"$d\" link 2>/dev/null); s=$(iw dev \"$d\" station dump 2>/dev/null); "
+            + "echo \"dev=$d\"; "
+            + "echo \"$l\" | sed -n 's/.*freq: *\\([0-9]*\\).*/freq=\\1/p'; "
+            + "echo \"$l\" | sed -n 's/.*signal: *\\(-[0-9]*\\).*/dbm=\\1/p'; "
+            + "echo \"$l\" | sed -n 's/.*tx bitrate: *\\([0-9.]*\\).*/tx=\\1/p'; "
+            + "echo \"$l\" | sed -n 's/.*rx bitrate: *\\([0-9.]*\\).*/rx=\\1/p'; "
+            // station dump separates label from value with a TAB, not a space —
+            // matching only on spaces silently produced empty values.
+            + "echo \"$s\" | sed -n 's/.*tx retries:[[:space:]]*\\([0-9]*\\).*/retries=\\1/p'; "
+            + "echo \"$s\" | sed -n 's/.*tx failed:[[:space:]]*\\([0-9]*\\).*/failed=\\1/p'; "
+            + "echo \"$s\" | sed -n 's/.*connected time:[[:space:]]*\\([0-9]*\\).*/uptime=\\1/p'; "
+            + "ip -4 -o addr show dev \"$d\" 2>/dev/null | awk '{print \"ip=\"$4; exit}'; "
+            + "ip route | awk -v d=\"$d\" '$1==\"default\" && $5==d {print \"gw=\"$3; exit}'; "
+            + "sed 's/^/mac=/' /sys/class/net/\"$d\"/address 2>/dev/null"]
+        stdout: StdioCollector {
+            onStreamFinished: {
+                const o = {};
+                for (const line of String(text).trim().split("\n")) {
+                    const i = line.indexOf("=");
+                    if (i > 0) o[line.slice(0, i)] = line.slice(i + 1);
+                }
+                root.linkInfo = o;
+            }
+        }
+    }
+
+    // Flat views of linkInfo, for readouts that just want the value.
+    // Empty until something sets detailsVisible — nothing polls otherwise.
+    readonly property string networkInterface: linkInfo.dev ?? ""
+    readonly property string ipAddress: (linkInfo.ip ?? "").split("/")[0]
+    readonly property string gateway: linkInfo.gw ?? ""
+    readonly property string macAddress: linkInfo.mac ?? ""
+
+    // Only while something is actually looking at it — this shells out to iw
+    // and ip, and polling that in the background forever would be waste.
+    property bool detailsVisible: false
+    Timer {
+        interval: 3000
+        repeat: true
+        running: root.detailsVisible
+        triggeredOnStart: true
+        onTriggered: if (!linkInfoProc.running) linkInfoProc.running = true
+    }
+
+    // Only a SAVED network can carry a preference — there is nothing to attach
+    // it to otherwise, so the UI hides the control rather than offering
+    // something that would silently do nothing.
+    function setPreferred(ssid, preferred) {
+        const p = root.profileFor(ssid);
+        if (!p) return;
+        setPriorityProc.exec(["nmcli", "connection", "modify", p.name,
+                              "connection.autoconnect-priority",
+                              String(preferred ? root.preferredPriority : 0),
+                              "connection.autoconnect", "yes"]);
+    }
+
+    Process {
+        id: setPriorityProc
+        onExited: savedProfilesProc.running = true
+    }
+
+    Process {
+        id: savedProfilesProc
+        running: true
+        environment: ({ LANG: "C", LC_ALL: "C" })
+        // Per-profile lookup rather than one table: `connection show` without a
+        // target cannot report 802-11-wireless.ssid, and the profile name is
+        // not a reliable stand-in for it.
+        command: ["bash", "-c",
+            "nmcli -t -f UUID,TYPE connection show 2>/dev/null "
+            + "| awk -F: '$2==\"802-11-wireless\"{print $1}' "
+            + "| while read -r u; do "
+            +   "nmcli -g 802-11-wireless.ssid,connection.autoconnect-priority,"
+            +   "connection.autoconnect,802-11-wireless.band,connection.id "
+            +   "connection show \"$u\" 2>/dev/null "
+            +   "| paste -sd'|'; "
+            + "done"]
+        stdout: StdioCollector {
+            onStreamFinished: {
+                const map = {};
+                for (const line of String(text).trim().split("\n")) {
+                    if (!line) continue;
+                    // Split from the RIGHT: an SSID may legitimately contain
+                    // the separator, the three trailing fields never do.
+                    const bits = line.split("|");
+                    if (bits.length < 5) continue;
+                    const name = bits.pop();
+                    const band = bits.pop();
+                    const auto = bits.pop();
+                    const prio = parseInt(bits.pop(), 10);
+                    const ssid = bits.join("|");
+                    if (!ssid) continue;
+                    // Several profiles can share an SSID (band-locked variants).
+                    // The highest-priority one is the one whose preference the
+                    // user is actually seeing take effect, so it wins the slot.
+                    const prev = map[ssid];
+                    if (prev && prev.priority >= prio) continue;
+                    map[ssid] = {
+                        name: name,
+                        priority: isFinite(prio) ? prio : 0,
+                        autoconnect: auto === "yes",
+                        band: band ?? ""
+                    };
+                }
+                root.savedProfiles = map;
+            }
+        }
+    }
+
     readonly property list<var> friendlyWifiNetworks: [...wifiNetworks].sort((a, b) => {
         if (a.active && !b.active)
             return -1;
         if (!a.active && b.active)
             return 1;
+        // Preferred networks rank above unpreferred ones regardless of signal:
+        // the whole point of marking one is that it should win even when
+        // something louder is in range — which is exactly how a repeater ends
+        // up chosen over the router behind it.
+        const pa = root.priorityOf(a.ssid);
+        const pb = root.priorityOf(b.ssid);
+        if (pa !== pb) return pb - pa;
         return b.strength - a.strength;
     })
     property string wifiStatus: "disconnected"
 
     property string networkName: ""
     property int networkStrength
-    property string materialSymbol: root.ethernet
-        ? "lan"
-        : root.wifiEnabled
-            ? (
-                Network.networkStrength > 83 ? "signal_wifi_4_bar" :
-                Network.networkStrength > 67 ? "network_wifi" :
-                Network.networkStrength > 50 ? "network_wifi_3_bar" :
-                Network.networkStrength > 33 ? "network_wifi_2_bar" :
-                Network.networkStrength > 17 ? "network_wifi_1_bar" :
-                "signal_wifi_0_bar"
-            )
-            : (root.wifiStatus === "connecting")
-                ? "signal_wifi_statusbar_not_connected"
-                : (root.wifiStatus === "disconnected")
-                    ? "wifi_find"
-                    : (root.wifiStatus === "disabled")
-                        ? "signal_wifi_off"
-                        : "signal_wifi_bad"
+    // Icon state, in order of what actually matters to look at.
+    //
+    // The previous version tested `wifiEnabled` BEFORE the status, which made
+    // every status icon dead code: with the radio on it always drew signal
+    // bars, and the connecting / disconnected / limited icons could only be
+    // reached with the radio off — where the status is "disabled" anyway. So
+    // an unassociated adapter drew a confident "0 bars" and a captive portal
+    // drew full bars. Status is checked first now, and strength is only shown
+    // once there is a connection whose strength means something.
+    property string materialSymbol: {
+        if (root.ethernet) return "lan";
+        if (!root.wifiEnabled || root.wifiStatus === "disabled")
+            return "signal_wifi_off";
+        if (root.wifiStatus === "connecting")
+            return "signal_wifi_statusbar_not_connected";
+        // Associated but no route out — a captive portal or a dead upstream.
+        // Worth its own icon: full bars with no internet is the single most
+        // confusing thing a wifi indicator can show.
+        if (root.wifiStatus === "limited") return "signal_wifi_bad";
+        if (root.wifiStatus === "disconnected") return "wifi_find";
+
+        const s = root.networkStrength;
+        return s > 80 ? "signal_wifi_4_bar"
+             : s > 60 ? "network_wifi_3_bar"
+             : s > 40 ? "network_wifi_2_bar"
+             : s > 20 ? "network_wifi_1_bar"
+             : "signal_wifi_0_bar";
+    }
 
     // Control
     function enableWifi(enabled = true): void {
@@ -158,6 +382,10 @@ Singleton {
         wifiStatusProcess.running = true
         updateNetworkName.running = true;
         updateNetworkStrength.running = true;
+        // Connecting to a new network creates a profile, and forgetting one
+        // deletes it, so the saved set is only correct if it is re-read
+        // whenever nmcli reports a change.
+        if (!savedProfilesProc.running) savedProfilesProc.running = true;
     }
 
     Process {

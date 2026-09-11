@@ -87,15 +87,32 @@ Singleton {
             root.recognizedTrack.title + " - " + root.recognizedTrack.subtitle, 
             "-A", "Shazam",
             "-A", "YouTube",
+            // "YTM", not "YT Music". The action row lives in a Flickable and
+            // the shell appends its own Close and Copy buttons; a third
+            // full-length label pushed Copy past the visible width, so the
+            // track name could no longer be copied.
+            "-A", "YTM",
             "-a", "Shell"
         ]
         stdout: StdioCollector {
             onStreamFinished: {
                 if (this.text === "") return
-                if (this.text == 0) {
+                // notify-send prints the index of the chosen -A action.
+                const q = root.recognizedTrack.title + " - " + root.recognizedTrack.subtitle;
+                // encodeURIComponent, NOT raw. Track titles routinely contain
+                // "&" and spaces -- "... - Andrew Cairns & TELETECH" would have
+                // been cut at the ampersand, since & starts a new query
+                // parameter, so the search lost everything after the artist.
+                const enc = encodeURIComponent(q);
+                switch (parseInt(this.text)) {
+                case 0:
                     Qt.openUrlExternally(root.recognizedTrack.url);
-                } else {
-                    Qt.openUrlExternally("https://www.youtube.com/results?search_query=" + root.recognizedTrack.title + " - " + root.recognizedTrack.subtitle);
+                    break;
+                case 2:
+                    Qt.openUrlExternally("https://music.youtube.com/search?q=" + enc);
+                    break;
+                default:
+                    Qt.openUrlExternally("https://www.youtube.com/results?search_query=" + enc);
                 }
             }
         }

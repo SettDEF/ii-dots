@@ -100,7 +100,9 @@ Singleton {
     function isCompletedState(s)   { return s === "uploading" || s === "stalledUP" || s === "queuedUP" || s === "pausedUP" || s === "stoppedUP" || s === "checkingUP" }
 
     Timer {
-        interval: root.pollMs
+        // Poll fast only while qBittorrent is actually up; when it's not
+        // running, back off to 15s instead of hammering a dead endpoint every 2s.
+        interval: root.available ? root.pollMs : 15000
         running: true
         repeat: true
         triggeredOnStart: true

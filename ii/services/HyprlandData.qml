@@ -83,13 +83,47 @@ Singleton {
         updateAll();
     }
 
+    // Coalesce Hyprland event storms. windowtitle/activewindow etc. fire many
+    // times in a burst (terminal progress bars, browser tabs, video players),
+    // and refreshing on each one re-spawns 5 hyprctl subprocesses and reparses
+    // the whole client list. Leading-edge debounce: act immediately on the
+    // first event, then fold everything during a short cooldown into a single
+    // trailing refresh. Title-only events refresh just the client list.
+    property int _pending: 0            // 0 = none, 1 = clients only, 2 = everything
+    function _flush() {
+        if (root._pending === 2) updateAll();
+        else if (root._pending === 1) updateWindowList();
+        root._pending = 0;
+    }
+    Timer {
+        id: hlCooldown
+        interval: 100
+        repeat: false
+        onTriggered: if (root._pending !== 0) { root._flush(); hlCooldown.restart(); }
+    }
+
     Connections {
         target: Hyprland
 
         function onRawEvent(event) {
-            // console.log("Hyprland raw event:", event.name);
-            if (["openlayer", "closelayer", "screencast"].includes(event.name)) return;
-            updateAll()
+            if (event.name === "screencast") return;
+            // Layers open/close constantly (tooltips, popups); a layer with an
+            // exclusive zone changes the reserved area (desktop-icon insets),
+            // so refresh just the monitors — one hyprctl call, not four.
+            if (["openlayer", "closelayer"].includes(event.name)) {
+                updateMonitors();
+                return;
+            }
+            // A title change only alters the client list; everything else does
+            // a full refresh. Both are coalesced.
+            const scope = ["windowtitle", "windowtitlev2"].includes(event.name) ? 1 : 2;
+            if (hlCooldown.running) {
+                root._pending = Math.max(root._pending, scope);
+            } else {
+                root._pending = scope;
+                root._flush();
+                hlCooldown.start();
+            }
         }
     }
 
@@ -162,3 +196,5 @@ Singleton {
         }
     }
 }
+
+

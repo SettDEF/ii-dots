@@ -34,4 +34,27 @@ Singleton {
         ...pairedButNotConnectedDevices,
         ...unpairedDevices
     ]
+
+    // ── Safety: never let BT discovery run indefinitely ────────────────────
+    // The WiFi+BT combo chip (MT7925) shares the 2.4GHz radio, so an open
+    // discovery scan wrecks WiFi latency (jitter 1→130ms). Several panels
+    // start a scan but don't reliably stop it on close, leaving discovery on
+    // for good. Cap every scan at 30s so a forgotten scan can't tank the
+    // network — plenty of time to pair, and re-scanning is one tap away.
+    readonly property bool discoveryActive: Bluetooth.defaultAdapter?.discovering ?? false
+    onDiscoveryActiveChanged: {
+        if (root.discoveryActive)
+            scanGuard.restart();
+        else
+            scanGuard.stop();
+    }
+    Timer {
+        id: scanGuard
+        interval: 30000
+        repeat: false
+        onTriggered: {
+            if (Bluetooth.defaultAdapter?.discovering)
+                Bluetooth.defaultAdapter.discovering = false;
+        }
+    }
 }

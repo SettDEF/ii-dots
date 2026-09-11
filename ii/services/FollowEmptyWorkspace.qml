@@ -78,7 +78,7 @@ Singleton {
         if (count === 0) {
             // Switch the focused monitor's view only. Do NOT dispatch
             // focusmonitor — that would warp the cursor.
-            Hyprland.dispatch(`workspace ${targetWs}`)
+            HyprDispatch.run(`workspace ${targetWs}`)
         }
     }
 }
