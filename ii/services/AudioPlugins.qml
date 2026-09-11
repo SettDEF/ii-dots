@@ -12,15 +12,18 @@ import QtQuick
  *
  * WHY A HOST IS NEEDED AT ALL
  * PipeWire's own filter-chain only loads `builtin` and `bq` filters. It cannot
- * host VST2, VST3 or CLAP - so "put a plugin on my output" is not something the
- * graph can do by itself, and an external host has to sit in the chain. Carla is
- * the one installed here; it speaks all four formats and appears as an ordinary
- * PipeWire client, which is what makes per-stream routing work.
+ * host VST2, VST3 or LV2 - so "put a plugin on my output" is not something the
+ * graph can do by itself, and an external host has to sit in the chain. That is
+ * carla-host, which drives libcarla directly (no PyQt5, no JACK).
  *
  * WHAT A PROFILE IS
- * A named plugin chain plus which stream it belongs to. Routing itself is not
- * reinvented: the app-routing UI already writes `target.object` through
- * pw-metadata, so a profile just needs to expose a sink for that to point at.
+ * A named plugin chain that runs as its own sink. Starting one creates a null
+ * sink "carla_<name>" and captures the chain's input from that sink's monitor,
+ * so routing is not reinvented: the app-routing UI directly above already writes
+ * target.object through pw-metadata, and a profile is simply something for it to
+ * point at.
+ *
+ *     app --> sink "carla_<name>" --> monitor --> chain --> output
  *
  * SCANNING
  * Deliberately a single `find` per format rather than a directory watcher. A
@@ -46,30 +49,94 @@ Singleton {
         FileUtils.trimFileProtocol(`${Directories.config}/illogical-impulse/audio-profiles.json`)
 
     // ---- Host ------------------------------------------------------------
-    // Carla's frontends are Python and import PyQt5. A broken PyQt5 therefore
-    // takes the host out entirely, and the failure is an ImportError on stderr
-    // rather than a missing binary - so "is carla on PATH" is not the question
-    // worth asking. Run it and see.
+    // carla-host drives libcarla_standalone2.so directly. That matters for two
+    // reasons: it needs no PyQt5 (Carla's own frontends are Python and a broken
+    // PyQt5 takes them all out), and it needs no JACK - Carla's Linux default
+    // driver is PulseAudio, which PipeWire provides, so nothing has to be swapped
+    // out from under a machine that does music work.
+    readonly property string hostBin: root.binDir + "/carla-host"
+
     property bool hostChecked: false
     property bool hostAvailable: false
     property string hostError: ""
 
-    function checkHost() {
-        hostProbe.running = true
-    }
+    function checkHost() { hostProbe.running = true }
 
     Process {
         id: hostProbe
-        command: ["bash", "-c", "carla-single --help >/dev/null 2>&1; echo $?; "
-                              + "python3 -c 'import PyQt5.QtCore' 2>&1 | tail -1"]
+        // --help exits 0 only if the binary runs AND libcarla loaded.
+        command: ["bash", "-c", `test -x '${root.hostBin}' && '${root.hostBin}' --help >/dev/null 2>&1 `
+                              + `&& echo ok || echo missing`]
         stdout: StdioCollector {
             onStreamFinished: {
-                const lines = text.trim().split("\n")
-                const pyErr = lines.length > 1 ? lines.slice(1).join(" ").trim() : ""
                 root.hostChecked = true
-                root.hostAvailable = pyErr.length === 0
-                root.hostError = pyErr
+                root.hostAvailable = text.trim() === "ok"
+                root.hostError = root.hostAvailable ? "" : "carla-host not runnable"
             }
+        }
+    }
+
+    // ---- Running profiles ------------------------------------------------
+    // id -> true while its host process is up. Reassigned wholesale so bindings
+    // notice; mutating a plain object in place does not.
+    property var running: ({})
+
+    function isRunning(id) { return root.running[id] === true }
+
+    function _setRunning(id, on) {
+        const next = Object.assign({}, root.running)
+        if (on) next[id] = true; else delete next[id]
+        root.running = next
+    }
+
+    /// Formats carla-host understands. CLAP is absent on purpose: this Carla
+    /// build has no PLUGIN_CLAP, so a CLAP in a chain would fail to load and the
+    /// whole profile with it. Filtered here rather than at the picker so the
+    /// plugin list still shows what is installed.
+    function hostableChain(profile) {
+        return (profile?.chain ?? []).filter(p => p.format !== "clap")
+    }
+
+    function startProfile(id) {
+        const p = root.profileById(id)
+        if (!p || root.isRunning(id)) return
+        const chain = root.hostableChain(p)
+        if (chain.length === 0) return
+        const args = [root.hostBin, "--name", p.name, "--sink"]
+        for (const pl of chain) { args.push("--plugin"); args.push(pl.format + ":" + pl.path) }
+        hosts.createObject(root, { profileId: id, argv: args })
+        root._setRunning(id, true)
+    }
+
+    function stopProfile(id) {
+        // The host unloads its null sink on SIGTERM, so stopping must go through
+        // the signal rather than just dropping the object on the floor.
+        for (const h of root._hosts) if (h.profileId === id) h.stop()
+    }
+
+    property var _hosts: []
+
+    Component {
+        id: hosts
+        QtObject {
+            id: hostObj
+            property string profileId: ""
+            property var argv: []
+            function stop() { hostProc.signal(15) }
+            property Process hostProc: Process {
+                command: hostObj.argv
+                running: true
+                stdout: StdioCollector {
+                    onStreamFinished: if (text.trim().length > 0)
+                        console.log("[audio-profile]", hostObj.profileId, text.trim())
+                }
+                onExited: {
+                    root._setRunning(hostObj.profileId, false)
+                    root._hosts = root._hosts.filter(h => h !== hostObj)
+                    hostObj.destroy()
+                }
+            }
+            Component.onCompleted: root._hosts = root._hosts.concat([hostObj])
         }
     }
 

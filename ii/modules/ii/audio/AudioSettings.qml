@@ -1120,7 +1120,7 @@ Scope {
                             }
                             StyledText {
                                 Layout.fillWidth: true
-                                text: Translation.tr("No plugin host - chains will not be applied. Reinstall carla and python-pyqt5.")
+                                text: Translation.tr("carla-host not found - chains cannot run. Build it from /mnt/storage/dev/projects/carla-host.")
                                 wrapMode: Text.Wrap
                                 font.pixelSize: Appearance.font.pixelSize.smallest
                                 color: Appearance.colors.colOnLayer0
@@ -1168,6 +1168,27 @@ Scope {
                                         text: (prof.modelData?.chain?.length ?? 0) + Translation.tr(" plugins")
                                         font.pixelSize: 9
                                         color: Appearance.colors.colSubtext
+                                    }
+                                    // Start/stop. Running means a sink named after
+                                    // the profile exists for apps to be routed to.
+                                    MaterialSymbol {
+                                        text: AudioPlugins.isRunning(prof.pid) ? "stop_circle" : "play_circle"
+                                        iconSize: 17
+                                        color: AudioPlugins.isRunning(prof.pid)
+                                            ? Appearance.colors.colPrimary
+                                            : (AudioPlugins.hostAvailable && (prof.modelData?.chain?.length ?? 0) > 0
+                                                ? Appearance.colors.colOnLayer0
+                                                : Appearance.colors.colSubtext)
+                                        opacity: AudioPlugins.hostAvailable ? 1 : 0.4
+                                        TapHandler {
+                                            onTapped: {
+                                                if (!AudioPlugins.hostAvailable) return
+                                                if (AudioPlugins.isRunning(prof.pid))
+                                                    AudioPlugins.stopProfile(prof.pid)
+                                                else
+                                                    AudioPlugins.startProfile(prof.pid)
+                                            }
+                                        }
                                     }
                                     MaterialSymbol {
                                         text: "delete"; iconSize: 15
