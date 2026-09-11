@@ -58,7 +58,7 @@ AbstractQuickPanel {
     // Tile-style toggle types (rendered in the grid). Sliders/MIDI/ROG/
     // BluetoothDevices/Phone used to be full-width panels below the grid;
     // they're now ordinary tiles that default to a full row (size = columns).
-    readonly property list<string> availableToggleTypes: ["network", "bluetooth", "idleInhibitor", "sleepTimer", "easyEffects", "nightLight", "darkMode", "cloudflareWarp", "gameMode", "tabletMode", "screenSnip", "colorPicker", "onScreenKeyboard", "mic", "audio", "audioOutput", "notifications", "torrentKeepAlive", "powerProfile","musicRecognition", "antiFlashbang", "monitors", "lastfm", "miniMeters", "mounting", "offload", "rss", "email", "sliders", "bluetoothDevices", "midi", "rog", "phone", "volumeSlider", "brightnessSlider", "micSlider", "rogProfile", "rogGpu", "rogBattery", "rogCharge", "windows"]
+    readonly property list<string> availableToggleTypes: ["network", "vpn", "bluetooth", "idleInhibitor", "sleepTimer", "easyEffects", "nightLight", "darkMode", "cloudflareWarp", "gameMode", "tabletMode", "screenSnip", "colorPicker", "onScreenKeyboard", "mic", "audio", "audioOutput", "notifications", "torrentKeepAlive", "powerProfile","musicRecognition", "antiFlashbang", "monitors", "lastfm", "miniMeters", "mounting", "offload", "rss", "email", "sliders", "bluetoothDevices", "midi", "rog", "phone", "volumeSlider", "brightnessSlider", "micSlider", "rogProfile", "rogGpu", "rogBattery", "rogCharge", "windows"]
     // Panel-only types are gone — kept as empty arrays so the (now inert)
     // panel-rendering code paths stay compile-safe.
     readonly property list<string> availablePanelTypes: []
@@ -118,7 +118,7 @@ AbstractQuickPanel {
     // becomes scannable. Each entry: { id, label, types: [...] }.
     // A toggle that isn't matched falls into "Other".
     readonly property var trayCategories: [
-        { id: "connect", label: qsTr("Connect"), types: ["network","bluetooth","bluetoothDevices","cloudflareWarp","phone"] },
+        { id: "connect", label: qsTr("Connect"), types: ["network","vpn","bluetooth","bluetoothDevices","cloudflareWarp","phone"] },
         { id: "audio",   label: qsTr("Audio"),   types: ["audio","mic","volumeSlider","micSlider","easyEffects","lastfm","miniMeters","musicRecognition","midi","sliders"] },
         { id: "display", label: qsTr("Display"), types: ["nightLight","darkMode","antiFlashbang","brightnessSlider","monitors","screenSnip","colorPicker","onScreenKeyboard"] },
         { id: "system",  label: qsTr("System"),  types: ["idleInhibitor","sleepTimer","gameMode","tabletMode","notifications","powerProfile","mounting","offload","email","rss","windows"] },
@@ -399,8 +399,9 @@ AbstractQuickPanel {
                     ? Qt.alpha(Appearance.m3colors.m3error, 0.20)
                     : "transparent"
                 Behavior on color { ColorAnimation { duration: 120 } }
-                HoverHandler { id: undoHov }
+                HoverHandler { margin: Appearance.sizes.touchSlop; id: undoHov }
                 TapHandler {
+                    margin: Appearance.sizes.touchSlop
                     onTapped: {
                         const cfg  = Config.options.sidebar.quickToggles.android
                         const list = ((root.tabIndex >= 0
@@ -613,6 +614,20 @@ AbstractQuickPanel {
                 clip: true
                 boundsBehavior: Flickable.StopAtBounds
                 flickDeceleration: 4000
+
+                // The tray's height AND its content both change as you type in
+                // the filter, and StopAtBounds only constrains dragging — it does
+                // not pull an already-out-of-range contentY back. Filtering from
+                // many tiles to few therefore left the view scrolled past the end,
+                // showing a half-row clipped under the search field with nothing
+                // below it.
+                onContentHeightChanged: Qt.callLater(returnToBounds)
+                onHeightChanged: Qt.callLater(returnToBounds)
+                // A new filter is a new list; start at the top of it.
+                Connections {
+                    target: root
+                    function onTrayFilterChanged() { trayScroll.contentY = 0 }
+                }
                 ScrollBar.vertical: ScrollBar {
                     policy: trayScroll.contentHeight > trayScroll.height
                         ? ScrollBar.AlwaysOn

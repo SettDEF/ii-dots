@@ -134,7 +134,14 @@ Item {
                 }
 
                 // Scroll to change tab (mouse / touchpad)
+                //
+                // Off in edit mode. This handler covers the whole toggle area,
+                // and edit mode puts a scrollable tile tray inside that area —
+                // so a wheel meant for the tray was flipping the tab instead,
+                // which reads as "scrolling is broken" rather than as a binding
+                // doing its job. Tab dots still switch tabs while editing.
                 WheelHandler {
+                    enabled: !root.editMode
                     target: null
                     acceptedDevices: PointerDevice.Mouse | PointerDevice.TouchPad
                     onWheel: event => {
@@ -362,6 +369,7 @@ Item {
                                                     MouseArea {
                                                         id: closeMa
                                                         anchors.fill: parent
+                                                        anchors.margins: -Appearance.sizes.touchSlop
                                                         hoverEnabled: true
                                                         cursorShape: Qt.PointingHandCursor
                                                         preventStealing: true
@@ -502,8 +510,9 @@ Item {
                                                                         anchors.verticalCenter: parent.verticalCenter
                                                                         width: 16; height: 16; radius: 8
                                                                         color: rmHov.hovered ? Appearance.m3colors.m3errorContainer : "transparent"
-                                                                        HoverHandler { id: rmHov }
+                                                                        HoverHandler { margin: Appearance.sizes.touchSlop; id: rmHov }
                                                                         TapHandler {
+                                                                            margin: Appearance.sizes.touchSlop
                                                                             onTapped: {
                                                                                 const cfg = Config.options.sidebar.quickToggles.android
                                                                                 const tabs = cfg.tabs.slice()
@@ -790,13 +799,14 @@ Item {
                                 anchors.topMargin: -8
                                 width: 14; height: 14; radius: 7
                                 color: Appearance.colors.colError
-                                visible: root.editMode && dotItem.isUserTab && root.userTabsCount > 1 && dotHov.hovered
+                                visible: root.editMode && dotItem.isUserTab && root.userTabsCount > 1 && (dotHov.hovered || Appearance.touchUi)
                                 MaterialSymbol {
                                     anchors.centerIn: parent
                                     text: "close"; iconSize: 10
                                     color: Appearance.colors.colOnPrimary
                                 }
                                 TapHandler {
+                                    margin: Appearance.sizes.touchSlop
                                     onTapped: {
                                         const cfg = Config.options.sidebar.quickToggles.android
                                         const tabs = cfg.tabs.slice()
@@ -815,8 +825,9 @@ Item {
                         width: 18; height: 18; radius: 9
                         color: addHov.hovered ? Appearance.colors.colPrimaryHover : Appearance.colors.colPrimary
                         Behavior on color { animation: Appearance.animation.elementMoveFast.colorAnimation.createObject(this) }
-                        HoverHandler { id: addHov }
+                        HoverHandler { margin: Appearance.sizes.touchSlop; id: addHov }
                         TapHandler {
+                            margin: Appearance.sizes.touchSlop
                             onTapped: {
                                 const cfg = Config.options.sidebar.quickToggles.android
                                 const tabs = (cfg.tabs ?? []).slice()
@@ -982,11 +993,20 @@ Item {
                 bottom: parent.bottom
                 left: parent.left
             }
-            color: Appearance.colors.colLayer1
+            // Tapping it opens the system hub — the index of every settings
+            // panel. It was a dead label before, which is a lot of prime
+            // sidebar real estate spent on a number.
+            color: uptimeHov.hovered ? Appearance.colors.colLayer1Hover
+                                     : Appearance.colors.colLayer1
+            Behavior on color { ColorAnimation { duration: 140 } }
             radius: height / 2
             implicitWidth: uptimeRow.implicitWidth + 24
             implicitHeight: uptimeRow.implicitHeight + 8
-            
+
+            HoverHandler { id: uptimeHov; cursorShape: Qt.PointingHandCursor }
+            TapHandler { onTapped: GlobalStates.systemHubOpen = true }
+            StyledToolTip { text: Translation.tr("Open everything — all settings panels") }
+
             Row {
                 id: uptimeRow
                 anchors.centerIn: parent
@@ -1006,6 +1026,12 @@ Item {
                     color: Appearance.colors.colOnLayer0
                     text: Translation.tr("Up %1").arg(DateTime.uptime)
                     textFormat: Text.MarkdownText
+                }
+                MaterialSymbol {
+                    anchors.verticalCenter: parent.verticalCenter
+                    text: "chevron_right"
+                    iconSize: 18
+                    color: Appearance.colors.colSubtext
                 }
             }
         }
@@ -1051,7 +1077,7 @@ Item {
                 toggled: false
                 buttonIcon: "restart_alt"
                 onClicked: {
-                    Hyprland.dispatch("reload");
+                    HyprDispatch.run("reload");
                     Quickshell.reload(true);
                 }
                 StyledToolTip {
@@ -1063,7 +1089,7 @@ Item {
                 buttonIcon: "settings"
                 onClicked: {
                     GlobalStates.sidebarRightOpen = false;
-                    Quickshell.execDetached(["qs", "-p", root.settingsQmlPath]);
+                    SettingsApp.open();
                 }
                 StyledToolTip {
                     text: Translation.tr("Settings")
