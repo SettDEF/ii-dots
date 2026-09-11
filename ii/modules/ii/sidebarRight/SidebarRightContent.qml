@@ -631,7 +631,7 @@ Item {
                                         }
 
                                         Component { id: slidersComp; QuickSliders {} }
-                                        Component { id: btComp; BluetoothDevicesView { popupRounding: sidebarRightBackground.radius; isSidebar: true } }
+                                        Component { id: btComp; DevicesView { popupRounding: sidebarRightBackground.radius; isSidebar: true } }
                                         Component { id: midiComp; MidiView { popupRounding: sidebarRightBackground.radius; isSidebar: true } }
                                         Component { id: rogComp; RogView {} }
                                         Component {

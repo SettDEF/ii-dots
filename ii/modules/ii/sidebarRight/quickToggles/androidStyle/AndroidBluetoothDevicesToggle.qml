@@ -1,5 +1,5 @@
 // Bluetooth-Devices container — full-inline tile.  Adds to the grid
-// at full row width, content (BluetoothDevicesView) renders directly
+// at full row width, content (DevicesView) renders directly
 // on the tile. No drawer.
 import qs.services
 import qs.modules.common
@@ -16,7 +16,7 @@ AndroidQuickToggleButton {
     tallTile: true
     sizeAnimDuration: 0   // grow / shrink instantly when devices populate
     expandedDelegate: Component {
-        BluetoothDevicesView {
+        DevicesView {
             popupRounding: Appearance.rounding.normal
             isSidebar: true
         }

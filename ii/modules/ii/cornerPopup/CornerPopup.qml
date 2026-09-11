@@ -8,11 +8,25 @@ import qs.modules.ii.mediaControls
 import QtQuick
 import QtQuick.Layouts
 import Quickshell
+import Quickshell.Io
 import Quickshell.Wayland
 import Quickshell.Hyprland
 import Quickshell.Services.Mpris
 
 Scope {
+
+    // Matches every other panel in this config. Also the only way to drive the
+    // tab from outside now that the strip lives in the bar.
+    IpcHandler {
+        target: "cornerPopup"
+        function toggle(): void { GlobalStates.cornerPopupOpen = !GlobalStates.cornerPopupOpen }
+        function open(): void   { GlobalStates.cornerPopupOpen = true }
+        function close(): void  { GlobalStates.cornerPopupOpen = false }
+        function tab(name: string): void {
+            if (["media", "sources", "files"].includes(name))
+                GlobalStates.cornerPopupTab = name;
+        }
+    }
     id: root
 
     readonly property real popupWidth: 340
@@ -30,11 +44,12 @@ Scope {
         // visible rounded rect still grows via its own height animation;
         // the `mask` region tracks `mainCol` so input/visibility match
         // what's actually drawn.
-        property string tab: "media"
+        // Proxied to GlobalStates: the strip that sets it now lives in the
+        // bar's right section, which cannot reach a window-local property.
+        readonly property string tab: GlobalStates.cornerPopupTab
         // Latch: the Files view stays loaded after its first visit.
         property bool filesEverOpened: false
         onTabChanged: if (tab === "files") filesEverOpened = true
-        readonly property int _tabsHeight: 40
         readonly property int _mediaHeight: PlayerService.players.length > 0
             ? (Appearance.sizes.mediaControlsHeight
                 + (PlayerService.players.length > 1 ? playerCard.stripHeight : 0)
@@ -49,7 +64,9 @@ Scope {
         // (not per-frame), so an occasional resize here is fine.
         readonly property int _bodyHeight: tab === "media" ? _mediaHeight
             : tab === "sources" ? _audioHeight : _filesHeight
-        implicitHeight: _tabsHeight + _bodyHeight + 8
+        // No tab-strip allowance any more: the strip moved to the bar, so the
+        // surface is exactly its body plus the 2px inset above and below.
+        implicitHeight: _bodyHeight + 8
         color: "transparent"
         WlrLayershell.namespace: "quickshell:cornerPopup"
 
@@ -61,6 +78,19 @@ Scope {
         Behavior on margins.top { NumberAnimation { duration: 340; easing.type: Easing.OutCubic } }
 
         mask: Region { item: mainCol }
+
+        // Reported so stacked panels can start below this popup rather than
+        // behind it. Cleared on close so nothing keeps yielding space to a
+        // surface that is no longer on screen.
+        onImplicitHeightChanged: if (GlobalStates.cornerPopupOpen)
+            GlobalStates.cornerPopupHeight = panelWindow.implicitHeight
+        Connections {
+            target: GlobalStates
+            function onCornerPopupOpenChanged() {
+                GlobalStates.cornerPopupHeight = GlobalStates.cornerPopupOpen
+                    ? panelWindow.implicitHeight : 0
+            }
+        }
 
 
         onVisibleChanged: {
@@ -89,18 +119,9 @@ Scope {
                 anchors.fill: parent
                 spacing: 0
 
-                PillTabBar {
-                    Layout.fillWidth: true
-                    Layout.topMargin: 4
-                    implicitHeight: 32
-                    tabs: [
-                        { id: "media",   icon: "music_note",  label: Translation.tr("Media") },
-                        { id: "sources", icon: "graphic_eq",  label: Translation.tr("Sources") },
-                        { id: "files",   icon: "folder_open", label: Translation.tr("Files") },
-                    ]
-                    current: panelWindow.tab
-                    onTabSelected: id => panelWindow.tab = id
-                }
+                // The tab strip is rendered by the bar (BarContent's
+                // _cornerPopupMode) so the popup reads as one clean surface
+                // instead of repeating chrome the bar already has room for.
 
                 // ── Audio sources tab ──────────────────────────────────────
                 Item {

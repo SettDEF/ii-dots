@@ -20,8 +20,11 @@ Scope {
         exclusiveZone: 0
         implicitWidth: sidebarWidth
         WlrLayershell.namespace: "quickshell:sidebarRight"
-        // Hyprland 0.49: Focus is always exclusive and setting this breaks mouse focus grab
-        // WlrLayershell.keyboardFocus: WlrKeyboardFocus.Exclusive
+        // OnDemand lets text fields (todo, wifi password) receive keyboard
+        // input when interacted with, without the exclusive grab that breaks
+        // click-outside-to-close. Matches SidebarLeft. (Exclusive was the wrong
+        // fix — it's what broke the mouse grab; leaving it unset broke typing.)
+        WlrLayershell.keyboardFocus: WlrKeyboardFocus.OnDemand
         color: "transparent"
 
         anchors {
@@ -66,6 +69,13 @@ Scope {
             //   G       jump to bottom
             //   q / Esc close sidebar
             Keys.onPressed: event => {
+                // Don't hijack keys while the user is typing in a text field
+                // (todo input, wifi password, etc.). Text-input items expose
+                // inputMethodComposing; buttons/loaders/flickables do not.
+                const fi = panelWindow.activeFocusItem
+                if (fi && typeof fi.inputMethodComposing === "boolean") {
+                    return
+                }
                 const c = sidebarContentLoader.item
                 switch (event.key) {
                     case Qt.Key_Q:

@@ -1,4 +1,5 @@
-// Bluetooth devices panel — clean rewrite.  Lists connected devices in
+// Devices panel. Lists the user's devices from every transport - see the
+// Devices service - in
 // a tidy rounded card with proper padding, smooth expand / collapse, and
 // device-type-specific controls (mouse: DPI/SmartShift/Scroll via Solaar;
 // audio: codec + volume).
@@ -28,28 +29,16 @@ Rectangle {
     // tweens in this widget down to instant by setting it to 0.
     readonly property real animMs: Appearance.animDur(220)
 
-    // A BLE round trip is expensive, so JblBattery polls slowly on its own.
+    // A reading can cost a radio round trip, so the service polls slowly.
     // Nudging it when the panel opens means an on-screen reading is fresh
     // without raising the background rate.
-    onVisibleChanged: if (visible) JblBattery.refresh(false)
+    onVisibleChanged: if (visible) Devices.refresh()
 
-    // Devices to show. Normally just whatever Bluetooth reports as connected.
-    //
-    // The exception is a speaker on USB-C audio: plugging the cable in DROPS the
-    // Bluetooth link, so the card would vanish at exactly the moment the speaker
-    // is most in use, taking its battery readout with it. It is still the same
-    // paired device and the battery is still readable (the control service is
-    // BLE, independent of which transport carries audio), so keep it listed and
-    // mark how it is attached.
-    readonly property list<var> deviceRows: {
-        const rows = BluetoothStatus.connectedDevices.slice()
-        if (JblBattery.usbConnected && !JblBattery.btConnected) {
-            const d = BluetoothStatus.pairedButNotConnectedDevices
-                .find(x => JblBattery.isSupported(x?.name))
-            if (d) rows.push(d)
-        }
-        return rows
-    }
+    // Every device, whatever it is attached by. Assembling this used to live
+    // here and only knew about Bluetooth; it is the Devices service's job now,
+    // so the corner popup, the sidebar dialog and the tile all agree on what
+    // "a device" is instead of each deciding separately.
+    readonly property var deviceRows: Devices.rows
 
     radius: isSidebar ? Appearance.rounding.large : popupRounding
     color: isSidebar ? Appearance.colors.colLayer1 : Appearance.colors.colLayer0
@@ -58,24 +47,7 @@ Rectangle {
     implicitHeight: body.implicitHeight + outerPad + outerBottomPad
 
     // ── Helpers ─────────────────────────────────────────────────────────────
-    function _kind(d) {
-        const i = (d?.icon ?? "").toLowerCase()
-        if (i.includes("mouse"))    return "mouse"
-        if (i.includes("keyboard")) return "keyboard"
-        if (i.includes("phone"))    return "phone"
-        if (i.includes("audio") || i.includes("headset")
-            || i.includes("headphone") || i.includes("speaker")) return "audio"
-        return "generic"
-    }
-    function _icon(k) {
-        switch (k) {
-            case "mouse":    return "mouse"
-            case "keyboard": return "keyboard"
-            case "phone":    return "phone_iphone"
-            case "audio":    return "headphones"
-        }
-        return "bluetooth"
-    }
+    // Classification moved to the Devices service so every panel agrees.
     function _runShell(line) {
         cmdProc.command = ["bash", "-c", line]
         cmdProc.running = true
@@ -134,26 +106,19 @@ Rectangle {
                 required property var modelData
                 required property int index
 
-                readonly property string kind: root._kind(modelData)
-                readonly property string addr: modelData?.address ?? ""
+                // The underlying BlueZ object, when there is one. A USB-only
+                // device has no BluetoothDevice, so anything Bluetooth-specific
+                // must be gated on this rather than assume it exists.
+                readonly property var dev: modelData?.device ?? null
+                readonly property string kind: modelData?.kind ?? "generic"
+                readonly property string addr: card.dev?.address ?? ""
                 readonly property string devName: modelData?.name ?? "?"
-                // Quickshell.Bluetooth exposes `battery` as a 0..1 double plus a
-                // `batteryAvailable` flag — there is no `batteryPercentage`, so
-                // this always read undefined -> -1 and the readout below could
-                // never appear. batteryAvailable is what gates it: 0.0 is a
-                // legitimate reading (flat), absent is not.
-                readonly property int    bat:  (modelData?.batteryAvailable ?? false)
-                    ? Math.round((modelData?.battery ?? 0) * 100)
-                    : (JblBattery.isSupported(devName) ? JblBattery.percent : -1)
-                // True when the number came from the Harman protocol rather than
-                // BlueZ, so the UI can say where it came from instead of quietly
-                // implying BlueZ grew support it does not have.
-                // On the list, but not over Bluetooth -- see deviceRows.
-                readonly property bool viaUsb: !(modelData?.connected ?? false)
-                readonly property bool batFromHarman:
-                    !(modelData?.batteryAvailable ?? false)
-                    && JblBattery.isSupported(devName)
-                    && JblBattery.percent >= 0
+                // Battery and its provenance are resolved by the service: BlueZ
+                // where it publishes one, Harman's BLE control service for the
+                // speakers where BlueZ never will.
+                readonly property int bat: modelData?.battery ?? -1
+                readonly property bool batFromHarman: modelData?.batteryFromHarman ?? false
+                readonly property bool viaUsb: (modelData?.transport ?? "") === "usb"
                 property bool expanded: false
 
                 Layout.fillWidth: true
@@ -189,7 +154,7 @@ Rectangle {
                             color: Qt.alpha(Appearance.colors.colPrimary, 0.10)
                             MaterialSymbol {
                                 anchors.centerIn: parent
-                                text: root._icon(card.kind)
+                                text: Devices.iconFor(card.kind, card.modelData?.transport ?? "")
                                 iconSize: 20
                                 color: Appearance.colors.colPrimary
                             }
@@ -228,7 +193,7 @@ Rectangle {
                                 StyledText {
                                     visible: card.bat >= 0
                                     text: "·  " + card.bat + "%"
-                                           + (card.batFromHarman && JblBattery.busy ? " …" : "")
+                                           + (card.batFromHarman && Devices.busy ? " …" : "")
                                     font.pixelSize: 9
                                     color: card.bat <= 20
                                         ? Appearance.m3colors.m3error
@@ -242,10 +207,10 @@ Rectangle {
                         // nothing is worse than offering nothing.
                         ChipBtn {
                             id: discBtn
-                            visible: !card.viaUsb
+                            visible: !card.viaUsb && card.dev !== null
                             iconText: "link_off"
                             danger: true
-                            onActivated: card.modelData?.disconnect()
+                            onActivated: card.dev?.disconnect()
                         }
                         // Expand chip
                         ChipBtn {

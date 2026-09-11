@@ -349,10 +349,10 @@ Item {
                 if (root.isWifi) return Network.networkStrength > 0 ? Network.networkStrength + "%" : "—"
                 if (root.btDevice && root.btDevice.batteryAvailable)
                     return Math.round(root.btDevice.battery * 100) + "%"
-                // BlueZ publishes no Battery1 for JBL speakers; that number only
-                // exists behind Harman's own BLE control service.
-                if (JblBattery.isSupported(root.btDevice?.name ?? "") && JblBattery.percent >= 0)
-                    return JblBattery.percent + "%"
+                // BlueZ publishes no Battery1 for some devices; the service
+                // knows where else a number can come from.
+                const bat = Devices.batteryFor(root.btDevice?.name ?? "")
+                if (bat >= 0) return bat + "%"
                 return "—"
             }
             small: root.isWifi ? qsTr("Signal") : qsTr("Battery")

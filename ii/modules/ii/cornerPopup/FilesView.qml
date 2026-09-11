@@ -110,14 +110,18 @@ ColumnLayout {
         }
     }
 
-    // Best-effort: promote symlinks that really point at directories. -xtype
-    // DOES dereference, so it is capped and non-essential — on timeout the
-    // listing above stands and links simply stay classified as files.
+    // Best-effort: promote symlinks that really point at directories.
+    //
+    // This used to be `find -xtype d`, which dereferences — and dereferencing
+    // a link into an autofs mount whose device is gone parks the process in
+    // uninterruptible D state for the mount timeout (600s on /mnt/nuke9100).
+    // `timeout 2` did not help: SIGTERM is not delivered to a task in D state,
+    // so with the refresh timer below the finds piled up and each one fired
+    // another failing automount — 764 in 30 minutes, enough to make the whole
+    // desktop crawl. The helper resolves targets without following them.
     Process {
         id: linkProc
-        command: ["timeout", "2", "find", root.pendingDir,
-                  "-maxdepth", "1", "-mindepth", "1", "-type", "l", "-xtype", "d",
-                  "-printf", "%f\\n"]
+        command: ["bash", Quickshell.shellPath("scripts/fs/dir-symlinks.sh"), root.pendingDir]
         stdout: StdioCollector {
             onStreamFinished: {
                 if (root.pendingDir !== root.currentDir) return;

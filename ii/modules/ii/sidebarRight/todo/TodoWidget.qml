@@ -113,7 +113,13 @@ Item {
         }
 
         onVisibleChanged: {
-            if (!visible) {
+            if (visible) {
+                // The sidebar content Loader holds keyboard focus while open,
+                // so declarative `focus: true` on the field loses the tug-of-war.
+                // Force it imperatively once the dialog is shown.
+                Qt.callLater(() => titleInput.forceActiveFocus())
+            } else {
+                titleInput.text = ""
                 todoInput.text = ""
                 fabButton.focus = true
             }
@@ -143,8 +149,10 @@ Item {
             radius: Appearance.rounding.normal
 
             function addTask() {
-                if (todoInput.text.length > 0) {
-                    Todo.addTask(todoInput.text)
+                // Title required; description optional.
+                if (titleInput.text.length > 0) {
+                    Todo.addTask(titleInput.text, todoInput.text)
+                    titleInput.text = ""
                     todoInput.text = ""
                     root.showAddDialog = false
                     tabBar.setCurrentIndex(0) // Show unfinished tasks
@@ -166,8 +174,8 @@ Item {
                     text: Translation.tr("Add task")
                 }
 
-                TextField {
-                    id: todoInput
+                TextField { // Task name (required)
+                    id: titleInput
                     Layout.fillWidth: true
                     Layout.leftMargin: 16
                     Layout.rightMargin: 16
@@ -176,9 +184,40 @@ Item {
                     renderType: Text.NativeRendering
                     selectedTextColor: Appearance.m3colors.m3onSecondaryContainer
                     selectionColor: Appearance.colors.colSecondaryContainer
-                    placeholderText: Translation.tr("Task description")
+                    placeholderText: Translation.tr("Task name")
                     placeholderTextColor: Appearance.m3colors.m3outline
                     focus: root.showAddDialog
+                    // Enter moves to the description rather than submitting.
+                    onAccepted: todoInput.forceActiveFocus()
+
+                    background: Rectangle {
+                        anchors.fill: parent
+                        radius: Appearance.rounding.verysmall
+                        border.width: 2
+                        border.color: titleInput.activeFocus ? Appearance.colors.colPrimary : Appearance.m3colors.m3outline
+                        color: "transparent"
+                    }
+
+                    cursorDelegate: Rectangle {
+                        width: 1
+                        color: titleInput.activeFocus ? Appearance.colors.colPrimary : "transparent"
+                        radius: 1
+                    }
+                }
+
+                TextField { // Description (optional)
+                    id: todoInput
+                    Layout.fillWidth: true
+                    Layout.leftMargin: 16
+                    Layout.rightMargin: 16
+                    Layout.topMargin: -6
+                    padding: 10
+                    color: activeFocus ? Appearance.m3colors.m3onSurface : Appearance.m3colors.m3onSurfaceVariant
+                    renderType: Text.NativeRendering
+                    selectedTextColor: Appearance.m3colors.m3onSecondaryContainer
+                    selectionColor: Appearance.colors.colSecondaryContainer
+                    placeholderText: Translation.tr("Description (optional)")
+                    placeholderTextColor: Appearance.m3colors.m3outline
                     onAccepted: dialog.addTask()
 
                     background: Rectangle {
@@ -209,7 +248,7 @@ Item {
                     }
                     DialogButton {
                         buttonText: Translation.tr("Add")
-                        enabled: todoInput.text.length > 0
+                        enabled: titleInput.text.length > 0
                         onClicked: dialog.addTask()
                     }
                 }

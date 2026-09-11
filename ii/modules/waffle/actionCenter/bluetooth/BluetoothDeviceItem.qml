@@ -57,17 +57,15 @@ ExpandableChoiceButton {
                     if (!root.device?.paired)
                         return Translation.tr("Not connected");
                     const name = root.device?.name ?? "";
-                    // The cable IS the connection for a JBL on USB-C; it drops
+                    // The cable IS the connection for a device on USB; it drops
                     // its Bluetooth link when plugged in, so "Paired" misleads.
-                    const onUsb = JblBattery.usbConnected && JblBattery.isSupported(name);
                     let statusText = root.device?.connected ? Translation.tr("Connected")
-                                   : onUsb ? Translation.tr("USB")
+                                   : Devices.isOnUsb(name) ? Translation.tr("USB")
                                    : Translation.tr("Paired");
                     if (root.device?.batteryAvailable)
                         return statusText + ` • ${Math.round(root.device?.battery * 100)}%`;
-                    // BlueZ never publishes Battery1 for these speakers.
-                    if (JblBattery.isSupported(name) && JblBattery.percent >= 0)
-                        return statusText + ` • ${JblBattery.percent}%`;
+                    const bat = Devices.batteryFor(name);
+                    if (bat >= 0) return statusText + ` • ${bat}%`;
                     return statusText;
                 }
             }

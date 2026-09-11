@@ -33,7 +33,7 @@ WindowDialog {
         // Speakers whose battery only exists behind Harman's BLE control service
         // are polled slowly in the background; opening the list is the moment a
         // fresh number is actually worth the BLE round trip.
-        JblBattery.refresh(false)
+        Devices.refresh()
     }
     Component.onDestruction: if (Bluetooth.defaultAdapter) Bluetooth.defaultAdapter.discovering = false
 

@@ -58,13 +58,30 @@ Item {
                     anchors.left: parent.left
                     anchors.right: parent.right
 
-                    StyledText {
+                    StyledText { // Title (bold). Legacy tasks have no `title`,
+                                 // so fall back to their `content`.
                         id: todoContentText
                         Layout.fillWidth: true // Needed for wrapping
                         Layout.leftMargin: 10
                         Layout.rightMargin: 10
                         Layout.topMargin: todoListItemPadding
-                        text: todoItem.modelData.content
+                        text: todoItem.modelData.title ?? todoItem.modelData.content
+                        font.weight: Font.Medium
+                        wrapMode: Text.Wrap
+                    }
+                    StyledText { // Description (optional). Only present on new
+                                 // tasks that carry both a title and content.
+                        id: todoDescriptionText
+                        readonly property string desc: (todoItem.modelData.title !== undefined)
+                            ? (todoItem.modelData.content ?? "") : ""
+                        visible: desc.length > 0
+                        Layout.fillWidth: true
+                        Layout.leftMargin: 10
+                        Layout.rightMargin: 10
+                        Layout.topMargin: -2
+                        text: desc
+                        color: Appearance.colors.colSubtext
+                        font.pixelSize: Appearance.font.pixelSize.small
                         wrapMode: Text.Wrap
                     }
                     RowLayout {

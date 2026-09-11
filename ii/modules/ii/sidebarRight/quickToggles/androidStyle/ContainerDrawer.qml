@@ -280,7 +280,7 @@ Rectangle {
 
     // ── Components ─────────────────────────────────────────────────────────
     property Component qsViewComp:    Component { QuickSliders {} }
-    property Component btViewComp:    Component { BluetoothDevicesView { popupRounding: Appearance.rounding.normal; isSidebar: true } }
+    property Component btViewComp:    Component { DevicesView { popupRounding: Appearance.rounding.normal; isSidebar: true } }
     property Component midiViewComp:  Component { MidiView           { popupRounding: Appearance.rounding.normal; isSidebar: true } }
     property Component phoneViewComp: Component { PhoneCard {} }
 

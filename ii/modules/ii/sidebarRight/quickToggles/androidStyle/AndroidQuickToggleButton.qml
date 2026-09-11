@@ -1000,8 +1000,9 @@ GroupButton {
         width: 18; height: 18; radius: 9
         color: removeHov.hovered ? Appearance.colors.colPrimary : Appearance.colors.colLayer3
         Behavior on color { animation: Appearance.animation.elementMoveFast.colorAnimation.createObject(this) }
-        HoverHandler { id: removeHov }
+        HoverHandler { margin: Appearance.sizes.touchSlop; id: removeHov }
         TapHandler {
+            margin: Appearance.sizes.touchSlop
             onTapped: {
                 const list = root._activeList().slice();
                 list.splice(root.buttonIndex, 1);

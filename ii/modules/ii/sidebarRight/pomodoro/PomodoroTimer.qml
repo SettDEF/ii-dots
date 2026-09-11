@@ -1,5 +1,6 @@
 import qs.services
 import qs.modules.common
+import qs.modules.common.functions
 import qs.modules.common.widgets
 import Qt5Compat.GraphicalEffects
 import QtQuick
@@ -98,15 +99,25 @@ Item {
                 enabled: (TimerService.pomodoroSecondsLeft < TimerService.pomodoroLapDuration) || TimerService.pomodoroCycle > 0 || TimerService.pomodoroBreak
 
                 font.pixelSize: Appearance.font.pixelSize.larger
-                colBackground: Appearance.colors.colErrorContainer
-                colBackgroundHover: Appearance.colors.colErrorContainerHover
-                colRipple: Appearance.colors.colErrorContainerActive
+                // Error TINT, not an error slab. Material 3 keeps the error
+                // palette red whatever the wallpaper generates, so on a
+                // near-greyscale theme a filled error container is the only
+                // saturated thing on screen and reads as a warning rather than
+                // a button. This follows the destructive idiom PopupMenuPanel
+                // already uses: coloured text and a low-alpha wash, so it still
+                // reads as "careful" without shouting.
+                //
+                // Resetting a timer is undoable in one tap anyway — it does not
+                // warrant the same weight as deleting something.
+                colBackground: ColorUtils.transparentize(Appearance.m3colors.m3error, 0.88)
+                colBackgroundHover: ColorUtils.transparentize(Appearance.m3colors.m3error, 0.78)
+                colRipple: ColorUtils.transparentize(Appearance.m3colors.m3error, 0.68)
 
                 contentItem: StyledText {
                     anchors.centerIn: parent
                     horizontalAlignment: Text.AlignHCenter
                     text: Translation.tr("Reset")
-                    color: Appearance.colors.colOnErrorContainer
+                    color: Appearance.m3colors.m3error
                 }
             }
         }

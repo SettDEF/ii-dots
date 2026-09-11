@@ -9,6 +9,11 @@ import QtQuick.Layouts
 Item {
     id: root
 
+    // Per-app mute options menu, overlaying the whole centre so it isn't
+    // clipped by the list. Group bells open it via listview.contextMenu.
+    PopupContextMenu { id: notifCtxMenu }
+    Component.onCompleted: listview.contextMenu = notifCtxMenu
+
     NotificationListView { // Scrollable window
         id: listview
         anchors.left: parent.left

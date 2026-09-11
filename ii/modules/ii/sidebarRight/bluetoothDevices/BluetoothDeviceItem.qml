@@ -53,19 +53,18 @@ DialogListItem {
                     text: {
                         if (!root.device?.paired) return "";
                         const name = root.device?.name ?? "";
-                        // A JBL on the USB-C cable is not "Paired" in any useful
-                        // sense — the cable IS the connection, and the speaker
+                        // A device on its cable is not "Paired" in any useful
+                        // sense - the cable IS the connection, and a speaker
                         // drops its Bluetooth link when plugged in.
-                        const onUsb = JblBattery.usbConnected && JblBattery.isSupported(name);
                         let statusText = root.device?.connected ? Translation.tr("Connected")
-                                       : onUsb ? Translation.tr("USB")
+                                       : Devices.isOnUsb(name) ? Translation.tr("USB")
                                        : Translation.tr("Paired");
                         if (root.device?.batteryAvailable)
                             return statusText + ` • ${Math.round(root.device?.battery * 100)}%`;
-                        // BlueZ never publishes Battery1 for these speakers; the
-                        // number comes from Harman's own BLE control service.
-                        if (JblBattery.isSupported(name) && JblBattery.percent >= 0)
-                            return statusText + ` • ${JblBattery.percent}%`;
+                        // BlueZ never publishes Battery1 for some devices; the
+                        // service knows where else to get one.
+                        const bat = Devices.batteryFor(name);
+                        if (bat >= 0) return statusText + ` • ${bat}%`;
                         return statusText;
                     }
                 }
