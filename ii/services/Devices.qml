@@ -39,6 +39,7 @@ Singleton {
 
     // Where the helper binaries live. Plain constant on purpose - easy to point
     // somewhere else without going hunting through the code.
+    readonly property string home: FileUtils.trimFileProtocol(Directories.home)
     readonly property string binDir:
         FileUtils.trimFileProtocol(`${Directories.home}/.local/bin`)
 
@@ -120,6 +121,35 @@ Singleton {
         const next = Object.assign({}, root.batteryResults)
         next[id] = obj
         root.batteryResults = next
+    }
+
+    // Seed from the last reading on disk.
+    //
+    // Every consumer of this service lives in a lazily-loaded panel, so the
+    // service is not even constructed until one is opened - and the first poll is
+    // a radio round trip away. Without this a panel showed no battery at all for
+    // several seconds, which reads as "it does not work" rather than "it is
+    // fetching". The helper writes this file on every successful reading.
+    FileView {
+        id: lastReading
+        // ~/.cache/jbl-battery, where the helper writes it. NOT Directories.cache -
+        // that is CacheLocation, which on Linux is ~/.cache/<app> (i.e.
+        // ~/.cache/quickshell), and the helper is not a quickshell component.
+        path: Qt.resolvedUrl(`file://${root.home}/.cache/jbl-battery/last.json`)
+        onLoaded: {
+            try {
+                const r = JSON.parse(lastReading.text() || "{}")
+                if (r && r.ok && typeof r.percent === "number" && root.providers.length > 0) {
+                    // Only seeds the provider it belongs to; a name mismatch means
+                    // a stale file from another device and is ignored.
+                    const p = root.providerForName(r.name)
+                    if (p) root._store(p.id, { percent: r.percent, firmware: r.firmware ?? "", error: "" })
+                }
+            } catch (e) {
+                // A corrupt cache is not worth taking the shell down for.
+            }
+        }
+        Component.onCompleted: reload()
     }
 
     Instantiator {

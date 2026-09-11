@@ -9,6 +9,7 @@ import qs.modules.ii.cheatsheet
 import qs.modules.ii.display
 import qs.modules.ii.statsHud
 import qs.modules.ii.audio
+import qs.modules.ii.audioPlugins
 import qs.modules.ii.clipboardToast
 import qs.modules.ii.iris
 import qs.modules.ii.walltune
@@ -74,15 +75,15 @@ Scope {
         component: Dock {}
     }
     PanelLoader { component: Lock {} }
-    LazyPanelLoader { isOpen: GlobalStates.mediaControlsOpen; idleMs: 5 * 60 * 1000; component: MediaControls {} }
+    PanelLoader { component: MediaControls {} }
     PanelLoader { component: NotificationPopup {} }
     PanelLoader { component: OnScreenDisplay {} }
     PanelLoader { component: LayoutOsd {} }
     PanelLoader { component: OnScreenKeyboard {} }
     PanelLoader { component: OnScreenTouchpad {} }
-    LazyPanelLoader { isOpen: GlobalStates.overlayOpen; idleMs: 5 * 60 * 1000; component: Overlay {} }
+    PanelLoader { component: Overlay {} }
     PanelLoader { component: Polkit {} }
-    LazyPanelLoader { isOpen: GlobalStates.regionSelectorOpen; idleMs: 5 * 60 * 1000; component: RegionSelector {} }
+    PanelLoader { component: RegionSelector {} }
     PanelLoader { component: ScreenCorners {} }
     PanelLoader { component: SessionScreen {} }
     PanelLoader { extraCondition: Config.options.bar.vertical; component: VerticalBar {} }
@@ -122,12 +123,12 @@ Scope {
     //     component: TouchGestures {}
     // }
     // Cheatsheet has its own internal lazy loader (active=false by default).
-    LazyPanelLoader { isOpen: GlobalStates.cheatsheetOpen; idleMs: 5 * 60 * 1000; component: Cheatsheet {} }
+    PanelLoader { component: Cheatsheet {} }
 
     // Nexus, Overview, SidebarLeft still keep internal-state shortcuts → eager.
     // SidebarRight had its IpcHandler/GlobalShortcuts lifted to Shortcuts.qml
     // so it can be smart-loaded.
-    LazyPanelLoader { isOpen: GlobalStates.overviewOpen; idleMs: 5 * 60 * 1000; component: Overview {} }
+    PanelLoader { component: Overview {} }
     PanelLoader { component: SidebarLeft {} }
     LazyPanelLoader {
         isOpen: GlobalStates.sidebarRightOpen
@@ -136,15 +137,16 @@ Scope {
     // Smart-loaded popup panels — heavy ones unload aggressively (30 s
     // after close).  Their toggle shortcuts live in Shortcuts.qml so the
     // keybinds stay live and re-instantiate the panel on next open.
-    LazyPanelLoader { isOpen: GlobalStates.wallpaperSelectorOpen; idleMs: 5 * 60 * 1000; component: WallpaperSelector {} }
+    PanelLoader { component: WallpaperSelector {} }
     LazyPanelLoader { isOpen: GlobalStates.kbPickerOpen;          idleMs: 30 * 1000; component: KeyboardLayoutPicker {} }
     LazyPanelLoader { isOpen: GlobalStates.kbSettingsOpen;        idleMs: 30 * 1000; component: KeyboardSettings {} }
     LazyPanelLoader { isOpen: GlobalStates.wallTuneOpen;          idleMs: 30 * 1000; component: WallTune {} }
     // Visibility-driven like the connectivity popup, not gated by a Loader:
     // it drives its own `visible` per screen, so it wants to exist already.
-    LazyPanelLoader { isOpen: GlobalStates.appColorsOpen; idleMs: 5 * 60 * 1000; component: AppColors {} }
+    LazyPanelLoader { isOpen: GlobalStates.audioPluginsOpen; idleMs: 60 * 1000; component: AudioPluginsPanel {} }
+    PanelLoader { component: AppColors {} }
     LazyPanelLoader { isOpen: GlobalStates.rogPowerOpen;          idleMs: 30 * 1000; component: RogPower {} }
-    LazyPanelLoader { isOpen: GlobalStates.skwdWallOpen; idleMs: 5 * 60 * 1000; component: SkwdWall {} }
+    PanelLoader { component: SkwdWall {} }
     LazyPanelLoader { isOpen: GlobalStates.wallpaperAdjusterOpen; idleMs: 30 * 1000; component: WallpaperAdjuster {} }
     LazyPanelLoader { isOpen: GlobalStates.mouseMenuOpen; idleMs: 5 * 60 * 1000; component: MouseMenu {} }
     PanelLoader { component: KinetiX {} }
