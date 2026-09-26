@@ -84,14 +84,41 @@ WindowDialog {
     // A single container holding both: four sort segments, a hairline, then
     // the two filter toggles. Split across two containers of the same colour
     // and shape they read as one control that had been cut in half.
+    //
+    // The selection is ONE pill that slides between segments, rather than
+    // each segment colouring itself. Four independently-filling rectangles
+    // make a hover look like a second selection however faint it is, because
+    // the eye reads "two pills" before it reads "two shades".
     Rectangle {
+        id: strip
         Layout.fillWidth: true
         Layout.topMargin: 10
         implicitHeight: 34
         radius: Appearance.rounding.full
         color: Appearance.colors.colLayer2
 
+        Rectangle {
+            id: indicator
+            // Set by whichever segment is currently selected.
+            property real targetX: 0
+            property real targetW: 0
+            x: targetX
+            width: targetW
+            y: 3
+            height: parent.height - 6
+            radius: Appearance.rounding.full
+            color: Appearance.colors.colPrimary
+            visible: targetW > 0
+            Behavior on x {
+                animation: Appearance.animation.elementMoveFast.numberAnimation.createObject(this)
+            }
+            Behavior on width {
+                animation: Appearance.animation.elementMoveFast.numberAnimation.createObject(this)
+            }
+        }
+
         RowLayout {
+            id: segRow
             anchors { fill: parent; margins: 3 }
             spacing: 2
 
@@ -102,29 +129,43 @@ WindowDialog {
                     { label: Translation.tr("Name"),   value: "name"   },
                     { label: Translation.tr("Band"),   value: "band"   }
                 ]
-                delegate: Rectangle {
+                delegate: Item {
+                    id: seg
                     required property var modelData
                     readonly property bool sel: root.sortMode === modelData.value
                     Layout.fillWidth: true
                     Layout.fillHeight: true
-                    radius: Appearance.rounding.full
-                    // Hover is a whisper, not a second selection: a solid grey
-                    // pill beside the primary one reads as two things chosen.
-                    color: sel ? Appearance.colors.colPrimary
-                         : segHover.hovered
-                            ? ColorUtils.transparentize(Appearance.colors.colOnLayer2, 0.92)
-                            : "transparent"
-                    Behavior on color {
-                        animation: Appearance.animation.elementMoveFast.colorAnimation.createObject(this)
+
+                    // Report geometry to the indicator whenever this segment
+                    // is the selected one — including on resize, so the pill
+                    // follows the dialog rather than being placed once.
+                    function place() {
+                        if (!seg.sel) return;
+                        indicator.targetX = segRow.x + seg.x;
+                        indicator.targetW = seg.width;
                     }
+                    onSelChanged: place()
+                    onXChanged: place()
+                    onWidthChanged: place()
+                    Component.onCompleted: place()
+
                     HoverHandler { id: segHover; cursorShape: Qt.PointingHandCursor }
-                    TapHandler { onTapped: root.sortMode = modelData.value }
+                    TapHandler { onTapped: root.sortMode = seg.modelData.value }
+
                     StyledText {
-                        anchors.centerIn: parent
-                        text: modelData.label
+                        anchors.fill: parent
+                        horizontalAlignment: Text.AlignHCenter
+                        verticalAlignment: Text.AlignVCenter
+                        text: seg.modelData.label
                         font.pixelSize: Appearance.font.pixelSize.smaller
-                        color: parent.sel ? Appearance.colors.colOnPrimary
-                                          : Appearance.colors.colOnLayer2
+                        // Hover brightens the label instead of drawing a
+                        // second pill behind it.
+                        color: seg.sel ? Appearance.colors.colOnPrimary
+                             : segHover.hovered ? Appearance.colors.colOnLayer2
+                             : Appearance.colors.colSubtext
+                        Behavior on color {
+                            animation: Appearance.animation.elementMoveFast.colorAnimation.createObject(this)
+                        }
                     }
                 }
             }
@@ -139,35 +180,42 @@ WindowDialog {
                 opacity: 0.18
             }
 
-            component FilterToggle: Rectangle {
+            component FilterToggle: Item {
+                id: toggle
                 property string icon: ""
                 property bool on: false
                 signal picked
                 Layout.preferredWidth: 30
                 Layout.fillHeight: true
-                radius: Appearance.rounding.full
-                color: on ? Appearance.colors.colPrimary
-                     : tHover.hovered
-                        ? ColorUtils.transparentize(Appearance.colors.colOnLayer2, 0.92)
-                        : "transparent"
-                Behavior on color {
-                    animation: Appearance.animation.elementMoveFast.colorAnimation.createObject(this)
-                }
+
                 HoverHandler { id: tHover; cursorShape: Qt.PointingHandCursor }
-                TapHandler { onTapped: picked() }
+                TapHandler { onTapped: toggle.picked() }
+
+                Rectangle {
+                    anchors.fill: parent
+                    radius: Appearance.rounding.full
+                    color: toggle.on ? Appearance.colors.colPrimary : "transparent"
+                    Behavior on color {
+                        animation: Appearance.animation.elementMoveFast.colorAnimation.createObject(this)
+                    }
+                }
                 // Filled and aligned, not centred: MaterialSymbol is a Text
                 // item, so anchors.centerIn centres its line box — ascent and
-                // descent included — which leaves the glyph itself sitting
-                // low against a row of centred labels.
+                // descent included — which leaves the glyph sitting low
+                // against a row of centred labels.
                 MaterialSymbol {
                     anchors.fill: parent
                     horizontalAlignment: Text.AlignHCenter
                     verticalAlignment: Text.AlignVCenter
-                    text: parent.icon
+                    text: toggle.icon
                     iconSize: 17
-                    fill: parent.on ? 1 : 0
-                    color: parent.on ? Appearance.colors.colOnPrimary
-                                     : Appearance.colors.colOnLayer2
+                    fill: toggle.on ? 1 : 0
+                    color: toggle.on ? Appearance.colors.colOnPrimary
+                         : tHover.hovered ? Appearance.colors.colOnLayer2
+                         : Appearance.colors.colSubtext
+                    Behavior on color {
+                        animation: Appearance.animation.elementMoveFast.colorAnimation.createObject(this)
+                    }
                 }
             }
 
