@@ -449,9 +449,9 @@ Item {
         id: islandBg
         anchors { fill: parent; topMargin: 4; bottomMargin: 4 }
         radius: Appearance.rounding.full
-        color: Appearance.colors.colLayer1
+        color: Appearance.colors.colBarIsland
         border.width: 1
-        border.color: Appearance.colors.colLayer0Border
+        border.color: Appearance.colors.colBarIslandBorder
 
         HoverHandler {
             id: islandHover

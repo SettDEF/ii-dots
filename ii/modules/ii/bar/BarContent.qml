@@ -256,9 +256,9 @@ Item { // Bar content region
                 id: utilIslandBg
                 anchors { fill: parent; topMargin: 4; bottomMargin: 4 }
                 radius: Appearance.rounding.full
-                color: Appearance.colors.colLayer1
+                color: Appearance.colors.colBarIsland
                 border.width: 1
-                border.color: Appearance.colors.colLayer0Border
+                border.color: Appearance.colors.colBarIslandBorder
 
                 MouseArea {
                     anchors.fill: parent
@@ -500,9 +500,9 @@ Item { // Bar content region
                 Layout.preferredHeight: Appearance.sizes.barHeight - 8
                 implicitWidth: trayInner.implicitWidth > 0 ? trayInner.implicitWidth + 14 : 0
                 radius: Appearance.rounding.full
-                color: Qt.darker(Appearance.colors.colLayer0, 1.18)
+                color: Appearance.colors.colBarIsland
                 border.width: 1
-                border.color: Qt.alpha(Appearance.colors.colOnLayer0, 0.05)
+                border.color: Appearance.colors.colBarIslandBorder
 
                 SysTray {
                     id: trayInner

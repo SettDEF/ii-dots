@@ -121,6 +121,13 @@ Singleton {
         // Layer 0
         property color colLayer0Base: ColorUtils.mix(m3colors.m3background, m3colors.m3primary, Config.options.appearance.extraBackgroundTint ? 0.99 : 1)
         property color colLayer0: ColorUtils.transparentize(colLayer0Base, root.backgroundTransparency)
+
+        // The bar's islands — the pills that hold the active window, the tray
+        // and the status cluster. One role, because they sat on three
+        // different ones (colLayer0Base, colLayer0 and colLayer1) and read as
+        // three unrelated surfaces in a single bar.
+        property color colBarIsland: Qt.darker(colLayer0Base, 1.18)
+        property color colBarIslandBorder: Qt.alpha("black", 0.35)
         property color colOnLayer0: m3colors.m3onBackground
         property color colLayer0Hover: ColorUtils.transparentize(ColorUtils.mix(colLayer0, colOnLayer0, 0.9, root.contentTransparency))
         property color colLayer0Active: ColorUtils.transparentize(ColorUtils.mix(colLayer0, colOnLayer0, 0.8, root.contentTransparency))

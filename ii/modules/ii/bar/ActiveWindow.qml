@@ -181,9 +181,9 @@ Item {
         implicitHeight: root.titleHeight
         radius: height / 2
 
-        color: Qt.darker(Appearance.colors.colLayer0Base, 1.18)
+        color: Appearance.colors.colBarIsland
         border.width: 1
-        border.color: Qt.alpha("black", 0.35)
+        border.color: Appearance.colors.colBarIslandBorder
         clip: true
 
         // Hovering the pill is what reveals the action chips — see
