@@ -1,6 +1,7 @@
 import qs
 import qs.modules.common
 import qs.modules.common.widgets
+import qs.modules.common.functions
 import qs.services
 import qs.services.network
 import QtQuick
@@ -177,16 +178,80 @@ DialogListItem {
         }
 
         // ── Detail block ────────────────────────────────────────────────
-        // Everything nmcli and iw know about this network. Scan data (band,
-        // channel, security, BSSID) is available for every AP; the negotiated
-        // rate, real dBm and retry count exist only for the one you are
-        // actually associated to, so those appear only there.
+        // Scan data (band, channel, security, BSSID) exists for every AP; the
+        // negotiated rate, real dBm and retry count exist only for the one you
+        // are associated to.
+        //
+        // Laid out in three tiers rather than as one list of eleven rows: the
+        // figures you actually look at, the ones you occasionally need, and
+        // the ones you need about twice a year. A flat list gave BSSID the
+        // same weight as the signal strength.
         ColumnLayout {
-            Layout.topMargin: 8
+            id: detail
+            Layout.topMargin: 10
             Layout.fillWidth: true
             visible: root.expanded && !(root.wifiNetwork?.askingPassword ?? false)
-            spacing: 3
+            spacing: 8
 
+            // Tier 1 — the headline figures, as tiles.
+            component Stat: Rectangle {
+                id: stat
+                property string label: ""
+                property string value: ""
+                property string sub: ""
+                property color accent: Appearance.colors.colOnLayer1
+                visible: value.length > 0
+                Layout.fillWidth: true
+                implicitHeight: 52
+                radius: Appearance.rounding.small
+                color: Appearance.colors.colLayer2
+                ColumnLayout {
+                    anchors.centerIn: parent
+                    spacing: -1
+                    StyledText {
+                        Layout.alignment: Qt.AlignHCenter
+                        text: stat.value
+                        font.pixelSize: Appearance.font.pixelSize.normal
+                        font.family: Appearance.font.family.monospace
+                        color: stat.accent
+                    }
+                    StyledText {
+                        Layout.alignment: Qt.AlignHCenter
+                        text: stat.label
+                        font.pixelSize: Appearance.font.pixelSize.smallest
+                        color: Appearance.colors.colSubtext
+                    }
+                }
+            }
+
+            RowLayout {
+                Layout.fillWidth: true
+                spacing: 6
+
+                Stat {
+                    label: Translation.tr("Signal")
+                    value: root.strength > 0 ? root.strength + "%" : ""
+                    // Colour only where it means something: a weak signal is
+                    // the thing you opened this panel to find.
+                    accent: root.strength >= 60 ? Appearance.colors.colOnLayer1
+                          : root.strength >= 35 ? Appearance.colors.colOnLayer1
+                          : Appearance.m3colors.m3error
+                }
+                Stat {
+                    label: Translation.tr("Band")
+                    value: {
+                        const f = root.wifiNetwork?.frequency ?? 0;
+                        return f ? Network.bandFor(f) : "";
+                    }
+                }
+                Stat {
+                    label: Translation.tr("Link")
+                    value: root.isActive && Network.linkInfo.tx
+                         ? Network.linkInfo.tx + "M" : ""
+                }
+            }
+
+            // Tier 2 — the rest of what you read at a glance.
             component DetailRow: RowLayout {
                 property string k
                 property string v
@@ -211,63 +276,19 @@ DialogListItem {
                     horizontalAlignment: Text.AlignRight
                     font.pixelSize: Appearance.font.pixelSize.smaller
                     font.family: Appearance.font.family.monospace
-                    color: Appearance.colors.colOnSurfaceVariant
+                    color: Appearance.colors.colOnLayer1
                     elide: Text.ElideRight
                 }
             }
 
-            DetailRow {
-                k: Translation.tr("Band")
-                v: {
-                    const f = root.wifiNetwork?.frequency ?? 0;
-                    if (!f) return "";
-                    return Network.bandFor(f) + "  •  " + Translation.tr("ch") + " "
-                         + Network.channelFor(f) + "  •  " + f + " MHz";
-                }
-            }
-            DetailRow {
-                k: Translation.tr("Signal")
-                v: root.strength + "%  ≈ " + Network.approxDbm(root.strength) + " dBm"
-            }
             DetailRow {
                 k: Translation.tr("Security")
                 v: (root.wifiNetwork?.security ?? "").trim().length > 0
                    ? root.wifiNetwork.security : Translation.tr("Open")
             }
             DetailRow {
-                k: "BSSID"
-                v: root.wifiNetwork?.bssid ?? ""
-            }
-            DetailRow {
-                k: Translation.tr("Priority")
-                v: root.isSaved ? String(Network.priorityOf(root.ssid)) : ""
-            }
-
-            // Live figures — only meaningful for the active association.
-            DetailRow {
-                k: Translation.tr("Link rate")
-                v: root.isActive && Network.linkInfo.tx
-                   ? Network.linkInfo.tx + " / " + (Network.linkInfo.rx ?? "?") + " Mbit/s" : ""
-            }
-            DetailRow {
-                k: Translation.tr("Actual signal")
-                v: root.isActive && Network.linkInfo.dbm ? Network.linkInfo.dbm + " dBm" : ""
-            }
-            DetailRow {
-                // A climbing retry count against a strong signal is the tell for
-                // a congested channel or a repeater hop — the failure this whole
-                // panel exists to make visible.
-                k: Translation.tr("TX retries / failed")
-                v: root.isActive && Network.linkInfo.retries
-                   ? Network.linkInfo.retries + " / " + (Network.linkInfo.failed ?? "0") : ""
-            }
-            DetailRow {
                 k: Translation.tr("IP address")
                 v: root.isActive ? (Network.linkInfo.ip ?? "") : ""
-            }
-            DetailRow {
-                k: Translation.tr("Gateway")
-                v: root.isActive ? (Network.linkInfo.gw ?? "") : ""
             }
             DetailRow {
                 k: Translation.tr("Connected for")
@@ -279,11 +300,92 @@ DialogListItem {
                     return h > 0 ? (h + "h " + m + "m") : (m + "m");
                 }
             }
+
+            // Tier 3 — behind a toggle. Nobody reads a BSSID by accident.
+            property bool technicalOpen: false
+
+            Item {
+                id: technicalHeader
+                Layout.fillWidth: true
+                Layout.topMargin: 2
+                implicitHeight: 18
+
+                MouseArea {
+                    anchors.fill: parent
+                    cursorShape: Qt.PointingHandCursor
+                    onClicked: detail.technicalOpen = !detail.technicalOpen
+                }
+                RowLayout {
+                    anchors.fill: parent
+                    spacing: 6
+                    StyledText {
+                        text: Translation.tr("Technical")
+                        font.pixelSize: Appearance.font.pixelSize.smallest
+                        color: Appearance.colors.colSubtext
+                    }
+                    Rectangle {
+                        Layout.fillWidth: true
+                        implicitHeight: 1
+                        color: Appearance.colors.colLayer0Border
+                    }
+                    MaterialSymbol {
+                        text: detail.technicalOpen ? "expand_less" : "expand_more"
+                        iconSize: 16
+                        color: Appearance.colors.colSubtext
+                    }
+                }
+            }
+
+            ColumnLayout {
+                Layout.fillWidth: true
+                visible: detail.technicalOpen
+                spacing: 3
+
+                DetailRow {
+                    k: Translation.tr("Channel")
+                    v: {
+                        const f = root.wifiNetwork?.frequency ?? 0;
+                        if (!f) return "";
+                        return Network.channelFor(f) + "  •  " + f + " MHz";
+                    }
+                }
+                DetailRow {
+                    k: Translation.tr("Actual signal")
+                    v: root.isActive && Network.linkInfo.dbm
+                       ? Network.linkInfo.dbm + " dBm"
+                       : (root.strength > 0 ? "≈ " + Network.approxDbm(root.strength) + " dBm" : "")
+                }
+                DetailRow {
+                    k: Translation.tr("Link rate")
+                    v: root.isActive && Network.linkInfo.tx
+                       ? Network.linkInfo.tx + " / " + (Network.linkInfo.rx ?? "?") + " Mbit/s" : ""
+                }
+                DetailRow {
+                    // A climbing retry count against a strong signal is the tell
+                    // for a congested channel or a repeater hop — the failure
+                    // this whole panel exists to make visible.
+                    k: Translation.tr("TX retries / failed")
+                    v: root.isActive && Network.linkInfo.retries
+                       ? Network.linkInfo.retries + " / " + (Network.linkInfo.failed ?? "0") : ""
+                }
+                DetailRow {
+                    k: Translation.tr("Gateway")
+                    v: root.isActive ? (Network.linkInfo.gw ?? "") : ""
+                }
+                DetailRow {
+                    k: "BSSID"
+                    v: root.wifiNetwork?.bssid ?? ""
+                }
+                DetailRow {
+                    k: Translation.tr("Priority")
+                    v: root.isSaved ? String(Network.priorityOf(root.ssid)) : ""
+                }
+            }
         }
 
         // ── Saved-profile controls ──────────────────────────────────────
         ColumnLayout {
-            Layout.topMargin: 8
+            Layout.topMargin: 6
             Layout.fillWidth: true
             visible: root.expanded && root.isSaved
                   && !(root.wifiNetwork?.askingPassword ?? false)
@@ -303,20 +405,30 @@ DialogListItem {
                 }
             }
 
-            StyledText {
-                text: Translation.tr("Band")
-                font.pixelSize: Appearance.font.pixelSize.smaller
-                color: Appearance.colors.colSubtext
+            RowLayout {
+                Layout.fillWidth: true
+                Layout.topMargin: 2
+                spacing: 6
+                StyledText {
+                    text: Translation.tr("Band")
+                    font.pixelSize: Appearance.font.pixelSize.smallest
+                    color: Appearance.colors.colSubtext
+                }
+                Rectangle {
+                    Layout.fillWidth: true
+                    implicitHeight: 1
+                    color: Appearance.colors.colLayer0Border
+                }
             }
             // Locking the band is the direct fix when one SSID is served by
             // both a fast 5GHz radio and a slow 2.4GHz one and the adapter
             // keeps picking the wrong one.
             //
-            // Flow, not RowLayout: three buttons plus a label do not fit across
-            // 350px, and a RowLayout does not wrap — it just overflows.
-            Flow {
+            // One shared track, like the sort control above: three fixed
+            // choices sized to the panel rather than to their own labels.
+            RowLayout {
                 Layout.fillWidth: true
-                spacing: 5
+                spacing: 4
                 Repeater {
                     model: [
                         { label: Translation.tr("Auto"), value: "" },
@@ -326,11 +438,12 @@ DialogListItem {
                     delegate: DialogButton {
                         required property var modelData
                         readonly property bool sel: Network.bandLockOf(root.ssid) === modelData.value
+                        Layout.fillWidth: true
                         buttonText: modelData.label
                         colBackground: sel ? Appearance.colors.colPrimary
-                                           : Appearance.colors.colLayer4
+                                           : Appearance.colors.colLayer2
                         colText: sel ? Appearance.colors.colOnPrimary
-                                     : Appearance.colors.colOnLayer4
+                                     : Appearance.colors.colOnLayer2
                         onClicked: Network.setBandLock(root.ssid, modelData.value)
                     }
                 }
@@ -341,15 +454,15 @@ DialogListItem {
         RowLayout {
             visible: root.expanded
                   && !(root.wifiNetwork?.askingPassword ?? false)
-            Layout.topMargin: 8
+            Layout.topMargin: 10
             Layout.fillWidth: true
-
-            Item { Layout.fillWidth: true }
+            spacing: 6
 
             // Sets connection.autoconnect-priority, which NetworkManager itself
             // acts on when several known networks are in range — so the choice
             // survives reboots and applies even when this shell is not running.
             PrimaryActionButton {
+                Layout.fillWidth: true
                 visible: root.isSaved
                 buttonText: root.isPreferred ? Translation.tr("Preferred")
                                              : Translation.tr("Prefer")
@@ -365,15 +478,21 @@ DialogListItem {
             }
 
             PrimaryActionButton {
+                Layout.fillWidth: true
                 visible: !root.isActive
                 loading: root.isConnecting
                 enabled: !root.isConnecting
                 buttonText: root.isConnecting ? Translation.tr("Connecting…") : Translation.tr("Connect")
                 onClicked: Network.connectToWifiNetwork(root.wifiNetwork)
             }
+            // Tonal, not filled: on the network you are already using, the
+            // loudest button on screen should not be the one that drops it.
             PrimaryActionButton {
+                Layout.fillWidth: true
                 visible: root.isActive
                 buttonText: Translation.tr("Disconnect")
+                colBackground: Appearance.colors.colLayer4
+                colText: Appearance.colors.colOnLayer4
                 onClicked: Network.disconnectWifiNetwork()
             }
             PrimaryActionButton {
@@ -381,11 +500,19 @@ DialogListItem {
                 // for known networks; we approximate "known" as secure
                 // networks the user has connected to before. nmcli will no-op
                 // for unknown SSIDs.
-                visible: root.isSecure
-                colBackground: Appearance.colors.colError
-                colBackgroundHover: Appearance.colors.colErrorHover
+                // Only offered for networks actually saved — nmcli no-ops on
+                // an SSID it does not know, so the old `isSecure` test put a
+                // red button on every locked network in the list whether or
+                // not it could do anything.
+                Layout.fillWidth: true
+                visible: root.isSaved
+                // Outlined rather than filled: it is destructive, so it must
+                // read as different, but a solid red block next to a solid
+                // primary block makes the panel look like a warning.
+                colBackground: Appearance.colors.colLayer2
+                colBackgroundHover: ColorUtils.transparentize(Appearance.colors.colError, 0.8)
                 colRipple: Appearance.colors.colErrorActive
-                colText: Appearance.colors.colOnError
+                colText: Appearance.colors.colError
 
                 buttonText: Translation.tr("Forget")
                 onClicked: {

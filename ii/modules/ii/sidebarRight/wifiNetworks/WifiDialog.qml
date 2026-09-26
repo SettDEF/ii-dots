@@ -3,6 +3,7 @@ import qs.services
 import qs.services.network
 import qs.modules.common
 import qs.modules.common.widgets
+import qs.modules.common.functions
 import QtQuick
 import QtQuick.Layouts
 import Quickshell
@@ -80,11 +81,13 @@ WindowDialog {
         Layout.topMargin: 4
         spacing: 6
 
-        // Six chips do not fit across a 350px dialog. A RowLayout would simply
-        // run off the edge — Flow wraps to a second line instead.
-        Flow {
+        // Sort and filter are different kinds of control and must not look
+        // like one set of six interchangeable pills. The sort is one-of-four
+        // and shares a single track; the filters are independent toggles,
+        // outlined so they read as switches rather than as more sort options.
+        RowLayout {
             Layout.fillWidth: true
-            spacing: 5
+            spacing: 4
 
             Repeater {
                 model: [
@@ -96,33 +99,43 @@ WindowDialog {
                 delegate: DialogButton {
                     required property var modelData
                     readonly property bool sel: root.sortMode === modelData.value
+                    Layout.fillWidth: true
                     buttonText: modelData.label
                     colBackground: sel ? Appearance.colors.colPrimary
-                                       : Appearance.colors.colLayer4
+                                       : Appearance.colors.colLayer2
                     colText: sel ? Appearance.colors.colOnPrimary
-                                 : Appearance.colors.colOnLayer4
+                                 : Appearance.colors.colOnLayer2
                     onClicked: root.sortMode = modelData.value
                 }
             }
+        }
+
+        RowLayout {
+            Layout.fillWidth: true
+            Layout.topMargin: 2
+            spacing: 4
 
             DialogButton {
                 buttonText: Translation.tr("Saved")
-                colBackground: root.savedOnly ? Appearance.colors.colPrimary
-                                              : Appearance.colors.colLayer4
-                colText: root.savedOnly ? Appearance.colors.colOnPrimary
-                                        : Appearance.colors.colOnLayer4
+                colBackground: root.savedOnly
+                    ? ColorUtils.transparentize(Appearance.colors.colPrimary, 0.78)
+                    : Appearance.colors.colLayer2
+                colText: root.savedOnly ? Appearance.colors.colPrimary
+                                        : Appearance.colors.colOnLayer2
                 onClicked: root.savedOnly = !root.savedOnly
                 StyledToolTip { text: Translation.tr("Only networks you have connected to before") }
             }
             DialogButton {
                 buttonText: Translation.tr("Secured")
-                colBackground: root.hideOpen ? Appearance.colors.colPrimary
-                                             : Appearance.colors.colLayer4
-                colText: root.hideOpen ? Appearance.colors.colOnPrimary
-                                       : Appearance.colors.colOnLayer4
+                colBackground: root.hideOpen
+                    ? ColorUtils.transparentize(Appearance.colors.colPrimary, 0.78)
+                    : Appearance.colors.colLayer2
+                colText: root.hideOpen ? Appearance.colors.colPrimary
+                                       : Appearance.colors.colOnLayer2
                 onClicked: root.hideOpen = !root.hideOpen
                 StyledToolTip { text: Translation.tr("Hide open (unencrypted) networks") }
             }
+            Item { Layout.fillWidth: true }
         }
 
         ColumnLayout {
