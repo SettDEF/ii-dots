@@ -42,7 +42,7 @@ PanelWindow {
     }
 
     // TODO: Ask: sidebar AI
-    enum SnipAction { Copy, Edit, Search, CharRecognition, Record, RecordWithSound, AttachToAi } 
+    enum SnipAction { Copy, Edit, Search, CharRecognition, Record, RecordWithSound, AttachToAi, SnapWindow } 
     enum SelectionMode { RectCorners, Circle }
     property var action: RegionSelection.SnipAction.Copy
     property var selectionMode: RegionSelection.SelectionMode.RectCorners
@@ -293,6 +293,26 @@ PanelWindow {
         root.regionY = Math.max(0, Math.min(root.regionY, root.screen.height - root.regionHeight));
         root.regionWidth = Math.max(0, Math.min(root.regionWidth, root.screen.width - root.regionX));
         root.regionHeight = Math.max(0, Math.min(root.regionHeight, root.screen.height - root.regionY));
+
+        // Snap the focused window into the region instead of capturing it.
+        // This leaves before the screenshot pipeline: there is nothing to
+        // grab, crop or save, and the region is the whole output.
+        if (root.action === RegionSelection.SnipAction.SnapWindow) {
+            // Hyprland works in logical coordinates and so does the layer
+            // surface, so the region needs no scale conversion — but it IS
+            // relative to this screen, and dispatches are global.
+            const gx = Math.round(root.screen.x + root.regionX);
+            const gy = Math.round(root.screen.y + root.regionY);
+            const gw = Math.round(root.regionWidth);
+            const gh = Math.round(root.regionHeight);
+            // Floating first: resizewindowpixel on a tiled window is ignored,
+            // which is the silent no-op this would otherwise be.
+            HyprDispatch.run("setfloating, activewindow");
+            HyprDispatch.run(`resizewindowpixel exact ${gw} ${gh}, activewindow`);
+            HyprDispatch.run(`movewindowpixel exact ${gx} ${gy}, activewindow`);
+            root.dismiss();
+            return;
+        }
 
         // Adjust action
         if (root.action === RegionSelection.SnipAction.Copy || root.action === RegionSelection.SnipAction.Edit) {

@@ -74,6 +74,15 @@ Scope {
         GlobalStates.regionSelectorOpen = true
     }
 
+    /// Drag a rectangle; the focused window becomes exactly that rectangle.
+    /// The manual half of a tiling WM: the cases where no automatic layout is
+    /// the one you want.
+    function snapWindow() {
+        root.action = RegionSelection.SnipAction.SnapWindow
+        root.selectionMode = RegionSelection.SelectionMode.RectCorners
+        GlobalStates.regionSelectorOpen = true
+    }
+
     function lens() {
         root.action = RegionSelection.SnipAction.AttachToAi
         root.selectionMode = RegionSelection.SelectionMode.RectCorners
@@ -85,6 +94,9 @@ Scope {
 
         function screenshot() {
             root.screenshot()
+        }
+        function snap() {
+            root.snapWindow()
         }
         function search() {
             root.search()
