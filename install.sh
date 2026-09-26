@@ -22,6 +22,7 @@ DO_DEPS=1
 DO_POLKIT=0
 DO_UNINSTALL=0
 ASSUME_YES=0
+DO_LOWEND=0
 
 # ── Dependencies, by profile ────────────────────────────────────────────────
 # Arch package names. Split by what actually stops working without them, not
@@ -56,7 +57,11 @@ Options
                           recommended  + clipboard, network, audio, screenshots
                           full         + media tools, translate, time tracking
                           rog          full + asusctl/supergfxctl (ASUS laptops)
+                          low-end      recommended tools, effects turned off
                         (default: recommended)
+      --low-end         Tune the settings for a weak GPU or 4GB of RAM.
+                        Combines with any profile. Merges into your existing
+                        config.json; the old one is backed up first.
       --polkit          Install the polkit rules for the net and ROG tools.
                         Needs root and grants the installing user passwordless
                         access to those specific actions. Off by default.
@@ -71,6 +76,7 @@ Examples
   ./install.sh -n ii-test -p minimal     a throwaway copy beside your own
   ./install.sh -p rog --polkit           the lot, on an ASUS laptop
   ./install.sh -n ii-test --uninstall    remove that copy
+  ./install.sh -p low-end                a 2013 laptop with integrated graphics
 EOF
 }
 
@@ -80,6 +86,7 @@ while [ $# -gt 0 ]; do
         -d|--dest)    DEST="${2:?--dest needs a value}"; shift 2 ;;
         -p|--profile) PROFILE="${2:?--profile needs a value}"; shift 2 ;;
         --polkit)     DO_POLKIT=1; shift ;;
+        --low-end)    DO_LOWEND=1; shift ;;
         --no-deps)    DO_DEPS=0; shift ;;
         -y|--yes)     ASSUME_YES=1; shift ;;
         --dry-run)    DRY=1; shift ;;
@@ -90,6 +97,10 @@ while [ $# -gt 0 ]; do
 done
 
 case "$PROFILE" in
+    # low-end installs the same tools as `recommended` — they are all small —
+    # and additionally turns off the settings that cost a weak GPU or 4 GB of
+    # RAM. See low_end_tuning() for what those are and why.
+    low-end) DO_LOWEND=1; PROFILE="recommended" ;;
     minimal|core|recommended|full|rog) ;;
     *) die "unknown profile: $PROFILE (try --help)" ;;
 esac
@@ -121,9 +132,23 @@ fi
 info "source:  $SRC"
 info "install: $DEST   (run it with: qs -c $NAME)"
 info "profile: $PROFILE"
+[ "$DO_LOWEND" = 1 ] && info "tuning: low-end (effects off)"
 [ "$DRY" = 1 ] && warn "dry run — nothing will be changed"
 
 [ -d "$SRC/ii" ] || die "$SRC does not look like this repo (no ii/ directory)"
+
+# A clone that already sits at $XDG_CONFIG_HOME/quickshell installs onto its own
+# source: install_config would move $SRC/ii aside as the backup and then copy
+# from the path it just emptied, destroying the checkout. Refuse, and say which
+# way out to take.
+case "$DEST/" in
+    "$SRC"/*)
+        die "install target $DEST is inside the source $SRC.
+       This clone already lives where the config is installed, so there is
+       nothing to install. Run it from here with: qs -c $(basename "$DEST")
+       Or install a separate copy elsewhere:      ./install.sh -n ii-test"
+        ;;
+esac
 
 if [ -e "$DEST" ] && [ ! -f "$DEST/.installed-by-quickshell-config" ]; then
     warn "$DEST already exists and was not created by this script."
@@ -216,6 +241,109 @@ install_polkit() {
     [ "$found" = 1 ] || warn "no polkit templates found"
 }
 
+# ── Low-end tuning ──────────────────────────────────────────────────────────
+# Everything switched off here already had a switch; what was missing was a
+# preset that knows which ones matter. The target is roughly a 2013 laptop —
+# Haswell, Intel HD 4400, 4GB of DDR3, a 1366x768 panel — where the shell
+# starts fine and then the effects make it unusable.
+#
+# Ordered by what actually costs the most there:
+#
+#   lock.blur            GaussianBlur radius 100 => samples 201, i.e. 201
+#                        texture fetches per pixel over the whole screen. On
+#                        HD 4400 at 1366x768 that is ~211M fetches a frame.
+#                        This one alone is the difference between a lock screen
+#                        and a slideshow.
+#   background.effect    a full-screen fragment shader, redrawn every frame.
+#   parallax             rescales the wallpaper on every workspace switch.
+#   transparency         forces blended layers the compositor cannot skip.
+#   extraBackgroundTint  another full-screen blend on top of that.
+#   keepRightSidebarLoaded
+#                        the shell's resident size is roughly one Mesa GL
+#                        context per mapped surface, so a surface kept alive
+#                        for latency costs real RAM on a 4GB machine.
+#   showVisualizer       cava, plus a repainting spectrum, whenever audio plays.
+#   fakeScreenRounding   a layer.enabled overlay per screen, every frame.
+#   switchFlash          an animation on every workspace change.
+#   resources            polling interval and history ring.
+#
+# The dock stays off: its window previews are ScreencopyView at a 35ms
+# interval per window, which is the most expensive thing in the config and has
+# no switch of its own short of the dock itself.
+low_end_tuning() {
+    [ "$DO_LOWEND" = 1 ] || return 0
+
+    # Note this lives OUTSIDE the install dir, in the shared config the shell
+    # reads at runtime — so it is not isolated by -n NAME. Say so plainly.
+    local cfg_dir="${XDG_CONFIG_HOME:-$HOME/.config}/illogical-impulse"
+    local cfg="$cfg_dir/config.json"
+
+    local tuning
+    tuning=$(cat <<'JSON'
+{
+  "appearance": {
+    "extraBackgroundTint": false,
+    "fakeScreenRounding": 0,
+    "transparency": { "enable": false }
+  },
+  "background": {
+    "effect": "",
+    "parallax": { "enableWorkspace": false, "enableSidebar": false }
+  },
+  "bar": {
+    "showVisualizer": false,
+    "workspaces": { "switchFlash": false }
+  },
+  "dock": { "enable": false },
+  "lock": { "blur": { "enable": false } },
+  "overview": { "scale": 0.13 },
+  "resources": { "updateInterval": 5000, "historyLength": 30 },
+  "search": { "nonAppResultDelay": 120 },
+  "sidebar": { "keepRightSidebarLoaded": false }
+}
+JSON
+)
+
+    info "low-end tuning -> $cfg"
+    if [ "$DRY" = 1 ]; then
+        printf '   would: merge into %s\n' "$cfg"
+        printf '%s\n' "$tuning" | sed 's/^/          /'
+        return 0
+    fi
+
+    mkdir -p "$cfg_dir"
+
+    # No config yet: the keys left out fall back to the defaults in Config.qml,
+    # so a partial file is a complete answer.
+    if [ ! -f "$cfg" ]; then
+        printf '%s\n' "$tuning" > "$cfg"
+        info "wrote $cfg"
+        return 0
+    fi
+
+    # One exists. Merge rather than replace, or this quietly eats every setting
+    # the user has. Recursive merge, with the tuning winning each key it names.
+    if command -v jq >/dev/null 2>&1; then
+        local backup="$cfg.backup-$(date +%Y%m%d-%H%M%S)"
+        cp -- "$cfg" "$backup"
+        if printf '%s\n' "$tuning" | jq -s '.[0] * .[1]' "$cfg" - > "$cfg.tmp" 2>/dev/null; then
+            mv -- "$cfg.tmp" "$cfg"
+            info "merged; previous config saved as $(basename "$backup")"
+        else
+            rm -f "$cfg.tmp"
+            warn "could not parse $cfg as JSON; left it alone"
+            rm -f "$backup"
+        fi
+        return 0
+    fi
+
+    # No jq and a config already there: merging by hand in sh would be a good
+    # way to corrupt it. Print the keys and let the user apply them.
+    warn "jq is not installed and $cfg already exists, so it was NOT changed."
+    warn "Apply these by hand, or in the settings panel:"
+    printf '%s\n' "$tuning" | sed 's/^/       /' >&2
+}
+
 # ── What is still missing afterwards ────────────────────────────────────────
 report_gaps() {
     local optional=(warp-cli nordvpn virt-viewer minimeters matugen)
@@ -231,6 +359,7 @@ report_gaps() {
 install_packages
 install_config
 install_polkit
+low_end_tuning
 report_gaps
 
 cat <<EOF

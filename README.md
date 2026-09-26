@@ -37,6 +37,7 @@ a bar is how a config gets a reputation for being heavy.
 | `recommended` *(default)* | + clipboard, network, audio, brightness, screenshots |
 | `full` | + media tools, translation, time tracking |
 | `rog` | + `asusctl` / `supergfxctl` for ASUS laptops |
+| `low-end` | the same tools as `recommended`, with the effects turned off |
 
 ```sh
 ./install.sh -p rog --polkit    # the lot, on an ASUS laptop
@@ -48,6 +49,49 @@ a bar is how a config gets a reputation for being heavy.
 neither `$HOME` nor "whoever is installing", so those have to be written in.
 
 `--dry-run` prints every action and changes nothing. It is worth running first.
+
+### Old and slow machines
+
+Everything expensive in this config already had a switch; what was missing was
+a preset that knows which switches matter. `--low-end` is that preset, and it
+combines with any profile:
+
+```sh
+./install.sh -p low-end          # recommended tools, effects off
+./install.sh -p full --low-end   # all the tools, effects still off
+```
+
+The target is roughly a 2013 laptop — Haswell, Intel HD 4400, 4GB of DDR3, a
+1366x768 panel. The shell starts fine on one; it is the effects that make it
+unusable, and they are not evenly expensive. In rough order of what it buys:
+
+- **the lock screen blur** — `radius: 100` means `samples: 201`, i.e. 201
+  texture fetches per pixel of the whole screen, about 211 million a frame at
+  1366x768. This one is the difference between a lock screen and a slideshow.
+- **the wallpaper effect** — a full-screen fragment shader, redrawn every frame
+- **wallpaper parallax** — rescales the wallpaper on every workspace switch
+- **transparency and the background tint** — full-screen blends the compositor
+  cannot skip
+- **keeping the right sidebar loaded** — resident size here is roughly one Mesa
+  GL context per mapped surface, so a surface kept alive for latency costs real
+  RAM on a 4GB machine
+- **the bar visualizer** — runs cava plus a repainting spectrum whenever audio
+  plays
+- **fake screen rounding, workspace switch flash, polling intervals** — small
+  individually, and free to give up on a machine this size
+
+The dock stays off, because its window previews are a `ScreencopyView` per
+window at a 35ms interval, which is the most expensive thing in the config and
+has no switch short of the dock itself.
+
+These are ordinary settings, so none of it is a one-way door: change any of
+them back in the settings panel. They are written to
+`~/.config/illogical-impulse/config.json`, which is shared between installs and
+so is **not** isolated by `-n NAME`. An existing config is merged into, not
+replaced, and backed up first.
+
+Untested on a machine that old — the reasoning is from what the code does, not
+from a benchmark on 2013 hardware.
 
 ## What needs what
 
