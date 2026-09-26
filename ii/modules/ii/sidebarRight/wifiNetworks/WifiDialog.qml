@@ -73,14 +73,7 @@ WindowDialog {
     //
     // No text filter here either: the strip's sort modes and the two toggles
     // narrow the list without a field competing with the title for the row.
-    StyledIndeterminateProgressBar {
-        visible: Network.wifiScanning
-        Layout.fillWidth: true
-        Layout.topMargin: -8
-        Layout.bottomMargin: -8
-        Layout.leftMargin: -Appearance.rounding.large
-        Layout.rightMargin: -Appearance.rounding.large
-    }
+
     // ── Sort and filter, one strip ──────────────────────────────────────
     // A single container holding both: four sort segments, a hairline, then
     // the two filter toggles. Split across two containers of the same colour
@@ -98,6 +91,28 @@ WindowDialog {
         implicitHeight: 34
         radius: Appearance.rounding.full
         color: Appearance.colors.colLayer2
+        clip: true
+
+        // Scanning shows as a sweep across the strip rather than a bar of its
+        // own. A separate progress bar reintroduced exactly the horizontal
+        // line that removing the header rule got rid of, and put it back only
+        // sometimes — so the dialog's layout shifted every time a scan began.
+        Rectangle {
+            id: scanSweep
+            visible: Network.wifiScanning
+            height: parent.height
+            width: parent.width * 0.35
+            radius: parent.radius
+            color: ColorUtils.transparentize(Appearance.colors.colPrimary, 0.88)
+            x: -width
+            XAnimator on x {
+                running: scanSweep.visible
+                loops: Animation.Infinite
+                from: -scanSweep.width
+                to: strip.width
+                duration: 1100
+            }
+        }
 
         Rectangle {
             id: indicator
@@ -225,13 +240,13 @@ WindowDialog {
                 icon: "bookmark"
                 on: root.savedOnly
                 onPicked: root.savedOnly = !root.savedOnly
-                StyledToolTip { text: Translation.tr("Only networks you have connected to before") }
+                StyledToolTip { text: Translation.tr("Saved networks only") }
             }
             FilterToggle {
                 icon: "lock"
                 on: root.hideOpen
                 onPicked: root.hideOpen = !root.hideOpen
-                StyledToolTip { text: Translation.tr("Hide open (unencrypted) networks") }
+                StyledToolTip { text: Translation.tr("Hide open networks") }
             }
         }
     }

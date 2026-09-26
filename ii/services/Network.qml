@@ -368,11 +368,15 @@ Singleton {
     Process {
         id: rescanProcess
         command: ["nmcli", "dev", "wifi", "list", "--rescan", "yes"]
-        stdout: SplitParser {
-            onRead: {
-                wifiScanning = false;
-                getNetworks.running = true;
-            }
+        // onExited, not SplitParser.onRead: nmcli prints its header row
+        // before the scan has finished, so reading the first line declared
+        // the scan over and queried the list while NetworkManager was still
+        // scanning. The result was a partial list — often just the network
+        // already connected — for the first few seconds after opening the
+        // dialog, which looked like the scan had found nothing.
+        onExited: {
+            root.wifiScanning = false;
+            getNetworks.running = true;
         }
     }
 
