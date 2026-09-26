@@ -92,8 +92,18 @@ Item {
         }
         root.dropdownDismissed = false;
         completeDebounce.restart();
+        searchDebounce.restart();
     }
     Component.onCompleted: completeDebounce.restart()
+    Timer {
+        id: searchDebounce
+        interval: 300
+        onTriggered: if (WallpaperHub.source !== "reddit") WallpaperHub.search(root.sub)
+    }
+    Connections {
+        target: WallpaperHub
+        function onSourceChanged() { searchDebounce.restart() }
+    }
     Timer {
         id: completeDebounce
         interval: 220
@@ -148,73 +158,136 @@ Item {
             opacity: detailsPanel.shown ? 1 : 0
             Behavior on opacity { NumberAnimation { duration: 180 } }
             item: WallpaperHub.focusedItem
+            theme: WallpaperHub.focusedTheme
             meta: WallpaperHub.focusedMeta
         }
     }
 
-    // ── Filter / sort chips (the filter_list button in the bar) ───────
-    // Same chips skwd draws in its own panel, same state (WallpaperHub) —
-    // they just live here while the launcher is open.
+    // ── Filter chips (the filter_list button in the bar) ──────────────
+    component Chip: Rectangle {
+        id: chip
+        property string label: ""
+        property bool on: false
+        signal picked()
+        implicitWidth: chipLabel.implicitWidth + 22
+        implicitHeight: 30
+        radius: Appearance.rounding.verysmall
+        color: chip.on ? Appearance.m3colors.m3primary
+            : (chipHov.hovered ? Appearance.colors.colLayer2Hover : Appearance.colors.colLayer2Base)
+        border.width: chip.on ? 0 : 1
+        border.color: Appearance.colors.colLayer0Border
+        Behavior on color { ColorAnimation { duration: 140 } }
+        HoverHandler { id: chipHov }
+        TapHandler { onTapped: chip.picked() }
+        StyledText {
+            id: chipLabel
+            anchors.centerIn: parent
+            text: chip.label
+            font.pixelSize: Appearance.font.pixelSize.smaller
+            font.weight: Font.DemiBold
+            color: chip.on ? Appearance.m3colors.m3onPrimary : Appearance.colors.colOnLayer1
+        }
+    }
+    component ChipRow: ColumnLayout {
+        id: chipRow
+        property string title: ""
+        property var options: []          // [{ label, value }]
+        property var current
+        signal picked(var value)
+        Layout.fillWidth: true
+        spacing: 4
+        StyledText {
+            text: chipRow.title
+            font.pixelSize: Appearance.font.pixelSize.smaller
+            color: Appearance.colors.colSubtext
+            Layout.leftMargin: 12
+        }
+        Flow {
+            Layout.fillWidth: true
+            Layout.leftMargin: 12
+            Layout.rightMargin: 12
+            spacing: 5
+            Repeater {
+                model: chipRow.options
+                delegate: Chip {
+                    required property var modelData
+                    label: modelData.label
+                    on: chipRow.current === modelData.value
+                    onPicked: chipRow.picked(modelData.value)
+                }
+            }
+        }
+    }
+
     Item {
         id: filterPanel
-        visible: WallpaperHub.filterOpen && WallpaperHub.source === "reddit"
+        readonly property bool reddit: WallpaperHub.source === "reddit" || WallpaperHub.source === "videos"
+        readonly property bool wallhaven: WallpaperHub.source === "wallhaven"
+        visible: WallpaperHub.filterOpen
         anchors { top: parent.top; left: parent.left; right: parent.right }
         implicitHeight: filterCol.implicitHeight + 12
 
         ColumnLayout {
             id: filterCol
             anchors { top: parent.top; left: parent.left; right: parent.right; topMargin: 6 }
-            spacing: 6
+            spacing: 8
 
-            StyledText {
-                text: Translation.tr("Sort")
-                font.pixelSize: Appearance.font.pixelSize.smaller
-                color: Appearance.colors.colSubtext
-                Layout.leftMargin: 12
-            }
-            Flow {
-                Layout.fillWidth: true
-                Layout.leftMargin: 12
-                Layout.rightMargin: 12
-                spacing: 5
-                Repeater {
-                    model: WallpaperHub.sortChips
-                    delegate: Rectangle {
-                        id: sortChip
-                        required property var modelData
-                        readonly property bool on: WallpaperHub.forcedSort === modelData.id
-                        implicitWidth: chipLabel.implicitWidth + 22
-                        implicitHeight: 30
-                        // Button-shaped, not a pill — squarer corners.
-                        radius: Appearance.rounding.verysmall
-                        color: sortChip.on
-                            ? Appearance.m3colors.m3primary
-                            : (chipHov.hovered ? Appearance.colors.colLayer2Hover
-                                               : Appearance.colors.colLayer2Base)
-                        border.width: sortChip.on ? 0 : 1
-                        border.color: Appearance.colors.colLayer0Border
-                        Behavior on color { ColorAnimation { duration: 140 } }
-                        HoverHandler { id: chipHov }
-                        TapHandler {
-                            onTapped: {
-                                // Hub first (so skwd's chips agree even if it
-                                // isn't open yet), then ask skwd to re-sync.
-                                WallpaperHub.forcedSort = sortChip.modelData.id;
-                                WallpaperHub.sortPicked(sortChip.modelData.id);
-                            }
-                        }
-                        StyledText {
-                            id: chipLabel
-                            anchors.centerIn: parent
-                            text: sortChip.modelData.label
-                            font.pixelSize: Appearance.font.pixelSize.smaller
-                            font.weight: Font.DemiBold
-                            color: sortChip.on
-                                ? Appearance.m3colors.m3onPrimary
-                                : Appearance.colors.colOnLayer1
-                        }
-                    }
+            ChipRow {
+                visible: filterPanel.reddit
+                title: Translation.tr("Sort")
+                options: WallpaperHub.sortChips.map(c => ({ label: c.label, value: c.id }))
+                current: WallpaperHub.forcedSort
+                onPicked: value => {
+                    WallpaperHub.forcedSort = value;
+                    WallpaperHub.sortPicked(value);
                 }
+            }
+            ChipRow {
+                visible: filterPanel.wallhaven
+                title: Translation.tr("Content")
+                options: [{ label: "SFW", value: true }, { label: Translation.tr("ALL"), value: false }]
+                current: WallpaperHub.whSfw
+                onPicked: value => WallpaperHub.setWh("whSfw", value)
+            }
+            ChipRow {
+                visible: filterPanel.wallhaven
+                title: Translation.tr("Ratio")
+                options: [{ label: Translation.tr("ANY"), value: "" }, { label: "16:9", value: "16:9" },
+                    { label: "16:10", value: "16:10" }, { label: "21:9", value: "21:9" }, { label: "9:16", value: "9:16" }]
+                current: WallpaperHub.whRatio
+                onPicked: value => WallpaperHub.setWh("whRatio", value)
+            }
+            ChipRow {
+                visible: filterPanel.wallhaven
+                title: Translation.tr("At least")
+                options: [{ label: Translation.tr("ANY"), value: 0 }, { label: "FHD", value: 1920 },
+                    { label: "QHD", value: 2560 }, { label: "4K", value: 3840 }]
+                current: WallpaperHub.whMinWidth
+                onPicked: value => WallpaperHub.setWh("whMinWidth", value)
+            }
+            ChipRow {
+                visible: filterPanel.wallhaven
+                title: Translation.tr("Sort")
+                options: [{ label: Translation.tr("AUTO"), value: "" }, { label: Translation.tr("NEW"), value: "new" },
+                    { label: Translation.tr("RANDOM"), value: "random" }, { label: Translation.tr("LARGE"), value: "large" },
+                    { label: Translation.tr("WIDE"), value: "wide" }]
+                current: WallpaperHub.whSort
+                onPicked: value => WallpaperHub.setWh("whSort", value)
+            }
+            ChipRow {
+                title: Translation.tr("Change wallpaper every")
+                options: WallpaperRotation.intervals.map(m => ({
+                    label: m === 0 ? Translation.tr("OFF") : m < 60 ? m + " MIN" : (m / 60) + " H", value: m }))
+                current: WallpaperRotation.minutes
+                onPicked: value => WallpaperRotation.setMinutes(value)
+            }
+            ChipRow {
+                visible: WallpaperRotation.enabled
+                title: Translation.tr("From")
+                options: [{ label: Translation.tr("FAVOURITES"), value: "favorites" },
+                    { label: Translation.tr("WALLPAPERS FOLDER"), value: "folder" }]
+                current: WallpaperRotation.from
+                onPicked: value => WallpaperRotation.setFrom(value)
             }
         }
     }

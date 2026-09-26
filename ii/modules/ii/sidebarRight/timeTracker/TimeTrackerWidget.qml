@@ -58,9 +58,54 @@ Item {
             }
         }
     }
+    property bool toolMissing: false
+    /// [{ tag, seconds }] for today, biggest first, plus the totals.
+    property var todayRows: []
+    property real todayTotal: 0
+    property string lastTag: ""
+
+    // timew stamps are "20260925T222239Z" — not ISO, so Date can't take them.
+    function _stamp(v) {
+        if (!v || v.length < 15) return null;
+        return new Date(`${v.slice(0,4)}-${v.slice(4,6)}-${v.slice(6,8)}`
+            + `T${v.slice(9,11)}:${v.slice(11,13)}:${v.slice(13,15)}Z`);
+    }
     Process {
         id: summaryProc
-        stdout: StdioCollector { onStreamFinished: root.todaySummary = (this.text || "").trim() }
+        stdout: StdioCollector {
+            onStreamFinished: {
+                const t = (this.text || "").trim()
+                if (t === "__NOTOOL__") {
+                    root.toolMissing = true
+                    root.todaySummary = ""
+                    return
+                }
+                root.toolMissing = false
+                // `timew export` is JSON; the old `timew summary` was an ASCII
+                // table, which is why this card used to render as terminal
+                // output. Aggregate per tag so the UI can lay it out.
+                let data = [];
+                try { data = JSON.parse(t || "[]") ?? []; } catch (e) { data = []; }
+                const byTag = ({});
+                let total = 0, last = "";
+                for (const entry of data) {
+                    const from = root._stamp(entry.start);
+                    if (!from) continue;
+                    const to = entry.end ? root._stamp(entry.end) : new Date();
+                    const secs = Math.max(0, (to - from) / 1000);
+                    const tag = (entry.tags && entry.tags.length > 0)
+                        ? entry.tags.join(" ") : Translation.tr("Untagged");
+                    byTag[tag] = (byTag[tag] ?? 0) + secs;
+                    total += secs;
+                    last = tag;
+                }
+                root.todayRows = Object.keys(byTag)
+                    .map(k => ({ tag: k, seconds: byTag[k] }))
+                    .sort((a, b) => b.seconds - a.seconds);
+                root.todayTotal = total;
+                root.lastTag = last;
+            }
+        }
     }
     function refresh() {
         activeProc.exec({ command: ["bash", "-c",
@@ -72,7 +117,9 @@ Item {
             "  tags=\"$tags $(timew get dom.active.tag.$i 2>/dev/null)\"; done; echo \"$tags\" | sed 's/^ *//'; }; " +
             "timew get dom.active.json 2>/dev/null | sed -n 's/.*\"annotation\":\"\\([^\"]*\\)\".*/\\1/p' | head -1"
         ] })
-        summaryProc.exec({ command: ["bash", "-c", "LC_TIME=C timew summary :day 2>/dev/null || true"] })
+        summaryProc.exec({ command: ["bash", "-c",
+            "command -v timew >/dev/null || { echo __NOTOOL__; exit 0; }; " +
+            "timew export :day 2>/dev/null || echo '[]'"] })
     }
     Component.onCompleted: refresh()
     Connections {
@@ -196,6 +243,36 @@ Item {
             visible: !root.running
             Layout.fillWidth: true
             spacing: 6
+            // Continuing what you were last doing is the commonest action and
+            // had no button at all.
+            Repeater {
+                model: (root.lastTag !== "" && !root.running) ? [root.lastTag] : []
+                delegate: Rectangle {
+                    required property string modelData
+                    implicitWidth: contTextItem.implicitWidth + 34
+                    implicitHeight: 30
+                    radius: Appearance.rounding.full
+                    color: contHov.hovered ? Appearance.colors.colPrimary : Appearance.colors.colPrimaryContainer
+                    Behavior on color { animation: Appearance.animation.elementMoveFast.colorAnimation.createObject(this) }
+                    HoverHandler { id: contHov }
+                    TapHandler { onTapped: root.startTag(modelData) }
+                    RowLayout {
+                        anchors.centerIn: parent
+                        spacing: 4
+                        MaterialSymbol {
+                            text: "replay"
+                            iconSize: Appearance.font.pixelSize.normal
+                            color: contHov.hovered ? Appearance.colors.colOnPrimary : Appearance.colors.colOnPrimaryContainer
+                        }
+                        StyledText {
+                            id: contTextItem
+                            text: modelData
+                            font.pixelSize: Appearance.font.pixelSize.smaller
+                            color: contHov.hovered ? Appearance.colors.colOnPrimary : Appearance.colors.colOnPrimaryContainer
+                        }
+                    }
+                }
+            }
             Repeater {
                 model: ["Research", "Personal", "Reading", "Learning", "Other", "Break"]
                 delegate: Rectangle {
@@ -234,15 +311,23 @@ Item {
                 RowLayout {
                     Layout.fillWidth: true
                     StyledText {
-                        Layout.fillWidth: true
                         text: Translation.tr("Today")
                         font.pixelSize: Appearance.font.pixelSize.smaller
                         font.weight: Font.DemiBold
                         color: Appearance.colors.colOnLayer2
                     }
+                    Item { Layout.fillWidth: true }
+                    StyledText {
+                        visible: root.todayTotal > 0
+                        text: root.fmtDuration(root.todayTotal)
+                        font.pixelSize: Appearance.font.pixelSize.normal
+                        font.weight: Font.Bold
+                        font.family: Appearance.font.family.monospace
+                        color: Appearance.colors.colPrimary
+                    }
                     Rectangle {
                         Layout.preferredWidth: 22; Layout.preferredHeight: 22
-                        radius: 11
+                        radius: Appearance.rounding.full
                         color: refHov.hovered ? Appearance.colors.colLayer3 : "transparent"
                         HoverHandler { id: refHov }
                         TapHandler { onTapped: root.refresh() }
@@ -253,22 +338,73 @@ Item {
                         }
                     }
                 }
-                Flickable {
+                // Empty and missing-tool states, centred rather than a line of
+                // text stranded in a large card.
+                ColumnLayout {
                     Layout.fillWidth: true
-                    Layout.fillHeight: true
-                    contentWidth: width
-                    contentHeight: summaryText.implicitHeight
-                    clip: true
+                    Layout.topMargin: 8
+                    Layout.bottomMargin: 8
+                    visible: root.todayRows.length === 0
+                    spacing: 4
+                    MaterialSymbol {
+                        Layout.alignment: Qt.AlignHCenter
+                        text: root.toolMissing ? "error_outline" : "hourglass_empty"
+                        iconSize: Appearance.font.pixelSize.huge
+                        color: Appearance.colors.colSubtext
+                    }
                     StyledText {
-                        id: summaryText
-                        width: parent.width
-                        text: root.todaySummary !== ""
-                            ? root.todaySummary
-                            : Translation.tr("No tracked time today.")
-                        font.family: "monospace"
-                        font.pixelSize: Appearance.font.pixelSize.smaller - 1
-                        color: Appearance.colors.colOnLayer2
-                        wrapMode: Text.NoWrap
+                        Layout.alignment: Qt.AlignHCenter
+                        text: root.toolMissing
+                            ? Translation.tr("Timewarrior is not installed")
+                            : Translation.tr("Nothing tracked today")
+                        font.pixelSize: Appearance.font.pixelSize.smaller
+                        color: Appearance.colors.colSubtext
+                    }
+                }
+
+                // One row per tag, longest first, with its share of the day.
+                Repeater {
+                    model: root.todayRows
+                    delegate: ColumnLayout {
+                        id: row
+                        required property var modelData
+                        readonly property real share: root.todayTotal > 0
+                            ? modelData.seconds / root.todayTotal : 0
+                        Layout.fillWidth: true
+                        spacing: 1
+
+                        RowLayout {
+                            Layout.fillWidth: true
+                            spacing: 6
+                            StyledText {
+                                Layout.fillWidth: true
+                                text: row.modelData.tag
+                                font.pixelSize: Appearance.font.pixelSize.smaller
+                                color: Appearance.colors.colOnLayer2
+                                elide: Text.ElideRight
+                            }
+                            StyledText {
+                                text: root.fmtDuration(row.modelData.seconds)
+                                font.pixelSize: Appearance.font.pixelSize.smaller
+                                font.family: Appearance.font.family.monospace
+                                color: Appearance.colors.colOnLayer2
+                            }
+                        }
+                        Rectangle {
+                            Layout.fillWidth: true
+                            implicitHeight: 4
+                            radius: Appearance.rounding.full
+                            color: Qt.alpha(Appearance.colors.colOnLayer2, 0.16)
+                            Rectangle {
+                                anchors { left: parent.left; top: parent.top; bottom: parent.bottom }
+                                width: parent.width * row.share
+                                radius: parent.radius
+                                color: Appearance.colors.colPrimary
+                                Behavior on width {
+                                    animation: Appearance.animation.elementMoveFast.numberAnimation.createObject(this)
+                                }
+                            }
+                        }
                     }
                 }
             }

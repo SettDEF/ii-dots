@@ -386,19 +386,13 @@ Item { // Bar content region
                             color: rightSidebarButton.colText
                         }
                     }
-                    Revealer {
-                        reveal: Audio.source?.audio?.muted ?? false
-                        Layout.fillHeight: true
-                        Layout.rightMargin: reveal ? indicatorsRowLayout.realSpacing : 0
-                        Behavior on Layout.rightMargin {
-                            animation: Appearance.animation.elementMoveFast.numberAnimation.createObject(this)
-                        }
-                        MaterialSymbol {
-                            text: "mic_off"
-                            iconSize: Appearance.font.pixelSize.larger
-                            color: rightSidebarButton.colText
-                        }
-                    }
+                    // NOTE: the microphone indicator lives further down, next to
+                    // the network symbol. There used to be a second one here —
+                    // a Revealer on `Audio.source.muted` — so a muted mic drew
+                    // TWO crossed-out icons a few slots apart, in two different
+                    // colours, saying the same thing. The one below replaces it
+                    // outright: it also reports recording, opens the mic panel
+                    // when clicked, and carries a tooltip. Don't re-add one here.
                     HyprlandXkbIndicator {
                         Layout.alignment: Qt.AlignVCenter
                         Layout.rightMargin: indicatorsRowLayout.realSpacing
@@ -415,6 +409,36 @@ Item { // Bar content region
                         }
                         NotificationUnreadCount {
                             id: notificationUnreadCount
+                        }
+                    }
+                    /**
+                     * Microphone state.
+                     *
+                     * Shown only when it is worth knowing — muted, or something
+                     * is recording — so it costs no space the rest of the time.
+                     * Today's whole "bodycam can't hear me" hunt was a mic that
+                     * had been muted and turned down to 1.8%, and nothing on
+                     * screen said so; a crossed-out icon here would have ended
+                     * it in a glance. Red while recording is the same
+                     * convention every OS uses for "you are live".
+                     */
+                    MaterialSymbol {
+                        id: micIndicator
+                        Layout.rightMargin: visible ? indicatorsRowLayout.realSpacing : 0
+                        visible: Mic.muted || Mic.recordingStreams.length > 0
+                        text: Mic.muted ? "mic_off" : "mic"
+                        iconSize: Appearance.font.pixelSize.larger
+                        color: Mic.muted ? Appearance.m3colors.m3error
+                             : Mic.recordingStreams.length > 0 ? Appearance.m3colors.m3error
+                             : rightSidebarButton.colText
+                        TapHandler {
+                            gesturePolicy: TapHandler.ReleaseWithinBounds
+                            onTapped: GlobalStates.micOpen = !GlobalStates.micOpen
+                        }
+                        StyledToolTip {
+                            text: Mic.muted
+                                ? Translation.tr("Microphone muted")
+                                : Translation.tr("%1 app(s) recording").arg(Mic.recordingStreams.length)
                         }
                     }
                     MaterialSymbol {

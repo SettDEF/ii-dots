@@ -1,3 +1,4 @@
+import qs
 import qs.modules.common
 import qs.modules.common.widgets
 import qs.services
@@ -68,6 +69,31 @@ DialogListItem {
                         return statusText;
                     }
                 }
+            }
+
+            // Per-device controls. Only shown when this device actually has
+            // some - Devices.capabilitiesFor() decides, so a new device type
+            // needs no change here.
+            RippleButton {
+                visible: Devices.hasControls(root.device?.name ?? "")
+                implicitWidth: 30
+                implicitHeight: 30
+                buttonRadius: Appearance.rounding.full
+                onClicked: {
+                    GlobalStates.deviceControlsName = root.device?.name ?? ""
+                    GlobalStates.openDeviceControlsRequest++
+                }
+                // Not "tune": that glyph is already the generic settings
+                // button in the audio panels, and two identical icons in one
+                // row is two guesses about what the button does. "instant_mix"
+                // is vertical faders - reads as "this device's knobs".
+                contentItem: MaterialSymbol {
+                    anchors.centerIn: parent
+                    text: "instant_mix"
+                    iconSize: 17
+                    color: Appearance.colors.colOnLayer3
+                }
+                StyledToolTip { text: Translation.tr("Device controls") }
             }
 
             MaterialSymbol {

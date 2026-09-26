@@ -29,7 +29,7 @@ Item {
     // tab chips inline. The "Tools" label collapses as the chips grow, so the
     // pill trades one static word for the tabs rather than carrying both; the
     // grid_view icon rotates as the affordance either way.
-    property bool toolsOpen: false
+    property bool toolsOpen: true
 
     property var pillTabs: []
     function updatePillTabs() {
@@ -44,6 +44,12 @@ Item {
     Connections {
         target: Finance
         function onLoadedChanged() { root.updatePillTabs(); }
+    }
+    Connections {
+        target: GlobalStates
+        function onSidebarLeftOpenChanged() {
+            if (GlobalStates.sidebarLeftOpen) Qt.callLater(root.focusActiveItem)
+        }
     }
 
     Component.onCompleted: {
@@ -64,6 +70,8 @@ Item {
     property int tabCount: swipeView.count
 
 
+    // Nothing used to call this, so the open page never got keyboard focus and
+    // the AI message field stayed dead until it was clicked.
     function focusActiveItem() {
         if (swipeView.currentItem) {
             if (swipeView.currentItem.item) {
@@ -141,11 +149,8 @@ Item {
             Layout.fillHeight: false
             implicitHeight: Math.max(leftSidebarTitleContainer.implicitHeight, leftSidebarButtonsRow.implicitHeight)
 
-            // ── Tools pill (clickable, expands to reveal tab chips) ────────
-            // Tap the pill → toolsOpen flips → the grid_view icon rotates and
-            // a horizontal strip of tab chips slides out inside the same pill.
-            // Pill auto-grows because its implicitWidth comes from the Row's
-            // implicitWidth, which scales with the animated tabsContainer.
+            // Tools pill: tapping it hides the tab row below and reclaims its
+            // height. The grid_view icon rotates to show which way it is.
             Rectangle {
                 id: leftSidebarTitleContainer
                 anchors {
@@ -157,7 +162,10 @@ Item {
                     ? Appearance.colors.colLayer1Hover
                     : Appearance.colors.colLayer1
                 radius: height / 2
-                implicitWidth: leftSidebarTitleRow.implicitWidth + 24
+                // Capped: the pill and the button group share colLayer1, so when
+                // the pill grew into them they read as one merged shape.
+                implicitWidth: Math.min(leftSidebarTitleRow.implicitWidth + 24,
+                    Math.max(120, parent.width - leftSidebarButtonsRow.implicitWidth - 12))
                 implicitHeight: leftSidebarTitleRow.implicitHeight + 8
                 Behavior on color        { ColorAnimation  { duration: 180 } }
                 Behavior on implicitWidth { NumberAnimation { duration: 240; easing.type: Easing.OutCubic } }
@@ -177,48 +185,23 @@ Item {
                         rotation: root.toolsOpen ? 45 : 0
                         Behavior on rotation { NumberAnimation { duration: 260; easing.type: Easing.OutCubic } }
                     }
-                    // ── "Tools" label, collapsed while the tabs are out ────
-                    // The label and the chip strip share this Row, and an active
-                    // chip shows its own text. With both up, the pill carried two
-                    // competing labels and ran out of room. The word is the
-                    // affordance for a CLOSED pill; once the tabs are visible they
-                    // name the thing better than a static heading does.
-                    //
-                    // Collapsed by width rather than plain `visible`, so it slides
-                    // out on the same curve the chips slide in on. `visible` is
-                    // gated on width so the Row does not keep an 8px gap where a
-                    // zero-width item used to be.
-                    Item {
-                        id: toolsLabelContainer
+                    StyledText {
+                        id: toolsLabel
                         anchors.verticalCenter: parent.verticalCenter
-                        height: parent.height
-                        clip: true
-                        width: root.toolsOpen ? 0 : toolsLabel.implicitWidth
-                        opacity: root.toolsOpen ? 0 : 1
-                        visible: width > 0.5
-                        Behavior on width   { NumberAnimation { duration: 260; easing.type: Easing.OutCubic } }
-                        Behavior on opacity { NumberAnimation { duration: 200 } }
-
-                        StyledText {
-                            id: toolsLabel
-                            anchors.verticalCenter: parent.verticalCenter
-                            font.pixelSize: Appearance.font.pixelSize.normal
-                            color: Appearance.colors.colOnLayer0
-                            text: Translation.tr("Tools")
-                            font.weight: Font.DemiBold
-                        }
+                        font.pixelSize: Appearance.font.pixelSize.normal
+                        color: Appearance.colors.colOnLayer0
+                        text: Translation.tr("Tools")
+                        font.weight: Font.DemiBold
                     }
-
-                    // ── Expanding tab chip strip ───────────────────────────
-                    // Sits at width 0 when closed (Row collapses it), grows to
-                    // tabsRow.implicitWidth + a divider when open. `clip: true`
-                    // keeps the chips from spilling out during the transition.
+                    // Divider + top-level tabs, icons only. Collapsed by an
+                    // animated width inside a clip, not by `visible` — the Row
+                    // then slides them out on a curve instead of popping.
                     Item {
                         id: tabsContainer
                         anchors.verticalCenter: parent.verticalCenter
                         height: parent.height
                         clip: true
-                        visible: root.pillTabs.length > 0
+                        visible: width > 0.5 && root.pillTabs.length > 0
                         width: root.toolsOpen ? tabsRow.implicitWidth + 8 : 0
                         opacity: root.toolsOpen ? 1 : 0
                         Behavior on width   { NumberAnimation { duration: 260; easing.type: Easing.OutCubic } }
@@ -229,70 +212,23 @@ Item {
                             anchors.left: parent.left
                             anchors.leftMargin: 8
                             anchors.verticalCenter: parent.verticalCenter
-                            spacing: 4
+                            spacing: 6
 
-                            // Slim vertical divider between the grid toggle and the chips.
                             Rectangle {
                                 anchors.verticalCenter: parent.verticalCenter
-                                width: 1; height: 14
+                                width: 1; height: 16
                                 color: Appearance.colors.colOnLayer0
                                 opacity: 0.25
                             }
-
-                            Repeater {
-                                model: root.pillTabs
-                                delegate: Rectangle {
-                                    id: pill
-                                    required property var modelData
-                                    required property int index
-                                    readonly property bool active: swipeView.currentIndex === index
-
-                                    anchors.verticalCenter: parent.verticalCenter
-                                    implicitHeight: 26
-                                    implicitWidth: pillRow.implicitWidth + (active ? 16 : 10)
-                                    radius: 13
-
-                                    color: active
-                                        ? Appearance.colors.colSecondaryContainer
-                                        : (pillHov.hovered ? Appearance.colors.colLayer2 : "transparent")
-                                    Behavior on color         { ColorAnimation  { duration: 160 } }
-                                    Behavior on implicitWidth { NumberAnimation { duration: 220; easing.type: Easing.OutCubic } }
-
-                                    HoverHandler { id: pillHov }
-                                    TapHandler { onTapped: swipeView.currentIndex = pill.index }
-
-                                    Row {
-                                        id: pillRow
-                                        anchors.centerIn: parent
-                                        spacing: 5
-                                        MaterialSymbol {
-                                            anchors.verticalCenter: parent.verticalCenter
-                                            text: pill.modelData.icon
-                                            iconSize: 15
-                                            fill: pill.active ? 1 : 0
-                                            color: pill.active
-                                                ? Appearance.m3colors.m3onSecondaryContainer
-                                                : Appearance.colors.colOnLayer0
-                                            Behavior on color { ColorAnimation { duration: 160 } }
-                                        }
-                                        StyledText {
-                                            anchors.verticalCenter: parent.verticalCenter
-                                            text: pill.modelData.label
-                                            font.pixelSize: Appearance.font.pixelSize.smaller - 1
-                                            font.weight: Font.DemiBold
-                                            visible: pill.active
-                                            color: Appearance.m3colors.m3onSecondaryContainer
-                                        }
-                                    }
-
-                                    StyledToolTip {
-                                        visible: (pillHov.hovered || Appearance.touchUi) && !pill.active
-                                        text: pill.modelData.label
-                                    }
-                                }
+                            SidebarLeftTabRow {
+                                anchors.verticalCenter: parent.verticalCenter
+                                tabs: root.pillTabs
+                                currentIndex: swipeView.currentIndex
+                                onPicked: idx => swipeView.currentIndex = idx
                             }
                         }
                     }
+
                 }
             }
 
@@ -351,6 +287,7 @@ Item {
 
             SwipeView { // Content pages
                 id: swipeView
+                onCurrentIndexChanged: Qt.callLater(root.focusActiveItem)
                 anchors.fill: parent
                 visible: root.pillTabs.length > 0
                 spacing: 10

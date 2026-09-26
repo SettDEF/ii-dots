@@ -11,6 +11,9 @@ StyledPopup {
     property string formattedUptime: DateTime.uptime
     property string todosSection: getUpcomingTodos()
 
+    // Built fresh on every hover, so this is the right place to ask.
+    Component.onCompleted: Kalends.refreshNext()
+
     function getUpcomingTodos() {
         const unfinishedTodos = Todo.list.filter(function (item) {
             return !item.done;
@@ -46,6 +49,26 @@ StyledPopup {
             icon: "timelapse"
             label: Translation.tr("System uptime:")
             value: root.formattedUptime
+        }
+
+        // Next event. Asked for when this popup is built, not polled: the
+        // popup only exists while hovered, so a closed bar costs nothing.
+        StyledPopupValueRow {
+            visible: Kalends.nextEvent !== null
+            icon: "event_upcoming"
+            label: Translation.tr("Next:")
+            value: Kalends.nextLabel()
+            emphasized: true
+        }
+        StyledText {
+            visible: Kalends.nextEvent !== null
+            Layout.fillWidth: true
+            Layout.leftMargin: 4
+            horizontalAlignment: Text.AlignLeft
+            wrapMode: Text.Wrap
+            font.pixelSize: Appearance.font.pixelSize.smaller
+            color: Appearance.colors.colOnSurfaceVariant
+            text: Kalends.nextEvent?.summary ?? ""
         }
 
         // Tasks

@@ -53,9 +53,22 @@ Scope {
                 }
                 property bool superShow: false
                 property bool mustShow: hoverRegion.containsMouse || superShow
+
+                // Per MONITOR, not per focused workspace: a game fullscreen
+                // on one display must not blank the bar on the other.
+                readonly property bool fullscreenHere: {
+                    if (!(Config?.options.bar.autoHide.onFullscreen ?? true)) return false;
+                    const mon = (HyprlandData.monitors ?? []).find(m => m?.name === barRoot.screen?.name);
+                    const wsId = mon?.activeWorkspace?.id;
+                    if (wsId === undefined || wsId === null) return false;
+                    return (HyprlandData.workspaceById?.[wsId]?.hasfullscreen) === true;
+                }
+                // Hovering the edge still reveals it.
+                readonly property bool hidden: !mustShow
+                    && ((Config?.options.bar.autoHide.enable ?? false) || barRoot.fullscreenHere)
                 readonly property real shelfHeight: Math.round(barRoot.screen.height * 0.20)
                 exclusionMode: ExclusionMode.Ignore
-                exclusiveZone: (Config?.options.bar.autoHide.enable && (!mustShow || !Config?.options.bar.autoHide.pushWindows)) ? 0 :
+                exclusiveZone: (barRoot.fullscreenHere || (Config?.options.bar.autoHide.enable && (!mustShow || !Config?.options.bar.autoHide.pushWindows))) ? 0 :
                     Appearance.sizes.baseBarHeight + (Config.options.bar.cornerStyle === 1 ? Appearance.sizes.hyprlandGapsOut : 0)
                     + (GlobalStates.shelfOpen ? barRoot.shelfHeight : 0)
                 WlrLayershell.namespace: "quickshell:bar"
@@ -115,7 +128,7 @@ Scope {
                             left: parent.left
                             top: parent.top
                             bottom: undefined
-                            topMargin: (Config?.options.bar.autoHide.enable && !mustShow) ? -Appearance.sizes.barHeight : 0
+                            topMargin: barRoot.hidden ? -Appearance.sizes.barHeight : 0
                             bottomMargin: (Config.options.interactions.deadPixelWorkaround.enable && barRoot.anchors.bottom) * -1
                             rightMargin: (Config.options.interactions.deadPixelWorkaround.enable && barRoot.anchors.right) * -1
                         }
@@ -141,7 +154,7 @@ Scope {
                             PropertyChanges {
                                 target: barContent
                                 anchors.topMargin: 0
-                                anchors.bottomMargin: (Config?.options.bar.autoHide.enable && !mustShow) ? -Appearance.sizes.barHeight : 0
+                                anchors.bottomMargin: barRoot.hidden ? -Appearance.sizes.barHeight : 0
                             }
                         }
                     }

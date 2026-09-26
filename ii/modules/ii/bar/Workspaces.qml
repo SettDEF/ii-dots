@@ -93,7 +93,7 @@ Item {
         target: Hyprland
         function onFocusedWorkspaceChanged() {
             root.updateWorkspaceData()
-            if (Config.options.bar.workspaces.switchFlash) {
+            if (Config.options.bar.workspaces.switchFlash && !GameMode.active) {
                 root.switchFlashActive = true
                 switchFlashTimer.restart()
             }

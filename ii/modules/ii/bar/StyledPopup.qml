@@ -1,3 +1,4 @@
+import qs.services
 import qs.modules.common
 import qs.modules.common.widgets
 import qs.modules.common.functions
@@ -62,20 +63,27 @@ LazyLoader {
 
         exclusionMode: ExclusionMode.Ignore
         exclusiveZone: 0
+        // Centred on the hover target, then clamped so no popup can leave the
+        // monitor. Without the clamp a wide popup near an edge is simply cut
+        // off — there is no repositioning anywhere else in this path.
         margins {
             left: {
-                if (!Config.options.bar.vertical) return root.QsWindow?.mapFromItem(
-                    root.hoverTarget, 
+                if (Config.options.bar.vertical) return Appearance.sizes.verticalBarWidth;
+                const centred = root.QsWindow?.mapFromItem(
+                    root.hoverTarget,
                     (root.hoverTarget.width - popupBackground.implicitWidth) / 2, 0
-                ).x;
-                return Appearance.sizes.verticalBarWidth
+                ).x ?? 0;
+                const room = ScreenFit.logicalWidth(popupWindow) - popupWindow.implicitWidth;
+                return Math.max(0, Math.min(centred, room));
             }
             top: {
                 if (!Config.options.bar.vertical) return Appearance.sizes.barHeight;
-                return root.QsWindow?.mapFromItem(
-                    root.hoverTarget, 
+                const centred = root.QsWindow?.mapFromItem(
+                    root.hoverTarget,
                     (root.hoverTarget.height - popupBackground.implicitHeight) / 2, 0
-                ).y;
+                ).y ?? 0;
+                const room = ScreenFit.logicalHeight(popupWindow) - popupWindow.implicitHeight;
+                return Math.max(0, Math.min(centred, room));
             }
             right: Appearance.sizes.verticalBarWidth
             bottom: Appearance.sizes.barHeight

@@ -168,6 +168,13 @@ Rectangle {
                         required property int index
                         required property var modelData
                         showToggledHighlight: false
+                        // Compact: this rail shares a 350px group with the
+                        // month grid, so every px it gives back is a px the
+                        // calendar gets.
+                        baseSize: 48
+                        baseHighlightHeight: 30
+                        iconSize: 21
+                        labelSize: Appearance.font.pixelSize.smallie
                         toggled: root.selectedTab == index
                         buttonText: modelData.name
                         buttonIcon: modelData.icon

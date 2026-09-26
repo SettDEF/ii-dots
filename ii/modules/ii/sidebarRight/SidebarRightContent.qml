@@ -30,6 +30,7 @@ Item {
     property bool showAudioOutputDialog: false
     property bool showAudioInputDialog: false
     property bool showDevicesDialog: false
+    property bool showDeviceControlsDialog: false
     property bool showNightLightDialog: false
     property bool showWifiDialog: false
     property bool showKdeConnectDialog: false
@@ -884,6 +885,27 @@ Item {
                 Bluetooth.defaultAdapter.enabled = true;
                 Bluetooth.defaultAdapter.discovering = true;
             }
+        }
+    }
+
+    // Per-device controls, opened from a row's control button. Declared AFTER
+    // the device list on purpose: these are siblings at the same z, so the one
+    // written later is the one that draws on top - and this one is opened FROM
+    // the list, so it has to sit over it, scrim and all.
+    ToggleDialog {
+        shownPropertyString: "showDeviceControlsDialog"
+        dialog: DeviceControlsDialog {
+            device: BluetoothStatus.friendlyDeviceList
+                .find(d => d?.name === GlobalStates.deviceControlsName) ?? null
+            onDismiss: root.showDeviceControlsDialog = false
+        }
+        onShownChanged: if (shown) Devices.refreshCards()
+    }
+
+    Connections {
+        target: GlobalStates
+        function onOpenDeviceControlsRequestChanged() {
+            root.showDeviceControlsDialog = true
         }
     }
 

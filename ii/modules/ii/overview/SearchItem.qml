@@ -116,8 +116,12 @@ RippleButton {
         // A group drills into its subcommands by rewriting the query, so the
         // launcher must stay open; closing it first made selecting a group
         // look like it did nothing.
-        if (!root.isGroup)
+        if (!root.isGroup) {
             GlobalStates.overviewOpen = false
+            // Also reused by the Start Menu (modules/ii/startMenu/), whose
+            // own flag this row knows nothing else about.
+            GlobalStates.startMenuOpen = false
+        }
         root.itemExecute()
     }
 

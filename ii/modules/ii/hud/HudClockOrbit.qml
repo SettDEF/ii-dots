@@ -28,7 +28,8 @@ Item {
     // Slow ambient rotation — one revolution every 3 min.
     property real spin: 0
     NumberAnimation on spin {
-        running: true
+        // Gated on visibility: an infinite animation on a hidden item still ticks.
+        running: root.visible
         loops: Animation.Infinite
         from: 0; to: 2 * Math.PI
         duration: 180000
