@@ -164,37 +164,16 @@ Item { // Player instance
             anchors.margins: 13
             spacing: 15
 
-            Rectangle { // Art background
-                id: artBackground
+            // Shared with the dock's media card, so a track with no cover
+            // art gets the same generated mark in both places instead of the
+            // empty grey square this used to show.
+            MediaArtwork {
                 Layout.fillHeight: true
-                implicitWidth: height
-                radius: Appearance.rounding.verysmall
-                color: ColorUtils.transparentize(blendedColors.colLayer1, 0.5)
-
-                layer.enabled: true
-                layer.effect: OpacityMask {
-                    maskSource: Rectangle {
-                        width: artBackground.width
-                        height: artBackground.height
-                        radius: artBackground.radius
-                    }
-                }
-
-                StyledImage { // Art image
-                    id: mediaArt
-                    property int size: parent.height
-                    anchors.fill: parent
-
-                    source: root.displayedArtFilePath
-                    fillMode: Image.PreserveAspectCrop
-                    cache: false
-                    antialiasing: true
-
-                    width: size
-                    height: size
-                    sourceSize.width: size
-                    sourceSize.height: size
-                }
+                size:    height
+                source:  root.displayedArtFilePath
+                seed:    String(root.player?.trackTitle ?? "") + String(root.player?.trackArtist ?? "")
+                accent:  blendedColors.colPrimary
+                surface: blendedColors.colLayer1
             }
 
             ColumnLayout { // Info & controls

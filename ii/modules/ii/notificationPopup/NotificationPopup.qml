@@ -26,9 +26,13 @@ Scope {
             bottom: true
         }
 
+        // Clicks only land on the notifications themselves - except while the
+        // bell's menu is open, when the whole strip takes them so the menu can
+        // be clicked (and a click beside it can dismiss it).
         mask: Region {
-            item: listview.contentItem
+            item: (popupMenu.opened || popupMenu.closing) ? fullArea : listview.contentItem
         }
+        Item { id: fullArea; anchors.fill: parent }
 
         color: "transparent"
         implicitWidth: Appearance.sizes.notificationPopupWidth
@@ -44,6 +48,10 @@ Scope {
             }
             implicitWidth: parent.width - Appearance.sizes.elevationMargin * 2
             popup: true
+            // Same mute menu as the notification centre.
+            Component.onCompleted: contextMenu = popupMenu
         }
+
+        PopupContextMenu { id: popupMenu }
     }
 }

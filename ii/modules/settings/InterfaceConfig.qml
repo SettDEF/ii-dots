@@ -131,14 +131,151 @@ ContentPage {
                 }
             }
         }
-        ConfigSwitch {
-            buttonIcon: "colors"
-            text: Translation.tr("Tint app icons")
-            checked: Config.options.dock.monochromeIcons
-            onCheckedChanged: {
-                Config.options.dock.monochromeIcons = checked;
+        ConfigSelectionArray {
+            // Folder grid on hovering a file manager.
+            currentValue: Config.options.dock.folderGrid
+            onSelected: newValue => {
+                Config.options.dock.folderGrid = newValue;
+            }
+            options: [
+                { displayName: Translation.tr("Folders: always"), value: "always" },
+                { displayName: Translation.tr("Only when closed"), value: "noWindows" },
+                { displayName: Translation.tr("Never"), value: "off" }
+            ]
+        }
+
+        ConfigSelectionArray {
+            currentValue: Config.options.dock.position
+            onSelected: newValue => {
+                Config.options.dock.position = newValue;
+            }
+            options: [
+                { displayName: Translation.tr("Bottom"), value: "bottom" },
+                { displayName: Translation.tr("Top"), value: "top" }
+            ]
+        }
+
+        ConfigRow {
+            uniform: true
+            ConfigSwitch {
+                // Off = a bar flush to the edge, on = a floating island.
+                buttonIcon: "select_all"
+                text: Translation.tr("Floating")
+                checked: Config.options.dock.floating
+                onCheckedChanged: {
+                    Config.options.dock.floating = checked;
+                }
+            }
+            ConfigSwitch {
+                buttonIcon: "colors"
+                text: Translation.tr("Tint app icons")
+                checked: Config.options.dock.monochromeIcons
+                onCheckedChanged: {
+                    Config.options.dock.monochromeIcons = checked;
+                }
             }
         }
+
+        ConfigSpinBox {
+            text: Translation.tr("Item spacing")
+            value: Config.options.dock.spacing
+            from: 0
+            to: 24
+            stepSize: 1
+            onValueChanged: {
+                Config.options.dock.spacing = value;
+            }
+        }
+
+        // What the dock is made of. These four existed as config keys with no
+        // control anywhere, so the only way to change them was hand-editing
+        // config.json — which is exactly the thing a non-terminal user cannot do.
+        ConfigRow {
+            uniform: true
+            ConfigSwitch {
+                buttonIcon: "wallpaper"
+                text: Translation.tr("Background")
+                checked: Config.options.dock.showBackground
+                onCheckedChanged: {
+                    Config.options.dock.showBackground = checked;
+                }
+            }
+            ConfigSwitch {
+                buttonIcon: "keep"
+                text: Translation.tr("Pin button")
+                checked: Config.options.dock.showPinButton
+                onCheckedChanged: {
+                    Config.options.dock.showPinButton = checked;
+                }
+            }
+        }
+        ConfigRow {
+            uniform: true
+            ConfigSwitch {
+                buttonIcon: "apps"
+                text: Translation.tr("Apps button")
+                checked: Config.options.dock.showAppsButton
+                onCheckedChanged: {
+                    Config.options.dock.showAppsButton = checked;
+                }
+            }
+            ConfigSwitch {
+                buttonIcon: "music_note"
+                text: Translation.tr("Media player")
+                checked: Config.options.dock.showMedia
+                onCheckedChanged: {
+                    Config.options.dock.showMedia = checked;
+                }
+            }
+            ConfigSwitch {
+                buttonIcon: "open_in_full"
+                text: Translation.tr("Expand media on hover")
+                checked: Config.options.dock.mediaExpandOnHover
+                enabled: Config.options.dock.showMedia
+                onCheckedChanged: {
+                    Config.options.dock.mediaExpandOnHover = checked;
+                }
+            }
+        }
+
+        ConfigSpinBox {
+            // Added on top of the card; the dock itself never grows.
+            text: Translation.tr("Media expansion height")
+            value: Config.options.dock.mediaExpandedHeight
+            enabled: Config.options.dock.showMedia && Config.options.dock.mediaExpandOnHover
+            from: 32
+            to: 120
+            stepSize: 2
+            onValueChanged: {
+                Config.options.dock.mediaExpandedHeight = value;
+            }
+        }
+
+        ConfigSpinBox {
+            text: Translation.tr("Dock height")
+            value: Config.options.dock.height
+            from: 40
+            to: 120
+            stepSize: 2
+            onValueChanged: {
+                Config.options.dock.height = value;
+            }
+        }
+
+        ConfigSpinBox {
+            // How tall the invisible strip at the screen edge is. Too small and
+            // the dock is hard to summon; this is the single most common reason
+            // "hover to reveal" feels broken.
+            text: Translation.tr("Reveal zone height")
+            value: Config.options.dock.hoverRegionHeight
+            from: 1
+            to: 20
+            stepSize: 1
+            onValueChanged: {
+                Config.options.dock.hoverRegionHeight = value;
+            }
+        }
+
     }
 
     ContentSection {
@@ -246,6 +383,24 @@ ContentPage {
                 onValueChanged: {
                     Config.options.lock.blur.extraZoom = value / 100;
                 }
+            }
+        }
+    }
+
+    ContentSection {
+        icon: "music_note"
+        title: Translation.tr("Media")
+
+        ConfigSpinBox {
+            // One value for the dock card and the media popup — they share
+            // MediaArtwork, so they cannot drift apart.
+            text: Translation.tr("Cover art corner radius")
+            value: Config.options.media.coverRadius
+            from: 0
+            to: 32
+            stepSize: 1
+            onValueChanged: {
+                Config.options.media.coverRadius = value;
             }
         }
     }

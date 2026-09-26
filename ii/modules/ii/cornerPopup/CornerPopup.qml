@@ -346,6 +346,8 @@ Scope {
                                 // ── 6-slot row: mute (1) │ slider (2) │ title (1) │ raise (1) │ stop (1)
                                 component IconBtn: Rectangle {
                                     property string sym: ""
+                                    property string tip: ""
+                                    property bool active: false
                                     property var onTap: () => {}
                                     Layout.alignment: Qt.AlignVCenter
                                     Layout.fillWidth: true
@@ -362,11 +364,25 @@ Scope {
                                         anchors.centerIn: parent
                                         text: parent.sym
                                         iconSize: 16
-                                        color: Appearance.colors.colOnLayer0
+                                        color: parent.active ? Appearance.colors.colPrimary
+                                                             : Appearance.colors.colOnLayer0
+                                    }
+                                    // These are 16px glyphs with no labels — "T"
+                                    // for copy-title in particular told nobody
+                                    // anything. A tooltip costs no layout space.
+                                    StyledToolTip {
+                                        extraVisibleCondition: false
+                                        alternativeVisibleCondition: ibHov.hovered
+                                        text: parent.tip
                                     }
                                 }
 
-                                IconBtn { sym: "volume_off"; onTap: () => playerCard.toggleMute() }
+                                IconBtn {
+                                    sym: PlayerService.activePlayer?.volume > 0 ? "volume_up" : "volume_off"
+                                    active: !(PlayerService.activePlayer?.volume > 0)
+                                    tip: Translation.tr("Mute")
+                                    onTap: () => playerCard.toggleMute()
+                                }
 
                                 // Compact volume slider — takes up two slots' worth of row
                                 // width via the stretch factor. Drives the active player's
@@ -376,8 +392,11 @@ Scope {
                                     id: volSlider
                                     Layout.alignment: Qt.AlignVCenter
                                     Layout.fillWidth: true
-                                    Layout.horizontalStretchFactor: 2
-                                    Layout.preferredHeight: 30
+                                    Layout.horizontalStretchFactor: 3
+                                    // 30px made the track read as two separate
+                                    // pills rather than one slider at this size.
+                                    Layout.preferredHeight: 20
+                                    Layout.leftMargin: -4
                                     from: 0; to: 1
                                     // Some MPRIS players don't expose canSetVolume reliably
                                     // (and the phone bridge always accepts writes), so stay
@@ -409,8 +428,16 @@ Scope {
                                     }
                                 }
 
-                                IconBtn { sym: "title";       onTap: () => playerCard.copyTitle() }
-                                IconBtn { sym: "open_in_new"; onTap: () => playerCard.raiseApp() }
+                                IconBtn {
+                                    sym: "content_copy"
+                                    tip: Translation.tr("Copy title")
+                                    onTap: () => playerCard.copyTitle()
+                                }
+                                IconBtn {
+                                    sym: "open_in_new"
+                                    tip: Translation.tr("Show the player")
+                                    onTap: () => playerCard.raiseApp()
+                                }
                                 // Stop removed — pause/play on the main strip already
                                 // serves the same purpose (pause is reversible, stop wasn't).
                             }

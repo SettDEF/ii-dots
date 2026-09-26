@@ -143,10 +143,14 @@ Rectangle {
     }
 
     implicitWidth: 360
-    implicitHeight: col.implicitHeight + 28
+    /// Inside another panel: no card of its own and no title row, so it is a
+    /// section of that panel rather than a panel pasted into it.
+    property bool embedded: false
+
+    implicitHeight: col.implicitHeight + (root.embedded ? 0 : 28)
     radius: Appearance.rounding.windowRounding
-    color: Appearance.colors.colLayer0
-    border.width: 1
+    color: root.embedded ? "transparent" : Appearance.colors.colLayer0
+    border.width: root.embedded ? 0 : 1
     border.color: Appearance.colors.colLayer0Border
 
     // ── Processes ────────────────────────────────────────────────────────
@@ -212,10 +216,13 @@ Rectangle {
 
     ColumnLayout {
         id: col
-        anchors { left: parent.left; right: parent.right; top: parent.top; margins: 14 }
+        x: root.embedded ? 0 : 14
+        y: root.embedded ? 0 : 14
+        width: parent.width - (root.embedded ? 0 : 28)
         spacing: 12
 
         RowLayout {
+            visible: !root.embedded
             Layout.fillWidth: true; spacing: 8
             MaterialSymbol { text: "bolt"; iconSize: Appearance.font.pixelSize.title; color: Appearance.colors.colPrimary }
             StyledText {

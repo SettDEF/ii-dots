@@ -307,11 +307,18 @@ Scope {
                     spacing: 8
 
                     ToastButton {
-                        visible: ClipboardWatch.url.length > 0 && !card.editing
+                        // Also offered for a copied FILE PATH, not just a URL.
+                        // Previously a path produced no Open button at all,
+                        // because only http(s) set ClipboardWatch.url.
+                        visible: !card.editing
+                            && (ClipboardWatch.url.length > 0 || ClipboardWatch.filePath.length > 0)
                         icon: "open_in_new"
-                        tip: Translation.tr("Open link")
+                        tip: ClipboardWatch.filePath.length > 0
+                            ? Translation.tr("Open file") : Translation.tr("Open link")
                         onActivated: {
-                            Quickshell.execDetached(["xdg-open", ClipboardWatch.url]);
+                            Quickshell.execDetached(["xdg-open",
+                                ClipboardWatch.url.length > 0 ? ClipboardWatch.url
+                                                              : ClipboardWatch.filePath]);
                             card.shown = false;
                         }
                     }
@@ -352,10 +359,15 @@ Scope {
                         Quickshell.execDetached(["bash", "-c",
                             `mkdir -p ~/Pictures/Clipboard && cp '${path}' ~/Pictures/Clipboard/clip-$(date +%Y%m%d-%H%M%S).png`]);
                     } else if (kind === "files") {
-                        Quickshell.execDetached(["bash", "-c",
-                            ClipboardWatch.isImage
-                                ? `xdg-open "$(dirname '${path}')"`
-                                : "xdg-open ~/Pictures/Clipboard 2>/dev/null || xdg-open ~"]);
+                        // Show the folder the copied thing is REALLY in. The
+                        // old non-image branch ignored the clipboard entirely
+                        // and opened ~/Pictures/Clipboard, so copying a path
+                        // and pressing Files landed you in your home folder.
+                        const target = ClipboardWatch.isImage ? path
+                                     : (ClipboardWatch.filePath.length > 0 ? ClipboardWatch.filePath : "");
+                        Quickshell.execDetached(["bash", "-c", target.length > 0
+                            ? `xdg-open "$(dirname '${target}')"`
+                            : "xdg-open ~/Pictures/Clipboard 2>/dev/null || xdg-open ~"]);
                     } else if (kind === "open") {
                         Quickshell.execDetached(["xdg-open", ClipboardWatch.url]);
                     }

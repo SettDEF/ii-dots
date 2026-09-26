@@ -1,0 +1,6 @@
+module qs.modules.ii.startMenu
+StartMenu 1.0 StartMenu.qml
+StartMenuContent 1.0 StartMenuContent.qml
+StartMenuHome 1.0 StartMenuHome.qml
+StartMenuAppTile 1.0 StartMenuAppTile.qml
+StartMenuResults 1.0 StartMenuResults.qml

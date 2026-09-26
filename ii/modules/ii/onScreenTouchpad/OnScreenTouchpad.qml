@@ -75,7 +75,11 @@ Scope {
             property real pendingDy: 0
             Timer {
                 id: flush
-                interval: 16; repeat: true; running: true
+                // Only while there is motion to flush. PanelLoader builds this
+                // panel whether or not it is shown, so an always-on 16ms timer
+                // was 60 wakeups a second for an early return.
+                interval: 16; repeat: true
+                running: tpRoot.pendingDx !== 0 || tpRoot.pendingDy !== 0
                 onTriggered: {
                     const dx = Math.round(tpRoot.pendingDx)
                     const dy = Math.round(tpRoot.pendingDy)

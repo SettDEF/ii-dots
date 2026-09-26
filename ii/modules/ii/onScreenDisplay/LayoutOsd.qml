@@ -53,7 +53,8 @@ Scope {
 
             readonly property bool effectiveShow: root.shown
 
-            visible: true
+            // Unmapped when idle: an empty overlay still stops a fullscreen game from scanning out directly.
+            visible: osd.effectiveShow || card.visible
             color: "transparent"
             exclusionMode: ExclusionMode.Ignore
             exclusiveZone: 0

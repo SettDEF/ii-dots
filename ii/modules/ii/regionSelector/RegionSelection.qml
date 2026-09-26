@@ -209,6 +209,7 @@ PanelWindow {
         onExited: (exitCode, exitStatus) => {
             if (root._gone) return;
             if (root.enableContentRegions) imageDetectionProcess.running = true;
+            root.grimDone = true;
             root.preparationDone = !checkRecordingProc.running;
         }
     }
@@ -224,9 +225,11 @@ PanelWindow {
             root.recordingShouldStop = (exitCode === 0);
         }
     }
+    property bool grimDone: false
     property bool preparationDone: false
-    onPreparationDoneChanged: {
-        if (!preparationDone) return;
+    readonly property bool ready: preparationDone && frozen.status !== Image.Loading && frozen.status !== Image.Null
+    onReadyChanged: {
+        if (!ready) return;
         if (root.isRecording && root.recordingShouldStop) {
             Quickshell.execDetached([Directories.recordScriptPath]);
             root.dismiss();
@@ -281,9 +284,7 @@ PanelWindow {
         if (root.regionWidth <= 0 || root.regionHeight <= 0) {
             console.warn("[Region Selector] Invalid region size, skipping snip.");
             root.dismiss();
-            // The return is load-bearing: without it this fell through to the
-            // crop, and ImageMagick reads a 0 in a crop geometry as "to the
-            // edge", silently copying a 2px strip instead of erroring.
+            // Load-bearing return: a zero-size crop must not reach the crop step.
             return;
         }
 
@@ -310,7 +311,7 @@ PanelWindow {
             screenshotAction, //
             screenshotDir
         )
-        // Run fully detached — the post-processing (magick crop, wl-copy)
+        // Run fully detached — the post-processing (crop, wl-copy)
         // must outlive this region-selector window, which root.dismiss()
         // tears down immediately below. A Process tied to this component
         // can have its detached child killed during teardown; wl-copy
@@ -319,12 +320,23 @@ PanelWindow {
         root.dismiss();
     }
 
-    ScreencopyView {
+    // The frozen screen is the grim capture, the same pixels the crop uses. A
+    // one-shot ScreencopyView could land after this window mapped and freeze
+    // its own dim overlay into the picture, which darkened the screen at random.
+    Item {
         anchors.fill: parent
-        live: false
-        captureSource: root.screen
 
         focus: root.visible
+
+        Image {
+            id: frozen
+            anchors.fill: parent
+            source: root.grimDone ? "file://" + root.screenshotPath : ""
+            asynchronous: true
+            cache: false
+            smooth: true
+            mipmap: false
+        }
         Keys.onPressed: (event) => { // Esc to close
             if (event.key === Qt.Key_Escape) {
                 root.dismiss();

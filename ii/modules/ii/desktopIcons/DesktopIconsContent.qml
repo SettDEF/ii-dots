@@ -1,11 +1,5 @@
-// KDE-style desktop icons. Grid layout over ~/Desktop, snap-grid by default
-// with free-form repositioning via drag. Right-click on an icon → file
-// actions menu; right-click on empty space → folder/refresh/wallpaper menu.
-//
-// Memory budget: ~5 MB baseline (delegates + MIME icons). With thumbnails
-// on, peak is ~30 MB for a typical Desktop folder (20–40 items × ~500 KB
-// per cached pixmap). Both the panel and content are LazyPanelLoader-
-// driven from the family file — toggled off, RAM cost is 0.
+// KDE-style desktop icons over ~/Desktop: snap grid with drag repositioning,
+// per-icon and empty-space context menus, rubberband multi-select.
 import qs
 import qs.services
 import qs.modules.common
@@ -25,36 +19,17 @@ Item {
     readonly property int cellSize: Math.max(56, Math.min(160, Config.options.desktop.icons.iconSize))
     readonly property int padding: 14
     readonly property int labelHeight: 28
-    // Horizontal pitch. The label is allowed to use this full width rather
-    // than just cellSize, which is why names elide far less than they did.
     readonly property int gridStep: cellSize + 24
-    // Vertical pitch MUST clear the label, not just the icon: a tile is
-    // cellSize + labelHeight tall, so stepping by cellSize + 28 left exactly
-    // zero gap and every label sat against the icon above it.
+    // Vertical pitch must clear the label, not just the icon.
     readonly property int gridStepY: cellSize + labelHeight + 16
     // ── Reserved-edge insets ───────────────────────────────────────────
-    // The Background layer surface spans the full screen — including the
-    // strip the bar / vertical bar / dock occupies — so icons would draw
-    // UNDER those without these offsets. Mirrors each panel's anchor
-    // logic from its .qml so a config switch (bar on bottom, vertical
-    // bar, dock off) automatically flips the inset to the matching edge.
+    // The layer spans the full screen, so inset icons away from the bar/dock per their config.
     readonly property bool _barOnBottom: Config.options.bar.bottom === true
     readonly property bool _barIsVertical: Config.options.bar.vertical === true
     readonly property int _gap: Math.round(Appearance.sizes.hyprlandGapsOut)
-    // What the COMPOSITOR actually reserved, which is the only source that
-    // knows about layers this config did not create. Here MiniMeters reserves
-    // the top 68px and the bar sits below it, so the monitor reports 108 —
-    // while the bar-height calculation alone gives ~53 and puts the first row
-    // of icons underneath the bar.
-    //
-    // Index 1 is the top edge (verified against a top-only reservation of
-    // [0, 108, 0, 0]). Taken as a MAX with the config-derived value so a
-    // missing or differently-ordered `reserved` degrades to the old behaviour
-    // rather than dumping icons at the screen edge.
-    // The monitor THIS instance is on, not monitors[0]. One panel exists per
-    // screen, and reservations differ per screen: eDP-1 reserves 40 here while
-    // HDMI-A-1 reserves 168 for MiniMeters, so indexing [0] put the icons
-    // 128px too high on the second monitor - straight under MiniMeters.
+    // Top inset = max(compositor-reserved, bar-derived): only the monitor knows about foreign
+    // layers (e.g. MiniMeters). reserved[1] is the top edge. Use THIS screen's monitor, not
+    // monitors[0]: reservations differ per screen.
     readonly property string screenName: root.QsWindow.window?.screen?.name ?? ""
     readonly property var _mon: {
         const list = HyprlandData.monitors ?? [];
@@ -76,18 +51,13 @@ Item {
         ? Math.round(Appearance.sizes.verticalBarWidth) + _gap + padding : padding
     readonly property int insetRight: (_barIsVertical && _barOnBottom)
         ? Math.round(Appearance.sizes.verticalBarWidth) + _gap + padding : padding
-    // True while ANY tile is being dragged. A multi-selection moves through
-    // saved positions rather than under the cursor, so those tiles would
-    // animate and trail the one you are actually holding — the group has to
-    // move rigidly with it.
+    // True while any tile drags, so a multi-selection moves rigidly instead of animating.
     property bool anyDragging: false
 
     readonly property bool showHidden: Config.options.desktop.icons.showHidden
     readonly property bool useThumbs: Config.options.desktop.icons.thumbnails
     // FolderListModel.SortField: 0=Unsorted 1=Name 2=Time 3=Size 4=Type
-    // sortMode is "field" or "field:desc" — the direction rides along in the
-    // same string so no new config key is needed (unknown keys get dropped by
-    // the schema on reload).
+    // sortMode is "field" or "field:desc" (avoids a new config key the schema would drop).
     readonly property string sortField: String(Config.options.desktop.icons.sortMode || "name").split(":")[0]
     readonly property bool sortDesc: String(Config.options.desktop.icons.sortMode || "").endsWith(":desc")
     readonly property int sortFieldIdx: {
@@ -110,13 +80,7 @@ Item {
 
     // ── Persisted icon positions ───────────────────────────────────────
     // { filename → { x, y } } so dragging is sticky across sessions.
-    //
-    // Local state is the source of truth during a session. Config is only
-    // read ONCE at startup. The previous onPositionsChanged handler
-    // self-raced: our own _savePositions() write would trigger the
-    // handler, which re-read Config (sometimes catching the disk-flushed
-    // OLD value mid-debounce) and overwrote our fresh in-memory state.
-    // That's why only one position was persisting despite many drags.
+    // Config is read once at startup; re-reading on change raced with our own saves.
     property var iconPositions: ({})
     function _loadPositions() {
         try { iconPositions = JSON.parse(Config.options.desktop.icons.positions || "{}") }
@@ -126,30 +90,24 @@ Item {
         Config.options.desktop.icons.positions = JSON.stringify(iconPositions)
     }
     Component.onCompleted: _loadPositions()
-    // Changing sort doesn't change the file count, so nothing else would wake
-    // the layout timer. Safe to fire unconditionally: it re-flows only when the
-    // stored sort differs from the active one.
+    // Sort changes don't change the file count, so wake the layout timer explicitly.
     onSortFieldIdxChanged: persistLayoutTimer.restart()
-    // No Connections on Config.options.desktop.icons.positions —
-    // that handler caused the persistence-loss race. If the user resets
-    // positions via Settings, they can reload Quickshell to pick it up.
 
-    // Source of truth for the visible items.
-    // Directory listing — deliberately NOT FolderListModel. That model stat()s
-    // every entry from its own thread to decide isDir, and a symlink into an
-    // absent automount (~/Desktop holds several into /mnt/nuke9100) makes the
-    // stat block for the full autofs timeout: 15–30s per entry, retried every
-    // 30s forever. It happens inside Qt before any QML runs, so it cannot be
-    // capped or skipped — it stalled the whole shell.
-    //
-    // `find` without -L never dereferences, so an unavailable mount is never
-    // entered, and the timeout bounds it regardless. Same listing costs ~3ms.
+    // Listing via `find`, NOT FolderListModel: its stat() of symlinks into an absent automount
+    // (/mnt/nuke9100) blocks for the autofs timeout, inside Qt, and stalled the whole shell.
     QtObject {
         id: dirModel
         readonly property string folder: (Quickshell.env("HOME") || "/home/caesar") + "/Desktop"
         property var entries: []
         readonly property int count: dirModel.entries.length
         property bool ready: false
+
+        /// Symlink name -> true if it points at a directory. Kept across refreshes so
+        /// links don't flash as files, then folders, on every poll.
+        property var linkDirs: ({})
+
+        /// Signature of the last published listing; an unchanged one isn't republished.
+        property string lastKey: ""
         function get(index, role) {
             const e = dirModel.entries[index];
             return e === undefined ? undefined : e[role];
@@ -167,6 +125,11 @@ Item {
                   "-printf", "%y\\t%s\\t%T@\\t%f\\n"]
         stdout: StdioCollector {
             onStreamFinished: {
+                // Unchanged → publish nothing; reassigning rebuilds every delegate and reloads icons.
+                const key = text + "\u0000" + root.sortFieldIdx + "\u0000" + root.showHidden;
+                if (key === dirModel.lastKey && dirModel.ready) return;
+                dirModel.lastKey = key;
+
                 const list = [];
                 for (const line of text.split("\n")) {
                     if (line.length === 0) continue;
@@ -179,7 +142,9 @@ Item {
                         fileName: name,
                         filePath: dirModel.folder + "/" + name,
                         fileUrl: "file://" + dirModel.folder + "/" + name,
-                        fileIsDir: parts[0] === "d",
+                        // Remembered verdict applied here so a symlinked folder never shows as a file.
+                        fileIsDir: parts[0] === "d"
+                                   || (parts[0] === "l" && dirModel.linkDirs[name] === true),
                         isSymlink: parts[0] === "l",
                         fileSize: parseInt(parts[1]) || 0,
                         fileModified: parseFloat(parts[2]) || 0,
@@ -198,10 +163,8 @@ Item {
                 });
                 dirModel.entries = list;
                 dirModel.ready = true;
-                // Symlinks come back as type "l" because the listing above
-                // never dereferences. Promote the ones that really point at
-                // directories so they get folder icons.
-                if (list.some(e => e.isSymlink)) {
+                // Ask about symlinks with no verdict yet (the listing never dereferences).
+                if (list.some(e => e.isSymlink && dirModel.linkDirs[e.fileName] === undefined)) {
                     linkProc.running = false;
                     Qt.callLater(() => linkProc.running = true);
                 }
@@ -209,27 +172,30 @@ Item {
         }
     }
 
-    // Promote symlinks that really point at directories.
-    //
-    // NOT `find -xtype d`. That dereferences, and dereferencing a link into an
-    // autofs mount whose device is gone parks the process in uninterruptible D
-    // state (wchan: autofs_wait) for the mount timeout — 600s on
-    // /mnt/nuke9100, which ~/Desktop links into. The old `timeout 2` guard was
-    // useless because SIGTERM is not delivered to a task in D state, so the 4s
-    // timer below spawned a new stuck find faster than they drained: 764
-    // failing automounts in 30 minutes, and Dolphin crawled along with it.
-    // The helper reads targets without ever following them.
+    // Promote symlinks that point at directories. NOT `find -xtype d`: dereferencing into a
+    // dead autofs mount parks the process in D state (immune to `timeout`) for 600s.
+    // The helper reads targets without following them.
     Process {
         id: linkProc
         command: ["bash", Quickshell.shellPath("scripts/fs/dir-symlinks.sh"), dirModel.folder]
         stdout: StdioCollector {
             onStreamFinished: {
-                if (text.trim().length === 0) return;
                 const dirs = ({});
                 for (const line of text.split("\n"))
                     if (line.length > 0) dirs[line] = true;
+
+                // Record a verdict for EVERY symlink; an unrecorded "no" would re-run this forever.
+                const next = Object.assign({}, dirModel.linkDirs);
+                let changed = false;
+                for (const e of dirModel.entries) {
+                    if (!e.isSymlink) continue;
+                    const verdict = dirs[e.fileName] === true;
+                    if (next[e.fileName] !== verdict) { next[e.fileName] = verdict; changed = true; }
+                }
+                if (!changed) return;
+                dirModel.linkDirs = next;
                 dirModel.entries = dirModel.entries.map(e =>
-                    (e.isSymlink && dirs[e.fileName])
+                    (e.isSymlink && next[e.fileName] === true && !e.fileIsDir)
                         ? Object.assign({}, e, { fileIsDir: true }) : e);
             }
         }
@@ -238,14 +204,13 @@ Item {
     // find is one-shot, so poll for changes. A listing is ~3ms.
     Timer {
         interval: 4000
-        running: true
+        running: !GameMode.active
         repeat: true
         triggeredOnStart: true
         onTriggered: dirModel.refresh()
     }
 
-    // Safe area — everything (icons, click handlers) lives inside this
-    // Item so the reserved bar / dock strips stay click-through and free.
+    // Safe area: keeps the reserved bar/dock strips click-through.
     Item {
         id: safeArea
         anchors.fill: parent
@@ -254,10 +219,7 @@ Item {
         anchors.leftMargin:   root.insetLeft
         anchors.rightMargin:  root.insetRight
 
-        // The insets move the CONTAINER, not the tiles — their x/y are
-        // relative to it and never change — so the per-tile Behaviors cannot
-        // smooth this. When the sticky top window appears or disappears and
-        // the reserved area changes, the whole grid has to glide itself.
+        // Insets move the container, not the tiles, so the grid has to glide itself.
         Behavior on anchors.topMargin {
             NumberAnimation { duration: 220; easing.type: Easing.OutCubic }
         }
@@ -271,17 +233,13 @@ Item {
             NumberAnimation { duration: 220; easing.type: Easing.OutCubic }
         }
 
-        // Empty-space handler: plain click clears selection, right-click
-        // opens the folder menu, left-press+drag draws the rubberband.
-        // z: -1 so per-tile MouseAreas (added later by the Repeater) win
-        // when the press lands on an icon.
+        // Empty space: click clears, right-click menu, left-drag rubberband. z: -1 so tiles win.
         MouseArea {
             id: emptyClickArea
             anchors.fill: parent
             acceptedButtons: Qt.LeftButton | Qt.RightButton
             hoverEnabled: true
-            // Touch has no right button, so without this the desktop menu
-            // does not exist on a tablet at all.
+            // Touch has no right button; long-press opens the menu.
             pressAndHoldInterval: 450
             onPressAndHold: (m) => {
                 if (m.button !== Qt.LeftButton || emptyClickArea._dragging) return
@@ -300,10 +258,7 @@ Item {
                 _dragging = false
                 _justDragged = false
                 if (mouse.button === Qt.LeftButton) {
-                    // Don't clear yet — user might be starting a rubberband
-                    // additive drag (Ctrl held). Clear happens in onClicked
-                    // for non-drag presses, or in onReleased when a drag
-                    // committed without Ctrl.
+                    // Don't clear yet: may be an additive (Ctrl) rubberband.
                     root._rubberbandActive = true
                     root._rubberbandX = mouse.x
                     root._rubberbandY = mouse.y
@@ -327,15 +282,10 @@ Item {
                     root._rubberbandRecompute()
                 }
             }
-            // QML fires onClicked AFTER onReleased. We need a flag that
-            // outlives the release so onClicked can tell "this was a
-            // committed drag, don't clear selection". `_dragging` would
-            // be reset by then; `_justDragged` persists until the next
-            // press resets it.
+            // onClicked fires AFTER onReleased; _justDragged outlives the release.
             property bool _justDragged: false
             onReleased: (mouse) => {
                 if (_dragging && root._rubberbandActive) {
-                    // Commit the hit set into the real selection.
                     const m = root._rubberbandAdditive
                         ? Object.assign({}, root.selectedFiles)
                         : {}
@@ -369,9 +319,7 @@ Item {
             }
         }
 
-        // Rubberband visual. Drawn inside safeArea so its coords match
-        // the tile coords directly. Sits on top of tiles (z: 100) but
-        // is purely decorative — input goes through to the MouseArea.
+        // Rubberband visual, in safeArea coords to match the tiles.
         Rectangle {
             visible: root._rubberbandActive && (root._rubberbandW > 1 || root._rubberbandH > 1)
             x: root._rubberbandX
@@ -383,15 +331,12 @@ Item {
             border.width: 1
             border.color: Appearance.m3colors.m3primary
             radius: 4
-            // Pure overlay — no input, so the MouseArea below still sees
-            // the drag-motion events that grew this rectangle.
             enabled: false
         }
     }
 
     // ── Selection model ────────────────────────────────────────────────
-    // path → true. var (not Set) so QML binding updates fire and value
-    // semantics work the same on every reassign.
+    // path → true. A var map (not Set) so bindings update on reassign.
     property var selectedFiles: ({})
     // Last clicked path — anchor for Shift-click range selection.
     property string selectionAnchor: ""
@@ -417,34 +362,19 @@ Item {
         const m = Object.assign({}, selectedFiles)
         m[path] = true; selectedFiles = m
     }
-    // Range-select between the anchor and `path` using current model order.
     // ── Rubberband selection state ─────────────────────────────────────
-    // Active during a left-press+drag on empty space. Coords are in
-    // safeArea-local space so they match tile.x/tile.y directly.
+    // Coords are safeArea-local, matching tile x/y.
     property bool _rubberbandActive: false
     property real _rubberbandX: 0
     property real _rubberbandY: 0
     property real _rubberbandW: 0
     property real _rubberbandH: 0
-    // True when the drag started with Ctrl held → the rubberband UNIONs
-    // with the prior selection on release instead of replacing it.
+    // Ctrl-started drag unions with the prior selection on release.
     property bool _rubberbandAdditive: false
-    // Live hit map updated by _rubberbandRecompute. Tiles read it as a
-    // SECOND source of truth (path → true) so they highlight during the
-    // drag without committing into selectedFiles until release.
+    // Live hits (path → true); tiles highlight from it before release commits.
     property var _rubberbandHits: ({})
-    // Recompute hits by intersecting the rubberband rect with each
-    // tile's bounding box. O(N) per move — fine for a typical desktop
-    // (10–100 items). Tiles register themselves via _tileBounds on
-    // create / position change.
     property var _tileBounds: ({})   // path → {x, y, w, h}
-    // Mutated IN PLACE rather than copy-on-write. These fire from every
-    // tile's onXChanged/onYChanged, so during a drag or an animated snap that
-    // was a full map copy per tile per frame — ~24 tiles x 60fps x 2 axes,
-    // each copying a 24-entry object, plus a property-change notification
-    // each time. Nothing binds to _tileBounds reactively; it is only read
-    // inside _rubberbandRecompute() and the group-drag loop, both of which
-    // run on demand and see the current values anyway.
+    // Mutated in place: fires per tile per frame during drags, and nothing binds to it.
     function _registerTile(path, x, y, w, h) {
         _tileBounds[path] = { x: x, y: y, w: w, h: h }
     }
@@ -497,13 +427,7 @@ Item {
         if (/\.(sh|bash|zsh|fish|py|js|ts|rs|go|c|cpp|h|hpp|qml|json|yaml|yml|toml)$/i.test(name)) return "code"
         return "draft"
     }
-    // XDG icon-name lookup so Quickshell.iconPath() resolves against
-    // the user's installed icon theme (e.g. breeze-plus-dark). Special
-    // folders inside ~/Desktop get themed sub-icons (Pictures, Music,
-    // etc.); regular dirs get inode-directory; files get the standard
-    // <type>-x-generic name pattern. Returned name feeds into
-    // Quickshell.iconPath(name, fallback) — falls back to MaterialSymbol
-    // if the theme has no match.
+    // XDG icon name for Quickshell.iconPath(); MaterialSymbol is the fallback.
     function _themeIconName(name, isDir) {
         const lower = name.toLowerCase()
         if (isDir) {
@@ -540,10 +464,7 @@ Item {
     }
 
     // ── Per-icon menu ──────────────────────────────────────────────────
-    // Acts on the WHOLE selection set when multi-select is active; the
-    // right-press on a tile in onPressed already arranged for the
-    // clicked tile to be in the selection. Single-target operations
-    // (Open with…, Rename, Properties) only show when count == 1.
+    // Acts on the whole selection; single-target items only show for one file.
     function _iconMenu(entry) {
         const paths = root._selectedCount() > 1
             ? root._selectedPaths()
@@ -597,9 +518,7 @@ Item {
             { icon: "refresh",           label: qsTr("Refresh"),
               onTriggered: () => root._refresh() },
             { separator: true },
-            // Sort by → field → order. The order level is the third panel:
-            // picking a field keeps the current direction, and each field can
-            // be given an explicit direction without leaving the menu.
+            // Sort by → field → order; each field gets an explicit direction submenu.
             { icon: "sort", label: qsTr("Sort by"), submenu: [
                 { icon: "sort_by_alpha", label: qsTr("Name"),     submenu: root._orderMenu("name") },
                 { icon: "schedule",      label: qsTr("Modified"), submenu: root._orderMenu("mtime") },
@@ -616,8 +535,7 @@ Item {
         ]
     }
 
-    // Desktop widget toggles. The menu takes plain items rather than
-    // checkboxes, so the icon carries the on/off state.
+    // Widget toggles; the menu has no checkboxes, so the icon shows on/off.
     readonly property var _widgetList: [
         { key: "clock",       icon: "schedule",          label: qsTr("Clock") },
         { key: "weather",     icon: "partly_cloudy_day", label: qsTr("Weather") },
@@ -658,22 +576,18 @@ Item {
 
     function _open(path)      { _sh("xdg-open " + _q(path)) }
     function _openWith(path)  {
-        // Re-uses xdg-open; users with a chooser like rifle/handlr can swap
-        // this. Kept light to avoid pulling in a full picker dialog.
         _sh("(command -v handlr >/dev/null && handlr open " + _q(path)
             + " || command -v xdg-mime-launcher >/dev/null && xdg-mime-launcher "
             + _q(path) + " || xdg-open " + _q(path) + ") &")
     }
     function _trash(path)     {
-        // gio is in glib2 (already a system dep). Falls back to mv into a
-        // local trash dir so the file isn't permanently lost.
+        // Falls back to mv into the local trash dir.
         _sh("command -v gio >/dev/null && gio trash " + _q(path)
             + " || (mkdir -p \"$HOME/.local/share/Trash/files\" && mv "
             + _q(path) + " \"$HOME/.local/share/Trash/files/\")")
     }
     function _setClipboard(paths, cut) {
-        // x-special/gnome-copied-files is the de-facto clipboard format for
-        // file managers — Nautilus, Nemo, Dolphin, Caja all read it.
+        // x-special/gnome-copied-files: the format Nautilus, Dolphin, etc. read.
         const op = cut ? "cut" : "copy"
         const lines = [op].concat(paths.map(p => "file://" + p)).join("\n")
         _sh("printf '%s' " + _q(lines)
@@ -712,7 +626,6 @@ Item {
         dirModel.refresh()
     }
     function _properties(path) {
-        // Hand off to a desktop properties dialog if installed.
         _sh("(command -v kio-properties >/dev/null && kio-properties " + _q(path)
             + " || command -v nautilus >/dev/null && nautilus --select " + _q(path)
             + " || notify-send -a 'Desktop' 'Path' " + _q(path) + ") &")
@@ -817,27 +730,20 @@ Item {
             id: tile
             required property int index
             required property var modelData
-            // Aliases keep every existing reference below unchanged.
             readonly property string fileName:     tile.modelData.fileName
             readonly property string filePath:     tile.modelData.filePath
             readonly property bool   fileIsDir:    tile.modelData.fileIsDir
             readonly property var    fileModified: tile.modelData.fileModified
             readonly property int    fileSize:     tile.modelData.fileSize
 
-            // Snap to grid by index unless we have a saved position.
-            // Coordinates are RELATIVE to safeArea so changing the bar
-            // position doesn't break saved layouts.
+            // Saved position (safeArea-relative), else grid slot by index.
             readonly property var savedPos: root.iconPositions[fileName]
             property real px: savedPos ? savedPos.x : ((index % root._cols) * root.gridStep)
             property real py: savedPos ? savedPos.y : (Math.floor(index / root._cols) * root.gridStepY)
             x: px
             y: py
 
-            // Corrections — snap-to-grid on drop, a re-flow after the reserved
-            // area changes, a column count change on resize — used to jump.
-            // Animate them, but ONLY when the tile is not under the finger:
-            // a Behavior during a drag makes the icon lag the cursor, which
-            // reads as the desktop being slow rather than smooth.
+            // Animate corrections (snap, re-flow), but not during a drag: icons would lag the cursor.
             Behavior on x {
                 enabled: !root.anyDragging
                 NumberAnimation { duration: 140; easing.type: Easing.OutCubic }
@@ -853,9 +759,6 @@ Item {
             readonly property bool selected: root._isSelected(filePath)
                 || root._rubberbandHits[filePath] === true
 
-            // Register / update bounds with the rubberband intersector
-            // so it can hit-test in O(1) per move (instead of walking the
-            // ListView delegates each time).
             Component.onCompleted: root._registerTile(filePath, x, y, width, height)
             Component.onDestruction: root._unregisterTile(filePath)
             onXChanged: root._registerTile(filePath, x, y, width, height)
@@ -883,11 +786,7 @@ Item {
                 width: root.cellSize
                 height: root.cellSize
 
-                // Thumbnail branch — only for previewable images / videos
-                // when thumbnails are enabled. ThumbnailImage reads the
-                // Freedesktop cache and triggers generation via the
-                // existing vipsthumbnail / ffmpegthumbnailer pipeline, so
-                // RAM stays bounded regardless of source file size.
+                // Thumbnail for images/videos, from the Freedesktop cache.
                 Loader {
                     anchors.fill: parent
                     active: root.useThumbs && !tile.fileIsDir
@@ -899,11 +798,7 @@ Item {
                         anchors.margins: 6
                     }
                 }
-                // Themed icon (from the user's icon theme — breeze-plus-dark
-                // etc.) Resolved via Quickshell.iconPath against the XDG
-                // icon-name spec. Hidden when the thumbnail Loader is
-                // showing a real image preview. If the theme has no
-                // matching icon, MaterialSymbol below catches it.
+                // Themed icon; hidden while a thumbnail shows.
                 Image {
                     id: themeIcon
                     anchors.centerIn: parent
@@ -923,10 +818,7 @@ Item {
                                && iconBox.children[0].item.status === Image.Ready)
                               && status === Image.Ready
                 }
-                // MaterialSymbol fallback — shown when there's no thumbnail
-                // AND the theme couldn't resolve a real icon (themeIcon
-                // failed to load). Keeps every tile rendered even if the
-                // user's theme is incomplete.
+                // MaterialSymbol fallback when neither thumbnail nor theme icon loaded.
                 MaterialSymbol {
                     anchors.centerIn: parent
                     visible: !(iconBox.children[0].active && iconBox.children[0].item
@@ -966,12 +858,8 @@ Item {
                 }
             }
 
-            // Click / drag / context handlers. Drag is left-button only —
-            // if right-click also armed a drag, the click would never
-            // fire and the icon's context menu would silently fail.
-            // Explicit `m.accepted = true` on every handler so the layer-
-            // shell surface considers the event consumed (otherwise QML
-            // composes a release-without-press and silently drops it).
+            // Drag is left-button only, or right-click's menu never fires. Explicit
+            // m.accepted everywhere, or the layer surface drops the release.
             MouseArea {
                 id: tileMa
                 anchors.fill: parent
@@ -988,19 +876,13 @@ Item {
                     target: tileMa.drag
                     function onActiveChanged() { root.anyDragging = tileMa.drag.active }
                 }
-                // Snapshot of every selected tile's start position when the
-                // drag begins. Lets us move the whole selection together by
-                // the same delta as the dragged tile.
+                // Start positions of the selected tiles, so the group moves by the same delta.
                 property var _dragGroupStart: ({})
                 onPressed: (m) => {
                     _grabbedX = tile.x
                     _grabbedY = tile.y
                     _dragged = false
-                    // Selection update follows KDE-style rules:
-                    //   ctrl-press     → toggle this tile in the set
-                    //   shift-press    → range-select from anchor
-                    //   plain press on selected     → keep current set
-                    //   plain press on unselected   → replace with this
+                    // KDE rules: ctrl toggles, shift ranges, plain press keeps a selected set or replaces it.
                     if (m.button === Qt.LeftButton) {
                         if (m.modifiers & Qt.ControlModifier) {
                             root._toggleSelected(tile.filePath)
@@ -1012,15 +894,10 @@ Item {
                             root.selectionAnchor = tile.filePath
                         }
                     } else if (m.button === Qt.RightButton) {
-                        // Right-press on an unselected tile narrows
-                        // selection to just it so the menu acts on a
-                        // single item. Right-press on an already-selected
-                        // tile keeps the multi-selection intact.
+                        // Right-press on an unselected tile narrows the selection to it.
                         if (!root._isSelected(tile.filePath))
                             root._selectOnly(tile.filePath)
                     }
-                    // Cache start positions of every selected tile so the
-                    // drag can move them together. Skip if right-pressing.
                     if (m.button === Qt.LeftButton && root._isSelected(tile.filePath)) {
                         const snap = {}
                         for (const p of root._selectedPaths()) {
@@ -1039,10 +916,7 @@ Item {
                     const dy = tile.y - _grabbedY
                     if (!_dragged && (Math.abs(dx) > 2 || Math.abs(dy) > 2))
                         _dragged = true
-                    // Group-drag visual: live-shift every other selected
-                    // tile by writing into the shared position store. The
-                    // delegate's `savedPos` binding rebinds and they all
-                    // move together while the user drags.
+                    // Live-shift the other selected tiles through the shared position store.
                     if (_dragged && Object.keys(_dragGroupStart).length > 1) {
                         const mp = Object.assign({}, root.iconPositions)
                         for (const p of Object.keys(_dragGroupStart)) {
@@ -1066,22 +940,18 @@ Item {
                     if (_dragged) {
                         const dx = tile.x - _grabbedX
                         const dy = tile.y - _grabbedY
-                        // Snap the dragged tile to grid.
                         const sx = Math.max(0, Math.round(tile.x / root.gridStep) * root.gridStep)
                         const sy = Math.max(0, Math.round(tile.y / root.gridStepY) * root.gridStepY)
                         tile.px = sx
                         tile.py = sy
                         const mp = Object.assign({}, root.iconPositions)
                         mp[tile.fileName] = { x: sx, y: sy }
-                        // Move every OTHER selected tile by the dragged
-                        // tile's snapped delta, so the group stays in the
-                        // same relative arrangement.
+                        // Move the other selected tiles by the snapped delta.
                         const deltaX = sx - _grabbedX
                         const deltaY = sy - _grabbedY
                         for (const p of Object.keys(_dragGroupStart)) {
                             if (p === tile.filePath) continue
-                            // Look up that path's filename via the model
-                            // (positions are keyed by name, not path).
+                            // Positions are keyed by name, not path.
                             for (let i = 0; i < dirModel.count; i++) {
                                 if (dirModel.get(i, "filePath") === p) {
                                     const nm = dirModel.get(i, "fileName")
@@ -1099,9 +969,7 @@ Item {
                     _dragGroupStart = {}
                     m.accepted = true
                 }
-                // Same as the empty area, plus a drag guard: dragging an
-                // icon starts with a press that dwells, and a menu popping up
-                // mid-move would be worse than no menu at all.
+                // Long-press menu, guarded: a menu popping up mid-drag is worse than none.
                 pressAndHoldInterval: 450
                 onPressAndHold: (m) => {
                     if (m.button !== Qt.LeftButton) return
@@ -1128,14 +996,10 @@ Item {
                                       isDir: tile.fileIsDir
                                   }))
                     }
-                    // Left-click selection already settled in onPressed.
                     m.accepted = true
                 }
                 onDoubleClicked: (m) => {
                     if (m.button === Qt.LeftButton) {
-                        // Opens every selected file — KDE-style "open the
-                        // group" if user double-clicks while multiple are
-                        // selected, falling back to just this one.
                         const paths = root._selectedCount() > 1
                             ? root._selectedPaths()
                             : [tile.filePath]
@@ -1150,11 +1014,8 @@ Item {
     // Auto-grid: how many columns fit horizontally inside the safe area.
     readonly property int _cols: Math.max(1, Math.floor(safeArea.width / gridStep))
 
-    // Give every icon a saved position: pinned ones keep theirs, the rest get
-    // the next free cell. That both stops auto-placed tiles landing on a cell a
-    // pinned one owns, and makes the layout stable across refreshes.
-    // Positions for files that no longer exist are left alone but reserve
-    // nothing, so ghosts don't hold empty gaps.
+    // Give every icon a saved position: pinned keep theirs, the rest take the next
+    // free cell. Stale entries reserve nothing.
     Timer {
         id: persistLayoutTimer
         interval: 900   // a refresh emits many countChanged in a burst
@@ -1162,10 +1023,7 @@ Item {
         onTriggered: {
             if (!dirModel.ready || dirModel.count === 0)
                 return;
-            // Re-flow when the sort mode differs from the one this layout was
-            // built with. A saved position beats model order, so without this a
-            // "Sort by" did nothing at all. Stored as a reserved key inside the
-            // positions blob — it can never collide with a real file name.
+            // Re-flow when the sort mode changed (saved positions beat model order).
             const wantSort = Config.options.desktop.icons.sortMode || "name";
             let next = Object.assign({}, root.iconPositions);
             if (next.__sort !== wantSort)
@@ -1205,10 +1063,7 @@ Item {
     // ── Context menu surface (above everything in this content) ───────
     PopupContextMenu { id: ctx }
 
-    // Keyboard: Delete → trash every selected file, F2 → rename the
-    // single-selected file (no-op when multi-selected — KDE blocks this
-    // too because the rename dialog is intrinsically 1-target), Ctrl+A
-    // → select everything in the folder, Esc → clear selection.
+    // Delete trashes the selection, F2 renames a single one, Ctrl+A selects all, Esc clears.
     Keys.onPressed: (event) => {
         if (event.key === Qt.Key_Delete && root._selectedCount() > 0) {
             for (const p of root._selectedPaths()) _trash(p)

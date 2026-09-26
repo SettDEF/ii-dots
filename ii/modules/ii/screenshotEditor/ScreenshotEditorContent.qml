@@ -115,8 +115,8 @@ Item {
                 overlay='${overlay}'
                 save='${savePath}'
                 saveDir='${saveDir}'
-                pw=${img.paintedWidth}
-                ph=${img.paintedHeight}
+                pw=${Math.round(img.paintedWidth)}
+                ph=${Math.round(img.paintedHeight)}
                 mkdir -p "$saveDir"
                 # If the source went away (closed too early or moved) just
                 # save the overlay alone — better than failing silently.
@@ -126,8 +126,7 @@ Item {
 See $LOG"
                     exit 1
                 fi
-                dim=$(magick "$src" -format '%wx%h' info:)
-                if magick "$src" \\( "$overlay" -resize "\${pw}x\${ph}!" -gravity center -background none -extent "$dim" \\) -composite "$save"; then
+                if "$HOME/.local/bin/tinct" image composite "$src" "$overlay" "\${pw}x\${ph}" "$save"; then
                     wl-copy < "$save" 2>/dev/null
                     rm -f "$overlay" "$src" 2>/dev/null
                     act=$(notify-send --wait -a "Screenshot" -i "$save" \\
@@ -140,11 +139,11 @@ Copied to clipboard.")
                     esac
                 else
                     notify-send -a "Screenshot" -u critical \\
-                        "Screenshot save failed" "magick failed — see $LOG"
+                        "Screenshot save failed" "tinct failed — see $LOG"
                 fi
             `]
             // grabPng's callback fires only after the overlay PNG is on
-            // disk — guarantees magick can read it.
+            // disk, so it can be read.
             drawCanvas.grabPng(overlay, function() {
                 Quickshell.execDetached(cmd)
                 root.closeRequested()

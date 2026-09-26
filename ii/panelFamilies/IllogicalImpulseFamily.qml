@@ -6,14 +6,18 @@ import qs.modules.common
 import qs.modules.ii.background
 import qs.modules.ii.bar
 import qs.modules.ii.cheatsheet
+import qs.modules.ii.captions
+import qs.modules.ii.torrents
+import qs.modules.ii.deviceTools
 import qs.modules.ii.display
 import qs.modules.ii.statsHud
 import qs.modules.ii.audio
-import qs.modules.ii.audioPlugins
+import qs.modules.ii.mic
 import qs.modules.ii.clipboardToast
 import qs.modules.ii.iris
 import qs.modules.ii.walltune
 import qs.modules.ii.dock
+import qs.modules.ii.startMenu
 import qs.modules.ii.lock
 import qs.modules.ii.mediaControls
 import qs.modules.ii.notificationPopup
@@ -141,11 +145,11 @@ Scope {
     LazyPanelLoader { isOpen: GlobalStates.kbPickerOpen;          idleMs: 30 * 1000; component: KeyboardLayoutPicker {} }
     LazyPanelLoader { isOpen: GlobalStates.kbSettingsOpen;        idleMs: 30 * 1000; component: KeyboardSettings {} }
     LazyPanelLoader { isOpen: GlobalStates.wallTuneOpen;          idleMs: 30 * 1000; component: WallTune {} }
+    LazyPanelLoader { isOpen: GlobalStates.startMenuOpen;         idleMs: 30 * 1000; component: StartMenu {} }
     // Visibility-driven like the connectivity popup, not gated by a Loader:
     // it drives its own `visible` per screen, so it wants to exist already.
-    LazyPanelLoader { isOpen: GlobalStates.audioPluginsOpen; idleMs: 60 * 1000; component: AudioPluginsPanel {} }
     PanelLoader { component: AppColors {} }
-    LazyPanelLoader { isOpen: GlobalStates.rogPowerOpen;          idleMs: 30 * 1000; component: RogPower {} }
+    PanelLoader { component: RogPanel {} }
     PanelLoader { component: SkwdWall {} }
     LazyPanelLoader { isOpen: GlobalStates.wallpaperAdjusterOpen; idleMs: 30 * 1000; component: WallpaperAdjuster {} }
     LazyPanelLoader { isOpen: GlobalStates.mouseMenuOpen; idleMs: 5 * 60 * 1000; component: MouseMenu {} }
@@ -156,6 +160,10 @@ Scope {
     PanelLoader { component: StatsHud {} }
     PanelLoader { component: StatsHudSettings {} }
     PanelLoader { component: AudioSettings {} }
+    PanelLoader { component: MicPanel {} }
+    PanelLoader { component: DeviceToolsPanel {} }
+    CaptionOverlay {}
+    TorrentPanel {}
     PanelLoader { component: IrisSettings {} }
     ClipboardToast {}
     PanelLoader { component: WallEffectPanel {} }

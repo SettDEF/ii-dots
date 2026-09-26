@@ -32,8 +32,25 @@ Scope {
     // ── ROG power & fan ──────────────────────────────────────────────────
     GlobalShortcut {
         name: "rogPowerToggle"
-        description: "Toggle ROG power & fan panel"
+        description: "Toggle the ROG control panel"
         onPressed: GlobalStates.rogPowerOpen = !GlobalStates.rogPowerOpen
+    }
+    IpcHandler {
+        target: "wallpaperRotation"
+        function next(): void { WallpaperRotation.next() }
+    }
+
+    IpcHandler {
+        target: "gameMode"
+        function toggle(): void { GameMode.toggle() }
+        function status(): string { return GameMode.active ? "on" : "off" }
+    }
+
+    IpcHandler {
+        target: "rog"
+        function toggle(): void { GlobalStates.rogPowerOpen = !GlobalStates.rogPowerOpen }
+        function open(): void   { GlobalStates.rogPowerOpen = true }
+        function close(): void  { GlobalStates.rogPowerOpen = false }
     }
 
     // ── WallpaperSelector ───────────────────────────────────────────────
@@ -197,6 +214,24 @@ Scope {
         function close(): void  { GlobalStates.hudOpen = false }
     }
 
+    // ── Start Menu (modules/ii/startMenu/) ────────────────────────────────
+    // Registered here rather than inside the module itself: it's loaded by a
+    // LazyPanelLoader, and commit b7c8ffd found out the hard way that a
+    // keybind living inside a lazily-unloaded panel stops firing once the
+    // panel unloads. Keeping it here means Super+Space and the IPC target
+    // stay live even while the menu itself is not instantiated.
+    GlobalShortcut {
+        name: "startMenuToggle"
+        description: "Toggle the Start Menu"
+        onPressed: GlobalStates.startMenuOpen = !GlobalStates.startMenuOpen
+    }
+    IpcHandler {
+        target: "startMenu"
+        function toggle(): void { GlobalStates.startMenuOpen = !GlobalStates.startMenuOpen }
+        function open(): void   { GlobalStates.startMenuOpen = true }
+        function close(): void  { GlobalStates.startMenuOpen = false }
+    }
+
     // ── Shelf — the working shortcut + IpcHandler live in modules/ii/bar/Bar.qml
     //     because Bar renders the shelf inline. Don't add a duplicate here:
     //     duplicate GlobalShortcut names get shadowed by Hyprland.
@@ -222,6 +257,25 @@ Scope {
         function toggle(): void { GlobalStates.sidebarRightOpen = !GlobalStates.sidebarRightOpen }
         function close(): void  { GlobalStates.sidebarRightOpen = false }
         function open(): void   { GlobalStates.sidebarRightOpen = true }
+    }
+
+    // ── Devices ─────────────────────────────────────────────────────────
+    // Lives here rather than next to the dialogs it opens: those are children
+    // of SidebarRightContent, which is behind a Loader, and a handler that only
+    // exists while its panel is open is a handler that can never open it.
+    IpcHandler {
+        target: "devices"
+        function open(): void {
+            GlobalStates.sidebarRightOpen = true
+            GlobalStates.openDevicesDialogRequest++
+        }
+        /// Straight to one device's controls, by name as the list shows it.
+        function controls(name: string): void {
+            GlobalStates.sidebarRightOpen = true
+            GlobalStates.openDevicesDialogRequest++
+            GlobalStates.deviceControlsName = name
+            GlobalStates.openDeviceControlsRequest++
+        }
     }
 
     // ── MouseMenu ───────────────────────────────────────────────────────
