@@ -85,8 +85,14 @@ function getCalendarLayout(dateObject, highlight) {
     var calendar = [...Array(6)].map(() => Array(7));
     var i = 0, j = 0;
     while (i < 6 && j < 7) {
+        // Real date per cell, so a day can be looked up in the event store.
+        // monthDiff is -1/0/+1 relative to the month being viewed.
+        const cellDate = new Date(year, month - 1 + monthDiff, toFill);
+        const pad = n => (n < 10 ? "0" + n : "" + n);
         calendar[i][j] = {
             "day": toFill,
+            "date": cellDate.getFullYear() + "-" + pad(cellDate.getMonth() + 1)
+                    + "-" + pad(cellDate.getDate()),
             "today": ((toFill == day && monthDiff == 0 && highlight) ? 1 : (
                 monthDiff == 0 ? 0 : -1
             ))

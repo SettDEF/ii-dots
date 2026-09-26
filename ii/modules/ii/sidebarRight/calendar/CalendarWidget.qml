@@ -6,11 +6,28 @@ import QtQuick
 import QtQuick.Layouts
 
 Item {
+    id: root
     // Layout.topMargin: 10
     anchors.topMargin: 10
     property int monthShift: 0
     property var viewingDate: CalendarLayout.getDateInXMonthsTime(monthShift)
     property var calendarLayout: CalendarLayout.getCalendarLayout(viewingDate, monthShift === 0)
+    /// Empty until a day is clicked, so the agenda stays out of the way.
+    property string selectedDate: ""
+    /// Paging the month drops the selection. Keeping it showed an agenda for
+    /// a day in a month no longer on screen — "Sat 3 Oct" under a November
+    /// grid — and pushed the group past its fixed height.
+    onMonthShiftChanged: root.selectedDate = ""
+
+
+    // The grid always draws 6 whole weeks, so ask for exactly that span.
+    function loadVisibleRange() {
+        const first = calendarLayout?.[0]?.[0]?.date;
+        const last = calendarLayout?.[5]?.[6]?.date;
+        if (first && last) Kalends.loadRange(first, last);
+    }
+    onCalendarLayoutChanged: Qt.callLater(loadVisibleRange)
+    Component.onCompleted: loadVisibleRange()
     width: calendarColumn.width
     implicitHeight: calendarColumn.height + 10 * 2
 
@@ -114,9 +131,13 @@ Item {
                     delegate: CalendarDayButton {
                         day: calendarLayout[modelData][index].day
                         isToday: calendarLayout[modelData][index].today
+                        date: calendarLayout[modelData][index].date ?? ""
+                        selected: date.length > 0 && date === selectedDate
+                        onClicked: selectedDate = (selectedDate === date) ? "" : date
                     }
                 }
             }
         }
+
     }
 }
