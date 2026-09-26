@@ -98,7 +98,7 @@ Rectangle {
                 Layout.fillWidth: true
                 implicitHeight: modelData.separator ? 7 : 32
                 radius: 6
-                color: (rowMa.containsMouse && !modelData.separator)
+                color: (rowMa.containsMouse && !modelData.separator && modelData.slider !== true)
                     ? (modelData.danger
                        ? ColorUtils.transparentize(Appearance.m3colors.m3error, 0.84)
                        : Appearance.colors.colLayer2)
@@ -112,8 +112,39 @@ Rectangle {
                     color: Appearance.colors.colLayer0Border
                 }
 
+                // A range, rather than a list of presets. Lives inside the
+                // menu so the value keeps applying while you drag — which
+                // also means whatever the menu holds open stays open.
                 RowLayout {
-                    visible: !row.modelData.separator
+                    visible: row.modelData.slider === true
+                    anchors { fill: parent; leftMargin: 9; rightMargin: 11 }
+                    spacing: 9
+                    MaterialSymbol {
+                        text: row.modelData.icon ?? ""
+                        iconSize: 17
+                        color: row.modelData.iconColor ?? Appearance.colors.colOnLayer1
+                    }
+                    StyledSlider {
+                        id: rowSlider
+                        Layout.fillWidth: true
+                        value: row.modelData.value ?? 0
+                        onValueChanged: {
+                            const fn = row.modelData.onMoved;
+                            if (fn && pressed) fn(value);
+                        }
+                    }
+                    StyledText {
+                        Layout.preferredWidth: 34
+                        horizontalAlignment: Text.AlignRight
+                        text: Math.round(rowSlider.value * 100) + "%"
+                        font.pixelSize: Appearance.font.pixelSize.smaller
+                        font.family: Appearance.font.family.monospace
+                        color: Appearance.colors.colSubtext
+                    }
+                }
+
+                RowLayout {
+                    visible: !row.modelData.separator && row.modelData.slider !== true
                     anchors { fill: parent; leftMargin: 9; rightMargin: 11 }
                     spacing: 9
                     MaterialSymbol {
@@ -142,7 +173,7 @@ Rectangle {
                 MouseArea {
                     id: rowMa
                     anchors.fill: parent
-                    enabled: !row.modelData.separator
+                    enabled: !row.modelData.separator && row.modelData.slider !== true
                     hoverEnabled: true
                     cursorShape: Qt.PointingHandCursor
                     // Hovering a parent row opens its child; hovering any other
@@ -158,9 +189,15 @@ Rectangle {
                             mp._openChild(row.modelData.submenu, row.mapToItem(mp.bounds, 0, 0).y)
                             return
                         }
+                        // Act, THEN dismiss. Dismissing first tears down
+                        // whatever the menu was holding open on the handler's
+                        // behalf — the dock's per-app volume died exactly
+                        // here: closing unbound the PwObjectTracker, and a
+                        // write to an untracked PipeWire node is silently
+                        // discarded, so every preset did nothing at all.
                         const fn = row.modelData.onTriggered
-                        if (mp.dismissAll) mp.dismissAll()
                         if (fn) fn()
+                        if (mp.dismissAll) mp.dismissAll()
                     }
                 }
             }

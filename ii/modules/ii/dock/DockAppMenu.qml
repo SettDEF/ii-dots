@@ -45,9 +45,22 @@ PopupWindow {
     }
     readonly property bool volLive: root.volRow?.live ?? false
 
-    // node.audio stays empty without a tracker; only while the menu is open.
+    // node.audio stays empty without a tracker, and a write to an untracked
+    // node is silently discarded. Tracking is held for a moment after the menu
+    // closes: a handler can fire on the way out, and losing the tracker before
+    // the write lands is exactly how the volume presets used to do nothing.
+    property bool _holdTrack: false
+    onVisibleChanged: {
+        if (root.visible) { root._holdTrack = true; trackHold.stop(); }
+        else trackHold.restart();
+    }
+    Timer {
+        id: trackHold
+        interval: 1500
+        onTriggered: root._holdTrack = false
+    }
     PwObjectTracker {
-        objects: (root.visible && root.volRow?.node) ? [root.volRow.node] : []
+        objects: (root._holdTrack && root.volRow?.node) ? [root.volRow.node] : []
     }
 
     function openFor(entry, item) {
@@ -145,13 +158,16 @@ PopupWindow {
                 onTriggered: () => AppVolumes.toggleMute(root.volRow)
             }, { separator: true });
         }
-        const cur = Math.round(AppVolumes.volumeFor(root.volRow) * 100);
-        for (const pct of [100, 75, 50, 25, 0])
-            out.push({
-                icon: root._check(cur === pct), iconColor: root._tick(cur === pct),
-                label: `${pct}%`,
-                onTriggered: () => AppVolumes.setVolume(root.volRow, pct / 100)
-            });
+        // A slider, not five presets: volume is a range, and 25% steps were
+        // never the point. Dragging it applies live, which also keeps the
+        // menu — and therefore the PwObjectTracker this write depends on —
+        // open for the whole gesture.
+        out.push({
+            slider: true,
+            icon: "volume_up",
+            value: AppVolumes.volumeFor(root.volRow),
+            onMoved: v => AppVolumes.setVolume(root.volRow, v)
+        });
         return out;
     }
 
