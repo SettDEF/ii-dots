@@ -5,6 +5,7 @@
 import qs.services
 import qs.modules.common
 import QtQuick
+import Quickshell
 
 DockButton {
     id: root
@@ -19,7 +20,23 @@ DockButton {
 
     // A Button stretches its contentItem to the content box, which pulled the
     // tiles into tall rectangles — so the Loader is a fixed square inside it.
-    onClicked: DockWidgetPanel.toggle(root, root.widgetId)
+    // Click opens the app behind this widget; the panel is the fallback for
+    // widgets that do not have one yet, and right-click reaches it regardless.
+    // The panel is still the quick glance — it needs no window — but a widget
+    // whose app you have to hunt for at the bottom of a popup is one you never
+    // open.
+    readonly property string appPath: DockWidgets.appFor(root.widgetId)
+
+    onClicked: {
+        if (root.appPath.length > 0) {
+            // execDetached so the app outlives the dock that launched it.
+            Quickshell.execDetached(["qs", "-p", root.appPath]);
+            DockWidgetPanel.close();
+            return;
+        }
+        DockWidgetPanel.toggle(root, root.widgetId);
+    }
+    altAction: () => DockWidgetPanel.toggle(root, root.widgetId)
 
     contentItem: Item {
         Loader {

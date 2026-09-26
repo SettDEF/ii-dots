@@ -13,9 +13,20 @@ import Quickshell
 Singleton {
     id: root
 
+    /// The app behind a widget, or "" if it has none yet.
+    function appFor(id) {
+        const e = (root.catalog ?? []).find(w => w.id === id);
+        return e?.app ?? "";
+    }
+    function appNameFor(id) {
+        const e = (root.catalog ?? []).find(w => w.id === id);
+        return e?.appName ?? "";
+    }
+
     readonly property var catalog: [
         {
-            id: "clock", name: Translation.tr("Clock"), icon: "schedule", w: Appearance.sizes.dockWidgetWindow.widthNarrow, h: Appearance.sizes.dockWidgetWindow.heightTall,
+            id: "clock", name: Translation.tr("Clock"), icon: "schedule",
+            app: "/mnt/storage/dev/projects/desktop/timos/timos.qml", appName: "Timos", w: Appearance.sizes.dockWidgetWindow.widthNarrow, h: Appearance.sizes.dockWidgetWindow.heightTall,
             settings: [
                 { key: "stacked", label: Translation.tr("Stack hours over minutes"), type: "bool", def: true },
                 { key: "twelveHour", label: Translation.tr("12-hour clock"), type: "bool", def: false },
