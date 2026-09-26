@@ -80,68 +80,100 @@ WindowDialog {
         Layout.leftMargin: -Appearance.rounding.large
         Layout.rightMargin: -Appearance.rounding.large
     }
-    // Ordering controls
-    ColumnLayout {
+    // ── Sort and filter, one row ────────────────────────────────────────
+    // Six pills across two rows was more chrome than the whole dialog. The
+    // sort is one continuous segmented track; the two filters are icon
+    // toggles beside it, which is what they are — a bookmark and a padlock
+    // say "saved" and "secured" without spending a third of the width on
+    // the words.
+    RowLayout {
         Layout.fillWidth: true
-        Layout.topMargin: 4
+        Layout.topMargin: 6
         spacing: 6
 
-        // Sort and filter are different kinds of control and must not look
-        // like one set of six interchangeable pills. The sort is one-of-four
-        // and shares a single track; the filters are independent toggles,
-        // outlined so they read as switches rather than as more sort options.
-        RowLayout {
+        // The segments sit inside one container so they read as a single
+        // control rather than four separate buttons that happen to touch.
+        Rectangle {
             Layout.fillWidth: true
-            spacing: 4
+            implicitHeight: 32
+            radius: Appearance.rounding.full
+            color: Appearance.colors.colLayer2
 
-            Repeater {
-                model: [
-                    { label: Translation.tr("Smart"),  value: "smart"  },
-                    { label: Translation.tr("Signal"), value: "signal" },
-                    { label: Translation.tr("Name"),   value: "name"   },
-                    { label: Translation.tr("Band"),   value: "band"   }
-                ]
-                delegate: DialogButton {
-                    required property var modelData
-                    readonly property bool sel: root.sortMode === modelData.value
-                    Layout.fillWidth: true
-                    buttonText: modelData.label
-                    colBackground: sel ? Appearance.colors.colPrimary
-                                       : Appearance.colors.colLayer2
-                    colText: sel ? Appearance.colors.colOnPrimary
-                                 : Appearance.colors.colOnLayer2
-                    onClicked: root.sortMode = modelData.value
+            RowLayout {
+                anchors { fill: parent; margins: 3 }
+                spacing: 2
+
+                Repeater {
+                    model: [
+                        { label: Translation.tr("Smart"),  value: "smart"  },
+                        { label: Translation.tr("Signal"), value: "signal" },
+                        { label: Translation.tr("Name"),   value: "name"   },
+                        { label: Translation.tr("Band"),   value: "band"   }
+                    ]
+                    delegate: Rectangle {
+                        required property var modelData
+                        readonly property bool sel: root.sortMode === modelData.value
+                        Layout.fillWidth: true
+                        Layout.fillHeight: true
+                        radius: Appearance.rounding.full
+                        color: sel ? Appearance.colors.colPrimary
+                             : segHover.hovered ? Appearance.colors.colLayer2Hover
+                             : "transparent"
+                        Behavior on color {
+                            animation: Appearance.animation.elementMoveFast.colorAnimation.createObject(this)
+                        }
+                        HoverHandler { id: segHover; cursorShape: Qt.PointingHandCursor }
+                        TapHandler { onTapped: root.sortMode = modelData.value }
+                        StyledText {
+                            anchors.centerIn: parent
+                            text: modelData.label
+                            font.pixelSize: Appearance.font.pixelSize.smaller
+                            color: parent.sel ? Appearance.colors.colOnPrimary
+                                              : Appearance.colors.colOnLayer2
+                        }
+                    }
                 }
             }
         }
 
-        RowLayout {
-            Layout.fillWidth: true
-            Layout.topMargin: 2
-            spacing: 4
-
-            DialogButton {
-                buttonText: Translation.tr("Saved")
-                colBackground: root.savedOnly
-                    ? ColorUtils.transparentize(Appearance.colors.colPrimary, 0.78)
-                    : Appearance.colors.colLayer2
-                colText: root.savedOnly ? Appearance.colors.colPrimary
-                                        : Appearance.colors.colOnLayer2
-                onClicked: root.savedOnly = !root.savedOnly
-                StyledToolTip { text: Translation.tr("Only networks you have connected to before") }
+        component FilterToggle: Rectangle {
+            property string icon: ""
+            property bool on: false
+            signal picked
+            implicitWidth: 32
+            implicitHeight: 32
+            radius: Appearance.rounding.full
+            color: on ? Appearance.colors.colPrimary
+                 : tHover.hovered ? Appearance.colors.colLayer2Hover
+                 : Appearance.colors.colLayer2
+            Behavior on color {
+                animation: Appearance.animation.elementMoveFast.colorAnimation.createObject(this)
             }
-            DialogButton {
-                buttonText: Translation.tr("Secured")
-                colBackground: root.hideOpen
-                    ? ColorUtils.transparentize(Appearance.colors.colPrimary, 0.78)
-                    : Appearance.colors.colLayer2
-                colText: root.hideOpen ? Appearance.colors.colPrimary
-                                       : Appearance.colors.colOnLayer2
-                onClicked: root.hideOpen = !root.hideOpen
-                StyledToolTip { text: Translation.tr("Hide open (unencrypted) networks") }
+            HoverHandler { id: tHover; cursorShape: Qt.PointingHandCursor }
+            TapHandler { onTapped: picked() }
+            MaterialSymbol {
+                anchors.centerIn: parent
+                text: parent.icon
+                iconSize: 18
+                fill: parent.on ? 1 : 0
+                color: parent.on ? Appearance.colors.colOnPrimary
+                                 : Appearance.colors.colOnLayer2
             }
-            Item { Layout.fillWidth: true }
         }
+
+        FilterToggle {
+            icon: "bookmark"
+            on: root.savedOnly
+            onPicked: root.savedOnly = !root.savedOnly
+            StyledToolTip { text: Translation.tr("Only networks you have connected to before") }
+        }
+        FilterToggle {
+            icon: "lock"
+            on: root.hideOpen
+            onPicked: root.hideOpen = !root.hideOpen
+            StyledToolTip { text: Translation.tr("Hide open (unencrypted) networks") }
+        }
+    }
 
         ColumnLayout {
             Layout.fillWidth: true
@@ -186,7 +218,6 @@ WindowDialog {
                 color: Appearance.colors.colSubtext
             }
         }
-    }
 
     StyledListView {
         id: netList
