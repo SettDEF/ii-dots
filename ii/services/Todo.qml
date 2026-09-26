@@ -74,8 +74,16 @@ Singleton {
         path: Qt.resolvedUrl(root.filePath)
         onLoaded: {
             const fileContents = todoFileView.text()
-            root.list = JSON.parse(fileContents)
-            console.log("[To Do] File loaded")
+            // See Notifications: an unguarded parse loses the list silently,
+            // and the next save writes the loss to disk.
+            try {
+                const parsed = JSON.parse(fileContents);
+                if (!Array.isArray(parsed)) throw new Error("not an array");
+                root.list = parsed;
+                console.log("[To Do] File loaded")
+            } catch (e) {
+                console.log("[To Do] file unreadable, keeping what is in memory:", e);
+            }
         }
         onLoadFailed: (error) => {
             if(error == FileViewError.FileNotFound) {

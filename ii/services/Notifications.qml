@@ -347,7 +347,18 @@ Singleton {
         path: Qt.resolvedUrl(filePath)
         onLoaded: {
             const fileContents = notifFileView.text()
-            root.list = JSON.parse(fileContents).map((notif) => {
+            // Guarded: an unguarded parse threw out of onLoaded and left the
+            // list at its empty default — which the next write then persisted,
+            // turning one truncated file into permanent history loss.
+            let parsed;
+            try {
+                parsed = JSON.parse(fileContents);
+                if (!Array.isArray(parsed)) throw new Error("not an array");
+            } catch (e) {
+                console.log("[Notifications] history file unreadable, keeping what is in memory:", e);
+                return;
+            }
+            root.list = parsed.map((notif) => {
                 return notifComponent.createObject(root, {
                     "notificationId": notif.notificationId,
                     "actions": [], // Notification actions are meaningless if they're not tracked by the server or the sender is dead

@@ -44,7 +44,12 @@ MouseArea {
             visible: true
             font.pixelSize: Appearance.font.pixelSize.small
             color: Appearance.colors.colOnLayer1
-            text: Weather.data?.temp ?? "--°"
+            // `??` does not catch 0, and 0 is what the defaults hold before
+            // any fetch lands — so no network read as a real 0 degrees.
+            // lastRefresh is a formatted string, empty until a fetch
+            // succeeds, so its length is the signal.
+            text: String(Weather.data?.lastRefresh ?? "").length > 0
+                ? Weather.data.temp : "--°"
             Layout.alignment: Qt.AlignVCenter
         }
     }
