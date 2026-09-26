@@ -20,21 +20,30 @@ DockButton {
     readonly property bool isSeparator: appToplevel.appId === "SEPARATOR"
     readonly property var desktopEntry: DesktopEntries.heuristicLookup(appToplevel.appId)
     enabled: !isSeparator
+    // RippleButton dims a disabled button to 0.4, which made the separator
+    // variant a fainter line than the DockSeparators beside it.
+    opacity: 1
     implicitWidth: isSeparator ? 1 : implicitHeight - topInset - bottomInset
 
     Loader {
         active: isSeparator
-        anchors {
-            fill: parent
-            topMargin: dockVisualBackground.margin + dockRow.padding + Appearance.rounding.normal
-            bottomMargin: dockVisualBackground.margin + dockRow.padding + Appearance.rounding.normal
-        }
+        anchors.horizontalCenter: parent.horizontalCenter
+        anchors.verticalCenter: parent.verticalCenter
+        // Same offset as DockSeparator's Layout.topMargin, halved: this one
+        // centres rather than fills.
+        anchors.verticalCenterOffset: (Appearance.sizes.elevationMargin - Appearance.sizes.hyprlandGapsOut) / 2
         sourceComponent: DockSeparator {}
     }
 
     Loader {
         anchors.fill: parent
         active: appToplevel.toplevels.length > 0
+        // The last window closing takes the MouseArea away mid-hover, so no
+        // onExited ever arrives — clear the flag here instead.
+        onActiveChanged: {
+            if (!active && appListRoot.lastHoveredButton === root)
+                appListRoot.buttonHovered = false
+        }
         sourceComponent: MouseArea {
             id: mouseArea
             anchors.fill: parent
@@ -66,8 +75,9 @@ DockButton {
         AppLaunch.launch(root.desktopEntry);
     }
 
+    // Pin moved into the menu, along with volume, windows and app actions.
     altAction: () => {
-        TaskbarApps.togglePin(appToplevel.appId);
+        appListRoot.openMenu(root, appToplevel);
     }
 
     contentItem: Loader {

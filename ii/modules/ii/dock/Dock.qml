@@ -16,6 +16,27 @@ Scope { // Scope
     id: root
     property bool pinned: Config.options?.dock.pinnedOnStartup ?? false
 
+    // In the Scope, not the per-screen window: one handler, not one per monitor.
+    // One floating window for the shell, not one per monitor. Loader-gated,
+    // so nothing exists until a widget is opened and a second click on the
+    // same tile destroys it again.
+    Loader {
+        active: DockWidgetPanel.widgetId.length > 0
+        sourceComponent: DockWidgetWindow {}
+    }
+
+    IpcHandler {
+        target: "dock"
+        function editMode(): string {
+            GlobalStates.dockEditMode = !GlobalStates.dockEditMode;
+            return GlobalStates.dockEditMode ? "editing" : "done";
+        }
+        function toggle(): string {
+            GlobalStates.dockOpen = !GlobalStates.dockOpen;
+            return GlobalStates.dockOpen ? "shown" : "hidden";
+        }
+    }
+
     Variants {
         // For each monitor
         model: Quickshell.screens
@@ -27,7 +48,15 @@ Scope { // Scope
             screen: modelData
             visible: !GlobalStates.screenLocked
 
-            property bool reveal: root.pinned || (Config.options?.dock.hoverToReveal && dockMouseArea.containsMouse) || dockApps.requestDockShow || (!ToplevelManager.activeToplevel?.activated) || GlobalStates.dockOpen
+            // Detaches the dock from the screen edge. The window grows by the
+            // same amount that dockBackground is pushed up, so everything
+            // inside — the card AND the row — keeps its existing geometry and
+            // simply sits higher. Growing the window WITHOUT the matching
+            // bottom margin is what broke the layout previously.
+            readonly property real floatGap: (Config.options?.dock.floating ?? false)
+                ? (Config.options?.dock.floatingMargin ?? 8) : 0
+
+            property bool reveal: root.pinned || (Config.options?.dock.hoverToReveal && dockMouseArea.containsMouse) || dockApps.requestDockShow || dockMedia.requestDockShow || GlobalStates.dockEditMode || (!ToplevelManager.activeToplevel?.activated) || GlobalStates.dockOpen
 
             anchors {
                 bottom: true
@@ -41,7 +70,8 @@ Scope { // Scope
             WlrLayershell.namespace: "quickshell:dock"
             color: "transparent"
 
-            implicitHeight: (Config.options?.dock.height ?? 70) + Appearance.sizes.elevationMargin + Appearance.sizes.hyprlandGapsOut
+            implicitHeight: (Config.options?.dock.height ?? 70) + Appearance.sizes.elevationMargin
+                + Appearance.sizes.hyprlandGapsOut + dockRoot.floatGap
 
             mask: Region {
                 item: dockMouseArea
@@ -72,6 +102,7 @@ Scope { // Scope
                         anchors {
                             top: parent.top
                             bottom: parent.bottom
+                            bottomMargin: dockRoot.floatGap
                             horizontalCenter: parent.horizontalCenter
                         }
 
@@ -94,12 +125,18 @@ Scope { // Scope
                             radius: Appearance.rounding.large
                         }
 
+                        MouseArea {
+                            anchors.fill: dockVisualBackground
+                            acceptedButtons: Qt.RightButton
+                            onClicked: GlobalStates.dockEditMode = !GlobalStates.dockEditMode
+                        }
+
                         RowLayout {
                             id: dockRow
                             anchors.top: parent.top
                             anchors.bottom: parent.bottom
                             anchors.horizontalCenter: parent.horizontalCenter
-                            spacing: 3
+                            spacing: Config.options?.dock.spacing ?? 6
                             property real padding: 5
 
                             VerticalButtonGroup {
@@ -127,14 +164,27 @@ Scope { // Scope
                                 id: dockApps
                                 buttonPadding: dockRow.padding
                             }
-                            DockSeparator { visible: Config.options.dock.showMedia }
+                            // Hidden with the card: the card collapses to zero width
+                            // with no track, which left two lines touching.
+                            DockSeparator { visible: dockMedia.visible }
                             DockMedia {
-                                visible: Config.options.dock.showMedia
+                                id: dockMedia
+                                visible: Config.options.dock.showMedia && dockMedia.hasTrack
                                 Layout.fillHeight: true
                                 Layout.topMargin: 12
                                 Layout.bottomMargin: 8
                                 buttonPadding: dockRow.padding
                             }
+                            DockSeparator { visible: dockWidgets.count > 0 }
+                            Repeater {
+                                id: dockWidgets
+                                model: DockWidgets.enabled
+                                delegate: DockWidget {
+                                    required property var modelData
+                                    widgetId: modelData
+                                }
+                            }
+
                             DockSeparator { visible: Config.options.dock.showAppsButton }
                             DockButton {
                                 visible: Config.options.dock.showAppsButton
@@ -151,7 +201,26 @@ Scope { // Scope
                                 }
                             }
                         }
+
+                        DockEditOverlay {
+                            anchors.fill: dockVisualBackground
+                        }
                     }
+                }
+            }
+
+            DockTooltipPopup {
+                anchorItem: dockHoverRegion
+            }
+
+
+            // Behind a Loader: it is a large panel that only exists while
+            // editing, and an eagerly-built popup window costs memory for
+            // nothing the rest of the time.
+            Loader {
+                active: GlobalStates.dockEditMode
+                sourceComponent: DockEditPanel {
+                    anchorItem: dockHoverRegion
                 }
             }
         }

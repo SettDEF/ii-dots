@@ -7,6 +7,7 @@ import Quickshell.Widgets
 import Quickshell.Wayland
 import qs.services
 import qs.modules.common
+import qs.modules.common.models
 import qs.modules.common.widgets
 import qs.modules.common.functions
 
@@ -19,7 +20,51 @@ Item {
 
     property Item lastHoveredButton
     property bool buttonHovered: false
-    property bool requestDockShow: previewPopup.show
+    property bool requestDockShow: previewPopup.show || appMenu.visible
+
+    // Popup takes the hovered app icon's average colour.
+    readonly property string hoveredIcon: root.lastHoveredButton
+        ? AppSearch.guessIcon(root.lastHoveredButton.appToplevel?.appId ?? "") : ""
+    onHoveredIconChanged: AppIconColors.request(root.hoveredIcon)
+    // Hovering a file manager offers its folders, the way hovering any other
+    // app offers its windows.
+    readonly property string hoveredAppId: String(root.lastHoveredButton?.appToplevel?.appId ?? "")
+    readonly property bool hoveredIsFiles:
+        /dolphin|nautilus|thunar|nemo|pcmanfm|caja|dde-file-manager|org\.gnome\.files/i.test(root.hoveredAppId)
+    readonly property string folderGridMode: Config.options?.dock.folderGrid ?? "always"
+    readonly property int hoveredWindowCount: root.lastHoveredButton?.appToplevel?.toplevels?.length ?? 0
+    /// Whether the folder grid belongs in this hover.
+    readonly property bool showFolderGrid: root.hoveredIsFiles
+        && root.folderGridMode !== "off"
+        && (root.folderGridMode !== "noWindows" || root.hoveredWindowCount === 0)
+
+    readonly property color iconColor: {
+        const hex = AppIconColors.colors[root.hoveredIcon] ?? "";
+        return hex.length > 0 ? hex : Appearance.colors.colPrimaryContainer;
+    }
+    // A tonal ramp built from the icon, rather than a mix toward a container
+    // colour. Mixing pulled the panel toward the icon's own LIGHTNESS, so a
+    // pale icon (Dolphin's is grey-blue) produced a pale panel in a dark
+    // shell; the saturated ones went muddy. Keeping the icon's hue and
+    // saturation and forcing the tone gives the app's colour at full strength
+    // AND a surface that always sits right in the theme.
+    readonly property bool _dark: Appearance.m3colors.darkmode
+    /// Hue from the icon, tone fixed, and chroma pulled WAY down. Keeping the
+    /// icon's own saturation turned a soft blue icon into a navy panel; real
+    /// tonal palettes give surfaces a fraction of the source's chroma so the
+    /// colour reads as identity, not as paint.
+    function _tone(c, lightness, chroma) {
+        const q = Qt.color(c);
+        return Qt.hsla(q.hslHue, Math.min(1, q.hslSaturation * chroma), lightness, 1);
+    }
+    readonly property color panelColor: root._tone(root.iconColor, root._dark ? 0.115 : 0.95, 0.30)
+    readonly property color panelRaised: root._tone(root.iconColor, root._dark ? 0.185 : 0.88, 0.26)
+    readonly property color panelText: root._tone(root.iconColor, root._dark ? 0.94 : 0.14, 0.14)
+    readonly property color panelSubtext: root._tone(root.iconColor, root._dark ? 0.70 : 0.38, 0.12)
+
+    property QtObject popupColors: AdaptedMaterialScheme {
+        color: ColorUtils.mix(root.iconColor, Appearance.colors.colPrimaryContainer, 0.45)
+    }
 
     Layout.fillHeight: true
     Layout.topMargin: Appearance.sizes.hyprlandGapsOut // why does this work
@@ -53,40 +98,30 @@ Item {
         }
     }
 
+
+    // One menu for the whole dock, not one per button.
+    DockAppMenu { id: appMenu }
+    function openMenu(button, entry) {
+        appMenu.openFor(entry, button);
+    }
+    // Hovering a different app is a dismissal; the menu has no outside grab.
+    onLastHoveredButtonChanged: appMenu.close()
+
     PopupWindow {
         id: previewPopup
         property var appTopLevel: root.lastHoveredButton?.appToplevel
-        property bool allPreviewsReady: false
-        Connections {
-            target: root
-            function onLastHoveredButtonChanged() {
-                previewPopup.allPreviewsReady = false; // Reset readiness when the hovered button changes
-            } 
-        }
-        function updatePreviewReadiness() {
-            for(var i = 0; i < previewRowLayout.children.length; i++) {
-                const view = previewRowLayout.children[i];
-                if (view.hasContent === false) {
-                    allPreviewsReady = false;
-                    return;
-                }
-            }
-            allPreviewsReady = true;
-        }
-        property bool shouldShow: {
-            const hoverConditions = (popupMouseArea.containsMouse || root.buttonHovered)
-            return hoverConditions && allPreviewsReady;
-        }
+
+        // Show as soon as a hovered button has windows. The old gate waited
+        // for every ScreencopyView to report content, which a reused view
+        // never re-signalled — that was the popup skipping hovers.
+        readonly property int previewCount: previewPopup.appTopLevel?.toplevels?.length ?? 0
+        property bool hovered: popupMouseArea.containsMouse || root.buttonHovered
+        // A file manager is worth hovering even with nothing open.
+        property bool shouldShow: previewPopup.hovered
+            && (previewPopup.previewCount > 0 || root.showFolderGrid)
         property bool show: false
 
-        onShouldShowChanged: {
-            if (shouldShow) {
-                // show = true;
-                updateTimer.restart();
-            } else {
-                updateTimer.restart();
-            }
-        }
+        onShouldShowChanged: updateTimer.restart()
         Timer {
             id: updateTimer
             interval: 100
@@ -104,17 +139,22 @@ Item {
         visible: popupBackground.visible
         color: "transparent"
         implicitWidth: root.QsWindow.window?.width ?? 1
-        implicitHeight: popupMouseArea.implicitHeight + root.windowControlsHeight + Appearance.sizes.elevationMargin * 2
+        implicitHeight: popupMouseArea.implicitHeight
 
         MouseArea {
             id: popupMouseArea
             anchors.bottom: parent.bottom
             implicitWidth: popupBackground.implicitWidth + Appearance.sizes.elevationMargin * 2
-            implicitHeight: root.maxWindowPreviewHeight + root.windowControlsHeight + Appearance.sizes.elevationMargin * 2
+            // Follows the CONTENT. It was a fixed preview-sized box, so the
+            // folder grid added above the previews overflowed and was clipped.
+            implicitHeight: popupBackground.implicitHeight + Appearance.sizes.elevationMargin * 2
             hoverEnabled: true
             x: {
-                const itemCenter = root.QsWindow?.mapFromItem(root.lastHoveredButton, root.lastHoveredButton?.width / 2, 0);
-                return itemCenter.x - width / 2
+                // Guarded: mapFromItem throws before the dock is in a window.
+                const button = root.lastHoveredButton;
+                if (!button || !root.QsWindow?.window) return 0;
+                const itemCenter = root.QsWindow.mapFromItem(button, button.width / 2, 0);
+                return (itemCenter?.x ?? 0) - width / 2;
             }
             StyledRectangularShadow {
                 target: popupBackground
@@ -133,13 +173,16 @@ Item {
                     animation: Appearance.animation.elementMoveFast.numberAnimation.createObject(this)
                 }
                 clip: true
-                color: Appearance.m3colors.m3surfaceContainer
+                color: root.panelColor
+                Behavior on color {
+                    animation: Appearance.animation.elementMoveFast.colorAnimation.createObject(this)
+                }
                 radius: Appearance.rounding.normal
                 anchors.bottom: parent.bottom
                 anchors.bottomMargin: Appearance.sizes.elevationMargin
                 anchors.horizontalCenter: parent.horizontalCenter
-                implicitHeight: previewRowLayout.implicitHeight + padding * 2
-                implicitWidth: previewRowLayout.implicitWidth + padding * 2
+                implicitHeight: previewColumn.implicitHeight + padding * 2
+                implicitWidth: previewColumn.implicitWidth + padding * 2
                 Behavior on implicitWidth {
                     animation: Appearance.animation.elementMoveFast.numberAnimation.createObject(this)
                 }
@@ -147,9 +190,26 @@ Item {
                     animation: Appearance.animation.elementMoveFast.numberAnimation.createObject(this)
                 }
 
+                ColumnLayout {
+                    id: previewColumn
+                    anchors.centerIn: parent
+                    spacing: 6
+
+                    PlacesGrid {
+                        Layout.alignment: Qt.AlignHCenter
+                        Layout.margins: 4
+                        visible: root.showFolderGrid
+                        columns: 4
+                        // A DARK scrim, not a tinted layer: the panel takes the
+                        // app icon's average colour, and Dolphin's is pale, so
+                        // chips derived from it vanished into the background.
+                        chipColor: root.panelRaised
+                        chipText: root.panelText
+                    }
+
                 RowLayout {
                     id: previewRowLayout
-                    anchors.centerIn: parent
+                    Layout.alignment: Qt.AlignHCenter
                     Repeater {
                         model: ScriptModel {
                             values: previewPopup.appTopLevel?.toplevels ?? []
@@ -180,7 +240,7 @@ Item {
                                             font.pixelSize: Appearance.font.pixelSize.small
                                             text: windowButton.modelData?.title
                                             elide: Text.ElideRight
-                                            color: Appearance.m3colors.m3onSurface
+                                            color: root.panelText
                                         }
                                     }
                                     GroupButton {
@@ -194,7 +254,7 @@ Item {
                                             horizontalAlignment: Text.AlignHCenter
                                             text: "close"
                                             iconSize: Appearance.font.pixelSize.normal
-                                            color: Appearance.m3colors.m3onSurface
+                                            color: root.panelText
                                         }
                                         onClicked: {
                                             windowButton.modelData?.close();
@@ -207,9 +267,6 @@ Item {
                                     live: true
                                     paintCursor: true
                                     constraintSize: Qt.size(root.maxWindowPreviewWidth, root.maxWindowPreviewHeight)
-                                    onHasContentChanged: {
-                                        previewPopup.updatePreviewReadiness();
-                                    }
                                     layer.enabled: true
                                     layer.effect: OpacityMask {
                                         maskSource: Rectangle {
@@ -222,6 +279,7 @@ Item {
                             }
                         }
                     }
+                }
                 }
             }
         }
