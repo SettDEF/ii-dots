@@ -164,8 +164,13 @@ Item {
                 radius: height / 2
                 // Capped: the pill and the button group share colLayer1, so when
                 // the pill grew into them they read as one merged shape.
+                //
+                // The floor used to be Math.max(120, ...), which let the pill
+                // win the arithmetic and draw straight over the button group —
+                // with five tabs open the last one was cut in half by the pill's
+                // own right edge. The cap is now what is genuinely free.
                 implicitWidth: Math.min(leftSidebarTitleRow.implicitWidth + 24,
-                    Math.max(120, parent.width - leftSidebarButtonsRow.implicitWidth - 12))
+                    Math.max(0, parent.width - leftSidebarButtonsRow.width - 12))
                 implicitHeight: leftSidebarTitleRow.implicitHeight + 8
                 Behavior on color        { ColorAnimation  { duration: 180 } }
                 Behavior on implicitWidth { NumberAnimation { duration: 240; easing.type: Easing.OutCubic } }
@@ -185,13 +190,30 @@ Item {
                         rotation: root.toolsOpen ? 45 : 0
                         Behavior on rotation { NumberAnimation { duration: 260; easing.type: Easing.OutCubic } }
                     }
-                    StyledText {
+                    // The word collapses to make room for the chips, the same
+                    // way the chips collapse to make room for it. Two clusters
+                    // wanted one row and only one of them can be widest; the
+                    // rotated grid_view icon carries the pill's identity while
+                    // the tabs are out.
+                    Item {
                         id: toolsLabel
                         anchors.verticalCenter: parent.verticalCenter
-                        font.pixelSize: Appearance.font.pixelSize.normal
-                        color: Appearance.colors.colOnLayer0
-                        text: Translation.tr("Tools")
-                        font.weight: Font.DemiBold
+                        clip: true
+                        height: toolsLabelText.implicitHeight
+                        width: root.toolsOpen ? 0 : toolsLabelText.implicitWidth
+                        opacity: root.toolsOpen ? 0 : 1
+                        visible: width > 0.5
+                        Behavior on width   { NumberAnimation { duration: 260; easing.type: Easing.OutCubic } }
+                        Behavior on opacity { NumberAnimation { duration: 160 } }
+
+                        StyledText {
+                            id: toolsLabelText
+                            anchors.verticalCenter: parent.verticalCenter
+                            font.pixelSize: Appearance.font.pixelSize.normal
+                            color: Appearance.colors.colOnLayer0
+                            text: Translation.tr("Tools")
+                            font.weight: Font.DemiBold
+                        }
                     }
                     // Divider + top-level tabs, icons only. Collapsed by an
                     // animated width inside a clip, not by `visible` — the Row
