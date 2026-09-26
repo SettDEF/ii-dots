@@ -32,15 +32,10 @@ Singleton {
         const ry = Math.round(y);
         const rw = Math.round(width);
         const rh = Math.round(height);
-        // +repage: -crop keeps the ORIGINAL canvas as page geometry, so the
-        // result declares the whole screen as its canvas with the crop offset
-        // inside it. Anything honouring page geometry then renders it wrong.
-        const cropBase = `magick ${StringUtils.shellSingleQuoteEscape(screenshotPath)} `
-            + `-crop ${rw}x${rh}+${rx}+${ry} +repage`
-        // `png:-` — force PNG on stdout. A bare `-` leaves the output format
-        // up to magick's guess from the (extensionless) temp file, which can
-        // hand wl-copy bytes it then mistypes.
-        const cropToStdout = `${cropBase} png:-`
+        // tinct image crop SRC GEOMETRY DST; DST "-" is PNG on stdout.
+        const cropBase = `"$HOME/.local/bin/tinct" image crop '${StringUtils.shellSingleQuoteEscape(screenshotPath)}' `
+            + `${rw}x${rh}+${Math.max(0, rx)}+${Math.max(0, ry)}`
+        const cropToStdout = `${cropBase} -`
         const cropInPlace = `${cropBase} '${StringUtils.shellSingleQuoteEscape(screenshotPath)}'`
         const cleanup = `rm '${StringUtils.shellSingleQuoteEscape(screenshotPath)}'`
         const slurpRegion = `${rx},${ry} ${rw}x${rh}`

@@ -1,36 +1,10 @@
 pragma Singleton
 pragma ComponentBehavior: Bound
 
-// Per-application display settings.
-//
-// WHAT THE COMPOSITOR ACTUALLY ALLOWS (checked against Hyprland 0.55.0):
-//   * `decoration:screen_shader` is global. There is no per-window shader —
-//     no config option besides that one even contains "shader".
-//   * `hyprctl setprop` answers "unknown request" in this build, so per-window
-//     alpha is not reachable either.
-//   * Anything that must READ the pixels under a window (saturation, contrast,
-//     gamma, invert) is impossible to confine to one window: a Wayland surface
-//     cannot sample what is beneath it.
-//
-// So each app profile picks a SCOPE, and the scope decides the mechanism:
-//
-//   scope "screen"  — the whole display is graded/shaded while the app is up.
-//                     Full grading + custom shaders. Mechanism: swap the
-//                     global screen_shader as the app comes and goes.
-//   scope "window"  — only the app's own window is affected, nothing bleeds
-//                     outside it. Mechanism: a click-through overlay surface
-//                     pinned to the window rect. Composites ON TOP, so it can
-//                     dim and tint, and deliberately offers nothing else.
-//
-// and a TRIGGER, which decides when the profile is live:
-//
-//   "focus"      — only while the app is the focused window.
-//   "workspace"  — whenever the app is on the workspace you're looking at,
-//                  so switching to its workspace brings the look with it.
-//
-// This singleton is the sole owner of `decoration:screen_shader`; colour
-// grading and the manual effect picker in DisplaySettings both route through
-// setBase() so the two can never fight over hyprctl.
+// Per-application display settings. Each profile has a scope — "screen" (swaps
+// Hyprland's global screen_shader) or "window" (a click-through overlay that can
+// only dim/tint: a Wayland surface can't sample what's beneath it) — and a
+// trigger, "focus" or "workspace". Sole owner of decoration:screen_shader.
 
 import qs.services
 import qs.modules.common
@@ -45,21 +19,14 @@ import QtQml.Models
 Singleton {
     id: root
 
-    // Master opt-in. Off → every profile is ignored.
     property bool enabled: false
 
-    // Live thumbnails in the effect lists. Off by default is wrong (they are
-    // the point of the list) but they DO cost GPU — each visible row runs the
-    // real renderer — so it stays a switch rather than something you cannot
-    // turn off.
+    // Live effect thumbnails; costs GPU (each visible row runs the real renderer).
     property bool livePreview: true
 
-    // { appId: partial profile } — only keys that differ from defaults matter,
-    // but we store whole profiles for readability of the state file.
     property var profiles: ({})
 
-    // Global shader when no profile governs: the manual effect, or the
-    // generated colour-grading shader. Owned by DisplaySettings.
+    // Global shader when no profile governs. Owned by DisplaySettings.
     property string baseShader: ""
 
     readonly property var defaults: ({
@@ -79,8 +46,7 @@ Singleton {
         shader: "",             // a .frag path overrides the grading values
         // window scope: an animated effect from a pack (path to its .json)
         effect: "",
-        // { <effect path>: { <param id>: value } } — keyed by effect so
-        // switching effects and back keeps each one's tuning.
+        // { <effect path>: { <param id>: value } }
         effectParams: ({})
     })
 
@@ -116,8 +82,7 @@ Singleton {
         root.save();
     }
 
-    // Effective value of one of an effect's variables: the profile override
-    // if the user has touched it, otherwise the default the effect declared.
+    // Profile override if set, else the effect's declared default.
     function paramValue(appId, effectPath, param) {
         const p = root.get(appId);
         const over = (p.effectParams ?? {})[effectPath];
@@ -142,14 +107,7 @@ Singleton {
     }
 
     // ── Theme colours ───────────────────────────────────────────────────
-    // Effects can name a Material You role instead of a hex literal, so a
-    // pack follows the wallpaper instead of fighting it:
-    //
-    //   "color": "@primary"                 in an effect's JSON
-    //   @param c1 Deep @surfaceContainer    in a shader's header
-    //
-    // Anything not starting with "@" is passed through untouched, so plain
-    // hex keeps working exactly as before.
+    // Effects may name an M3 role ("@primary") instead of hex, so packs follow the wallpaper.
     function themeColor(name) {
         const key = String(name).replace(/^@/, "");
         const m3 = Appearance.m3colors;
@@ -157,8 +115,6 @@ Singleton {
         if (m3[key] !== undefined) return m3[key];
         const pref = "m3" + key;
         if (m3[pref] !== undefined) return m3[pref];
-        // A few friendly aliases for roles the shell exposes under its own
-        // names rather than the raw M3 ones.
         const alias = ({
             accent: "m3primary", text: "m3onSurface", bg: "m3background",
             surface: "m3surface", outline: "m3outline"
@@ -192,9 +148,7 @@ Singleton {
     // ── Context: what is focused, what is on the visible workspace ───────
     readonly property string focusedApp: ToplevelManager.activeToplevel?.appId ?? ""
 
-    // Hyprland reports a window's class; ToplevelManager reports appId. They
-    // agree for native apps and for XWayland under Hyprland, which is what
-    // lets the two sources be mixed here.
+    // Hyprland's class matches ToplevelManager's appId (native and XWayland), so the two mix.
     readonly property var workspaceApps: {
         const ws = HyprlandData.activeWorkspace?.id;
         const out = [];
@@ -232,12 +186,8 @@ Singleton {
     }
 
     // ── Effect packs ────────────────────────────────────────────────────
-    // An "effect" is an animated overlay described by a small JSON file, and
-    // a "pack" is just a folder of them — so adding a folder adds effects,
-    // no code change. These are NOT Hyprland shaders: Hyprland supplies no
-    // time uniform to screen shaders (verified — a time-driven shader renders
-    // completely static), so anything animated has to be drawn by us, on the
-    // window overlay we already control.
+    // Effects are JSON-described animated overlays; a pack is a folder of them. Not Hyprland
+    // shaders: those get no time uniform, so anything animated is drawn by us.
     readonly property string packDir: Quickshell.env("HOME") + "/.config/hypr/shaderpacks"
     readonly property string shaderSrcDir:
         Quickshell.env("HOME") + "/.config/quickshell/ii/modules/ii/display/shaders"
@@ -271,14 +221,7 @@ Singleton {
         return e ? e.name : "None";
     }
 
-    // Enumerating and reading the packs is done natively — FolderListModel
-    // for the directories, FileView for each file — rather than shelling out
-    // to a script. Besides dropping a subprocess and a python dependency, the
-    // models are LIVE: drop a new .json into a pack folder and the effect
-    // appears immediately, with no rescan.
-
-    // path → parsed effect. Rebuilt into `effects` on a short debounce so a
-    // folder of files produces one update instead of one per file.
+    // path → parsed effect; debounced into `effects` so a folder yields one update.
     property var effectMap: ({})
 
     function publishEffects() {
@@ -302,15 +245,11 @@ Singleton {
         publishDebounce.restart();
     }
 
-    // Parameters an effect exposes. For a glsl effect these come from @param
-    // lines in the shader source; the rest are the JSON fields that already
-    // drive the renderer, so every effect ends up with controls.
+    // Params: @param lines for glsl effects, plus the JSON fields the renderer uses.
     function paramsFor(j, shaderSrc) {
         const ps = [];
         if (j.kind === "glsl" && shaderSrc) {
-            // Anchored on the fixed ABI slot names, so prose in the shader's
-            // own header ("@param lines below say what ...") isn't parsed as
-            // a declaration.
+            // Anchored on ABI slot names so prose mentioning "@param" isn't parsed.
             const re = /@param\s+(p[1-9]|c[1-9])\s+(\S+)\s+(.+)/g;
             let m;
             while ((m = re.exec(shaderSrc)) !== null) {
@@ -340,9 +279,7 @@ Singleton {
                 }
             }
         }
-        // An effect's JSON may override the shader's declared defaults, which
-        // is what lets one shader back many presets: every casino background
-        // is the same domain-warp program with a different palette.
+        // JSON defaults override the shader's, so one shader can back many presets.
         const over = j.defaults ?? {};
         for (let i = 0; i < ps.length; ++i)
             if (over[ps[i].id] !== undefined) ps[i].value = over[ps[i].id];
@@ -356,17 +293,13 @@ Singleton {
         return ps;
     }
 
-    // FolderListModel lists a directory ONCE — it does not watch for files
-    // being added or removed. Clearing `folder` and setting it back forces a
-    // re-read; the nested per-pack models live inside this model's delegates,
-    // so rebuilding the top level re-reads every pack as well.
+    // FolderListModel doesn't watch for added/removed files; bumping the nonce forces a re-read.
     property int scanNonce: 0
     function rescanEffects() {
         root.scanNonce++;
         root.publishEffects();
     }
 
-    // Pack roots: the built-in folder plus anything the user added.
     readonly property var packRoots: [root.packDir].concat(root.extraPackDirs)
 
     Instantiator {
@@ -375,8 +308,7 @@ Singleton {
             id: packRootItem
             required property string modelData
 
-            // Each root holds pack FOLDERS; FolderListModel is not recursive,
-            // so one model lists the folders and a nested one lists the files.
+            // FolderListModel isn't recursive: one lists pack folders, a nested one their files.
             property FolderListModel dirs: FolderListModel {
                 // Referencing the nonce makes this re-evaluate on rescan.
                 folder: root.scanNonce >= 0
@@ -407,8 +339,7 @@ Singleton {
                             required property string filePath
                             required property string fileName
 
-                            // Parsed JSON, held until the shader source (if
-                            // any) has also loaded, so params are complete.
+                            // Parsed JSON, held until the shader source has loaded too.
                             property var pending: null
 
                             property FileView view: FileView {
@@ -440,8 +371,7 @@ Singleton {
                                 onLoadFailed: root.noteEffect(fileItem.filePath, null)
                             }
 
-                            // Only used by glsl effects: the shader source is
-                            // where their tunable variables are declared.
+                            // glsl only: tunables are declared in the shader source.
                             property FileView shaderView: FileView {
                                 onLoaded: {
                                     const j = fileItem.pending;
@@ -477,8 +407,7 @@ Singleton {
         }
     }
 
-    // Hyprland rounds window corners, so a square overlay would spill past
-    // them at every corner. Track the live value rather than hardcoding it.
+    // Overlays follow Hyprland's live corner rounding.
     property int rounding: 18
 
     Process {
@@ -500,9 +429,8 @@ Singleton {
     }
 
     // ── Window scope: rects to paint an overlay over ─────────────────────
-    // One entry per window of every active window-scope profile.
     readonly property var overlays: {
-        if (!root.enabled) return [];
+        if (!root.enabled || GameMode.active) return [];
         const out = [];
         const ws = HyprlandData.activeWorkspace?.id;
         const wl = HyprlandData.windowList ?? [];
@@ -517,16 +445,10 @@ Singleton {
             if (!root.triggerMatches(w.class)) continue;
             let fx = root.effectByPath(p.effect);
             if (fx) {
-                // Resolve every declared variable to its effective value here,
-                // so the renderer never has to know about overrides.
                 const vals = ({});
                 for (let k = 0; k < (fx.params ?? []).length; ++k) {
                     const prm = fx.params[k];
-                    // Colours are passed through RAW, "@primary" and all.
-                    // Resolving here would freeze the effect to whatever the
-                    // theme happened to be when this list was last rebuilt;
-                    // the renderer resolves them as live bindings instead, so
-                    // a wallpaper change recolours running effects at once.
+                    // Colours stay raw ("@primary"); the renderer binds them live so theme changes apply.
                     vals[prm.id] = root.paramValue(w.class, fx.path, prm);
                 }
                 fx = Object.assign({}, fx, { values: vals });
@@ -546,11 +468,8 @@ Singleton {
     }
 
     // ── Shader construction ─────────────────────────────────────────────
-    // MUST be GLES3 (#version 300 es) with in/out/texture(): Hyprland's own
-    // vertex shader is versioned, and mixing it with legacy GLES2 syntax
-    // (varying/texture2D/gl_FragColor, which defaults to #version 100) fails
-    // to link — "all shaders must use same shading language version". That
-    // error only ever surfaces as a toast, never in the log or configerrors.
+    // MUST be GLES3 (#version 300 es): Hyprland's vertex shader is versioned, and GLES2
+    // syntax fails to link — reported only as a toast, never in the log.
     function buildGradingFrag(sat, con, gainV, gam, inv, gray) {
         const s = gray ? 0.0 : sat;
         return "#version 300 es\n"
@@ -576,9 +495,13 @@ Singleton {
     // What the screen should be running, ignoring file-generation timing.
     readonly property string desiredShader: {
         const g = root.governing;
+        const p = g.length > 0 ? root.get(g) : null;
+        // A shader set on the focused app's OWN profile beats GameMode: GameMode drops the generic
+        // grading and base shader to save frames, but a shader picked for this very game (a shadow
+        // boost for a dark shooter) is the reason the profile exists.
+        if (p && p.shader && p.shader.length > 0) return p.shader;
+        if (GameMode.active) return "";
         if (g.length === 0) return root.baseShader;
-        const p = root.get(g);
-        if (p.shader && p.shader.length > 0) return p.shader;
         if (root.isNeutral(p)) return "";
         return root.appShaderPath;   // needs generating first
     }
@@ -608,22 +531,11 @@ Singleton {
 
     function push(path) {
         root.applied = path;
-        // Startup guard: with nothing configured, desired is "" — pushing
-        // [[EMPTY]] then would wipe a screen_shader set in hyprland.conf on
-        // every shell restart. Adopt the state instead of asserting it.
+        // Startup guard: don't wipe a screen_shader set in hyprland.conf on restart.
         if (path.length === 0 && root.everPushed === false) return;
         root.everPushed = true;
-        // NOT `hyprctl keyword`. Under a Lua config Hyprland answers "unknown
-        // request" to keyword, so this call did nothing at all — no shader ever
-        // reached the compositor, whether picked by hand or restored at startup.
-        // It failed silently because execDetached never sees the reply.
-        //
-        // The live transport is the `eval` request carrying Lua, the same one
-        // the monitor settings use. `hl.config` is how the Lua config itself
-        // writes decoration options (see hypr/lua/hyprland/general.lua).
-        //
-        // An empty string clears the shader; the old [[EMPTY]] sentinel belongs
-        // to the keyword API and is a literal filename to this one.
+        // Not `hyprctl keyword`: under a Lua config it silently answers "unknown request".
+        // `eval` with hl.config is the live transport; an empty string clears the shader.
         const esc = String(path).replace(/\\/g, "\\\\").replace(/"/g, '\\"');
         Quickshell.execDetached(["hyprctl", "eval",
             `hl.config({ decoration = { screen_shader = "${esc}" } })`]);
@@ -634,8 +546,7 @@ Singleton {
         id: writer
         onExited: (code) => {
             if (code !== 0) return;
-            // force: same path, new contents — Hyprland only re-reads the file
-            // when the keyword is set again.
+            // Same path, new contents: Hyprland only re-reads the file when set again.
             root.applied = "";
             root.push(root.appShaderPath);
         }
@@ -647,10 +558,6 @@ Singleton {
         if (force === true && root.governing.length === 0) {
             root.applied = "";   // contents changed under an unchanged path
         }
-        // Persisted, so the choice survives a shell restart. It was held only in
-        // memory before: save() wrote enabled/livePreview/profiles and nothing
-        // else, so every reload came back with no shader selected and there was
-        // nothing for startup to restore.
         root.save();
         root.reapply(force === true);
     }
@@ -668,11 +575,7 @@ Singleton {
                 root.profiles = d.profiles ?? {};
                 root.enabled = d.enabled === true;
                 if (d.livePreview !== undefined) root.livePreview = d.livePreview === true;
-                // Restore the chosen shader and put it back on screen. Without
-                // this the picker showed "none" after every restart even though
-                // one had been selected, because the choice was never written.
-                // reapply() rather than a bare assignment: baseShader alone only
-                // changes what SHOULD be applied, it does not push it.
+                // reapply(), not just assignment: baseShader alone doesn't push it.
                 if (typeof d.baseShader === "string" && d.baseShader.length > 0) {
                     root.baseShader = d.baseShader;
                     Qt.callLater(() => root.reapply(true));

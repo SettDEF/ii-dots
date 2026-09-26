@@ -4,6 +4,7 @@ pragma ComponentBehavior: Bound
 import Quickshell
 import Quickshell.Io
 import Quickshell.Services.Pipewire
+import Quickshell.Bluetooth
 import qs.modules.common
 import qs.modules.common.functions
 import QtQuick
@@ -60,7 +61,15 @@ Singleton {
             names: ["JBL Xtreme 5"],
             nodeMatches: ["Harman_JBL_Xtreme"],
             command: [root.binDir + "/jbl-battery", "once"],
-            intervalMs: 240000
+            intervalMs: 240000,
+            // Optional: helpers for the device's own settings, one per group.
+            // Each prints {"ok":..,"<group>":{..}} and takes `set key=value`
+            // arguments. A provider with no entry for a group simply offers no
+            // controls for it.
+            featureCommands: {
+                "lights": [root.binDir + "/jbl-battery", "lights"],
+                "eq":     [root.binDir + "/jbl-battery", "eq"]
+            }
         }
     ]
 
@@ -240,6 +249,22 @@ Singleton {
         return transport === "usb" ? "usb" : "bluetooth"
     }
 
+    /// What a device physically IS: "speaker" | "headphones" | "headset" |
+    /// "earbuds" | "". From BlueZ rather than PipeWire, which publishes the bus
+    /// and not the form factor. BlueZ derives its icon from the Class of
+    /// Device - minor 1/2 headset, 6 headphones, 5 and 7 both "audio-card" -
+    /// so the answer is about the device, not about today's cable.
+    function audioFormFactorFor(name) {
+        const d = root.btDeviceByName(name)
+        if (!d) return ""
+        const i = String(d.icon ?? "").toLowerCase()
+        if (i.includes("headset")) return "headset"
+        if (i.includes("headphone")) return "headphones"
+        if (i.includes("earbud") || i.includes("earphone")) return "earbuds"
+        if (i.includes("speaker") || i.includes("audio-card")) return "speaker"
+        return ""
+    }
+
     // ---- Bluetooth -------------------------------------------------------
     readonly property var btRows: BluetoothStatus.connectedDevices.map(d => {
         const name = d?.name ?? "?"
@@ -346,6 +371,255 @@ Singleton {
         for (const r of root.rows)
             if (r.battery >= 0 && (best < 0 || r.battery < best)) best = r.battery
         return best
+    }
+
+    // ---- Capabilities ----------------------------------------------------
+    //
+    // What extra controls a given device actually has, as DATA. The alternative
+    // is a chain of `if (name === ...)` in the UI, which is how you end up with a
+    // panel that works for one speaker and shows an empty box for everything
+    // else.
+    //
+    // A group is { id, label, icon }. The UI shows a control button when this is
+    // non-empty and renders one section per group, so adding support for a new
+    // device is a new entry here plus one section - no UI surgery.
+    //
+    // Every device gets at least "info", so the button is never a dead end.
+
+    /// Vendor-specific control groups, keyed by BlueZ device name. Battery is not
+    /// listed: it is shown inline on the row itself, not as a control.
+    readonly property var vendorControls: ({
+        "JBL Xtreme 5": [
+            { id: "lights", label: "Lights", icon: "lightbulb" },
+            { id: "eq",     label: "Equaliser", icon: "graphic_eq" }
+        ]
+    })
+
+    function capabilitiesFor(name) {
+        const out = []
+        const r = root.rows.find(x => x.name === name)
+        const kind = r ? r.kind : ""
+        const bt = root.btDeviceByName(name)
+
+        // Anything PipeWire can see has a volume worth exposing.
+        // r.node, not "it is an audio device": a paired speaker with no live
+        // PipeWire node has no volume to set, and a slider that moves nothing
+        // is worse than no slider.
+        if (r && r.node !== null)
+            out.push({ id: "volume", label: Translation.tr("Volume"), icon: "volume_up" })
+
+        // The card profile is where the A2DP-vs-headset tradeoff lives, and it
+        // is the one control EVERY Bluetooth audio device has. Offered whenever
+        // PulseAudio actually has a card for it, so it never shows an empty box.
+        if (bt && root.cardFor(bt.address))
+            out.push({ id: "profile", label: Translation.tr("Audio profile"), icon: "hearing" })
+
+        // Pointer settings come from solaar/LogiTune, so only offer them when
+        // something can actually answer.
+        if (kind === "mouse")
+            out.push({ id: "pointer", label: Translation.tr("Pointer"), icon: "mouse" })
+
+        for (const g of (root.vendorControls[name] ?? []))
+            out.push({ id: g.id, label: Translation.tr(g.label), icon: g.icon })
+
+        // Connect / trust / forget. Universal, which is the point: a paired
+        // keyboard with no battery provider and no audio card still opens a
+        // dialog that can do something.
+        if (bt)
+            out.push({ id: "connection", label: Translation.tr("Connection"), icon: "bluetooth" })
+
+        out.push({ id: "info", label: Translation.tr("Info"), icon: "info" })
+        return out
+    }
+
+    /// Groups that exist for every device and so prove nothing about whether
+    /// this one is worth a button: info is always there, and connect/forget is
+    /// already on the row itself.
+    readonly property var passiveGroups: ["info", "connection"]
+
+    /// True only when the device has a control that actually does something -
+    /// a volume, a card profile, pointer settings, or a vendor feature. A row
+    /// with nothing to offer gets no button rather than a dialog of apologies.
+    function hasControls(name) {
+        return root.capabilitiesFor(name).some(g => root.passiveGroups.indexOf(g.id) < 0)
+    }
+
+    /// The BluetoothDevice behind a row name, connected or merely paired.
+    function btDeviceByName(name) {
+        if (!name) return null
+        return Bluetooth.devices.values.find(d => d.name === name) ?? null
+    }
+
+    // ---- Vendor feature channel ------------------------------------------
+    // These settings live behind the speaker's BLE control service, and it
+    // refuses an LE link while a classic one is up (verified on hardware; the
+    // classic channel speaks Fast Pair, not this protocol). So they are live
+    // exactly when the speaker is OFF Bluetooth - on USB-C, or idle.
+    //
+    // One channel, not one per feature: it is one radio link that accepts one
+    // occupant, so requests queue and go out in turn.
+
+    /// "<providerId>:<group>" -> whatever the helper printed.
+    property var featureResults: ({})
+
+    function _featureKey(providerId, group) { return providerId + ":" + group }
+
+    function featureCommand(name, group) {
+        const p = root.providerForName(name)
+        const c = p?.featureCommands?.[group]
+        return c ? { provider: p, command: c } : null
+    }
+
+    /// True when this device has a helper for that group at all - which is what
+    /// decides whether a panel offers the section.
+    function hasFeature(name, group) {
+        return root.featureCommand(name, group) !== null
+    }
+
+    /// The last reply, or null if nothing has been read yet.
+    function featureData(name, group) {
+        const f = root.featureCommand(name, group)
+        if (!f) return null
+        return root.featureResults[root._featureKey(f.provider.id, group)] ?? null
+    }
+
+    /// The group's payload, or null when the last read did not succeed. Panels
+    /// use this to decide between showing controls and explaining why not.
+    function featureValues(name, group) {
+        const d = root.featureData(name, group)
+        return (d && d.ok) ? (d[group] ?? null) : null
+    }
+
+    /// Derived from the queue and the process, never a flag kept beside them:
+    /// kept by hand it deadlocked, because a flag left set made every later
+    /// call return early, so nothing ever arrived to clear it.
+    function featureBusy(name, group) {
+        const f = root.featureCommand(name, group)
+        if (!f) return false
+        const key = root._featureKey(f.provider.id, group)
+        if (featureProc.running && featureProc.key === key) return true
+        return root._queue.some(q => q.key === key)
+    }
+
+    property var _queue: []
+
+    /// Read a group. `extra` is how a write happens: ["set", "brightness=60"].
+    /// Both paths end in the same reread, so a panel never guesses.
+    function refreshFeature(name, group, extra) {
+        const f = root.featureCommand(name, group)
+        if (!f) return
+        const key = root._featureKey(f.provider.id, group)
+        const args = extra ?? []
+        // A queued reread is the same request twice; a write is not.
+        if (args.length === 0 && root.featureBusy(name, group)) return
+        root._queue = root._queue.concat([{ key: key, command: f.command.concat(args) }])
+        root._pump()
+    }
+
+    function setFeature(name, group, key, value) {
+        root.refreshFeature(name, group, ["set", key + "=" + value])
+    }
+
+    function _pump() {
+        if (featureProc.running || root._queue.length === 0) return
+        const next = root._queue[0]
+        root._queue = root._queue.slice(1)
+        featureProc.key = next.key
+        featureProc.command = next.command
+        featureProc.running = true
+    }
+
+    Process {
+        id: featureProc
+        property string key: ""
+        stdout: StdioCollector {
+            onStreamFinished: {
+                const next = Object.assign({}, root.featureResults)
+                try {
+                    next[featureProc.key] = JSON.parse(text.trim() || "{}")
+                } catch (e) {
+                    next[featureProc.key] = { ok: false, error: "unreadable reply" }
+                }
+                root.featureResults = next
+            }
+        }
+        onRunningChanged: if (!running) root._pump()
+    }
+
+    // ---- PulseAudio card profiles ----------------------------------------
+    // Here, not in Audio.qml: a card is a property of the DEVICE, deciding
+    // whether it is a high-fidelity sink or a telephone. Keyed by address with
+    // colons as underscores - how PulseAudio names it: bluez_card.78_66_F3_...
+    property var cards: ({})
+
+    function _cardKey(address) {
+        return (address ?? "").toUpperCase().replace(/:/g, "_")
+    }
+
+    /// { active, profiles: [{ name, description }] } or null when PulseAudio
+    /// has no card for this device (unpaired, off, or not an audio device).
+    function cardFor(address) {
+        return root.cards[root._cardKey(address)] ?? null
+    }
+
+    function setCardProfile(address, profile) {
+        const key = root._cardKey(address)
+        if (!root.cards[key]) return
+        profileProc.command = ["pactl", "set-card-profile", "bluez_card." + key, profile]
+        profileProc.running = true
+        // Optimistic, so the chip does not snap back while pactl runs.
+        const next = Object.assign({}, root.cards)
+        next[key] = Object.assign({}, next[key], { active: profile })
+        root.cards = next
+    }
+
+    Process {
+        id: profileProc
+        onExited: cardsProc.running = true
+    }
+
+    /// Re-read the cards. Only called when something asks.
+    function refreshCards() {
+        if (!cardsProc.running) cardsProc.running = true
+    }
+
+    Process {
+        id: cardsProc
+        // Text, not `pactl -f json`: that writer refuses non-ASCII bytes and
+        // emits nothing at all when any card or port name carries one.
+        command: ["bash", "-c",
+            "export LC_ALL=C; pactl list cards | awk '" +
+            "/^Card #/{ name=\"\"; active=\"\" } " +
+            "/^\\tName: /{ name=$2 } " +
+            "/^\\tActive Profile: /{ a=$0; sub(/^\\tActive Profile: /,\"\",a); " +
+            "  print \"A\\t\" name \"\\t\" a } " +
+            "/^\\t\\t[a-z0-9_+-]+: .*\\(sinks:/{ " +
+            "  p=$1; sub(/:$/,\"\",p); d=$0; sub(/^\\t\\t[^:]+: /,\"\",d); " +
+            "  avail=(index(d,\"not available\")>0)?0:1; " +
+            "  sub(/ \\(sinks:.*/,\"\",d); " +
+            "  if (avail) print \"P\\t\" name \"\\t\" p \"\\t\" d }'"]
+        stdout: StdioCollector {
+            onStreamFinished: {
+                const next = {}
+                for (const line of text.split("\n")) {
+                    const f = line.split("\t")
+                    if (f.length < 3) continue
+                    if (f[1].indexOf("bluez_card.") !== 0) continue
+                    const key = f[1].substring("bluez_card.".length)
+                    if (!next[key]) next[key] = { active: "", profiles: [] }
+                    if (f[0] === "A") next[key].active = f[2]
+                    else if (f[0] === "P" && f.length >= 4)
+                        next[key].profiles.push({ name: f[2], description: f.slice(3).join("\t") })
+                }
+                root.cards = next
+            }
+        }
+    }
+
+    // A device connecting or dropping changes what cards exist.
+    Connections {
+        target: BluetoothStatus
+        function onConnectedDevicesChanged() { root.refreshCards() }
     }
 
     // ---- Lookups for panels that only have a device, not a row -----------

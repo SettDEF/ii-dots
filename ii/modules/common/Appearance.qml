@@ -254,6 +254,7 @@ Singleton {
             property int larger: 19
             property int huge: 22
             property int hugeass: 23
+            property int display: 44
             property int title: huge
         }
     }
@@ -439,6 +440,21 @@ Singleton {
         property real wallpaperSelectorHeight: 690
         property real wallpaperSelectorItemMargins: 8
         property real wallpaperSelectorItemPadding: 6
+
+        // Dock widget windows: they cannot measure their children (a Loader
+        // reports 0 at map time), so each picks a step from here.
+        property real dockEditPanelWidth: 380
+        property QtObject dockWidgetWindow: QtObject {
+            property real widthNarrow: 340
+            property real widthNormal: 380
+            property real widthWide: 420
+            property real heightShort: 250
+            property real heightNormal: 300
+            property real heightTall: 430
+            property real minWidth: 280
+            property real minHeight: 160
+            property real weekCell: 26
+        }
     }
 
     syntaxHighlightingTheme: root.m3colors.darkmode ? "Monokai" : "ayu Light"

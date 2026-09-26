@@ -23,7 +23,7 @@ Singleton {
 
     // Right-to-left placement order. Anything unlisted goes last.
     readonly property var order: [
-        "display", "walltune", "wallEffect", "kinetix", "audio", "iris", "statsHudSettings", "rogPower"
+        "display", "walltune", "wallEffect", "kinetix", "audio", "mic", "deviceTools", "torrents", "iris", "statsHudSettings", "rogPower"
     ]
 
     readonly property int gap: 8

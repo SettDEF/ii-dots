@@ -12,18 +12,22 @@ Item {
     implicitWidth: tabBarColumn.implicitWidth
     Layout.topMargin: 25
 
+    // Buttons only: a Repeater is a child of the column too, and indexing
+    // `children` directly put the highlight on the wrong item with fallback sizes.
+    readonly property var buttons: Array.from(tabBarColumn.children).filter(c => c.baseSize !== undefined)
+    readonly property var current: root.buttons[root.currentIndex] ?? null
+
     Rectangle {
-        property real itemHeight: tabBarColumn.children[0]?.baseSize ?? 56
-        property real baseHighlightHeight: tabBarColumn.children[0]?.baseHighlightHeight ?? 56
+        visible: root.current !== null
         anchors {
             top: tabBarColumn.top
             left: tabBarColumn.left
-            topMargin: itemHeight * root.currentIndex + (root.expanded ? 0 : ((itemHeight - baseHighlightHeight) / 2))
+            topMargin: (root.current?.y ?? 0) + (root.current?.highlightY ?? 0)
         }
         radius: Appearance.rounding.full
         color: Appearance.colors.colSecondaryContainer
-        implicitHeight: root.expanded ? itemHeight : baseHighlightHeight
-        implicitWidth: tabBarColumn?.children[root.currentIndex]?.visualWidth ?? 100
+        implicitHeight: root.expanded ? (root.current?.baseSize ?? 56) : (root.current?.baseHighlightHeight ?? 32)
+        implicitWidth: root.current?.visualWidth ?? 56
 
         Behavior on anchors.topMargin {
             NumberAnimation {

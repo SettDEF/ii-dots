@@ -45,6 +45,13 @@ Singleton {
         return ms.find(m => m.name === name) ?? ms[0];
     }
 
+
+    // Usable logical width of the screen the panel is on.
+    function logicalWidth(win) {
+        const m = root.monitorFor(win);
+        if (m) return m.width / (m.scale || 1);
+        return (win && win.screen) ? win.screen.width : 1920;
+    }
     // Usable logical height of the screen the panel is on.
     function logicalHeight(win) {
         const m = root.monitorFor(win);

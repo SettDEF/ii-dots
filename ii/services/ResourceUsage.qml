@@ -70,7 +70,11 @@ Singleton {
             fileStat.reload()
 
             // Parse memory and swap usage
+            // reload() is async: the first text() of the session is empty, and
+            // the ?? fallbacks below then publish "RAM 100%, CPU 0%" for one
+            // interval on every start. Skip until there is something to parse.
             const textMeminfo = fileMeminfo.text()
+            if (!textMeminfo || textMeminfo.length === 0) return;
             memoryTotal = Number(textMeminfo.match(/MemTotal: *(\d+)/)?.[1] ?? 1)
             memoryFree = Number(textMeminfo.match(/MemAvailable: *(\d+)/)?.[1] ?? 0)
             swapTotal = Number(textMeminfo.match(/SwapTotal: *(\d+)/)?.[1] ?? 1)

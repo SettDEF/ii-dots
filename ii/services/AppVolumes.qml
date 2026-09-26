@@ -73,8 +73,14 @@ Singleton {
 
     readonly property string _rowSignature: {
         const keys = [];
+        // node.id, NOT keyForNode(): that reads node.properties, which is
+        // empty until something tracks the node and populates it. The key
+        // therefore flips as trackers come and go, the signature changes,
+        // rows rebuild, and whatever is bound to rows re-triggers it —
+        // a binding loop, logged twice today right before a segfault in
+        // PipeWire's protocol handler. The id is stable and needs no tracker.
         for (const node of (Audio.outputAppNodes ?? []))
-            if (node) keys.push("L:" + root.keyForNode(node));
+            if (node) keys.push("L:" + node.id);
         for (const win of (HyprlandData.windowList ?? []))
             keys.push("W:" + root.appKey(win?.class ?? ""));
         return keys.join("|");

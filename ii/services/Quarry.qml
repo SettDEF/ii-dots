@@ -188,11 +188,18 @@ Singleton {
      * property system into no change at all, so a single attempt did nothing.
      * Driven by `running` instead, across two turns of the event loop.
      */
+    // Backs off to 30 s while the daemon is down; poke() when something needs it now.
+    function poke() {
+        root._retry.interval = 1500;
+        if (!root.connected) root._retry.restart();
+    }
+    onConnectedChanged: if (connected) root._retry.interval = 1500
     property Timer _retry: Timer {
         interval: 1500
         repeat: true
         running: !root.connected
         onTriggered: {
+            interval = Math.min(30000, interval * 2);
             socketLoader.active = false;
             Qt.callLater(function () {
                 socketLoader.active = true;

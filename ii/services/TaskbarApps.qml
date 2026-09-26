@@ -50,9 +50,15 @@ Singleton {
             map.get(toplevel.appId.toLowerCase()).toplevels.push(toplevel);
         }
 
-        var values = [];
+        // A separator with nothing after it is just a stray line, and with
+        // no running apps that is exactly what "SEPARATOR" became.
+        const keys = Array.from(map.keys());
+        while (keys.length > 0 && keys[keys.length - 1] === "SEPARATOR")
+            keys.pop();
 
-        for (const [key, value] of map) {
+        var values = [];
+        for (const key of keys) {
+            const value = map.get(key);
             values.push(appEntryComp.createObject(null, { appId: key, toplevels: value.toplevels, pinned: value.pinned }));
         }
 

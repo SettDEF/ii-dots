@@ -218,10 +218,11 @@ MouseArea { // Notification group area
                         // shows only on hover instead of always.
                         property bool hovered: muteMa.containsMouse
                         readonly property string appName: root.notificationGroup?.appName ?? ""
-                        // The leading `Notifications.mutedApps,` forces the
-                        // binding to depend on the map (so it re-evaluates on
-                        // change); isAppMuted handles forever(0)/timed/legacy.
-                        readonly property bool muted: (Notifications.mutedApps, Notifications.isAppMuted(appName))
+                        // Reads the map directly (0 = forever, timestamp = until).
+                        readonly property bool muted: {
+                            const e = Notifications.mutedApps[appName]
+                            return e !== undefined && (e === 0 || e === true || e > Date.now())
+                        }
                         visible: appName !== ""
                         implicitWidth: appName !== "" ? 26 : 0
                         implicitHeight: 26
@@ -243,9 +244,8 @@ MouseArea { // Notification group area
                             // Act on press and accept the event (same as
                             // RippleButton) so the group's DragManager can't
                             // swallow it before a release-based onClicked fires.
-                            // Opens the per-app mute options menu (mounted on the
-                            // list view); falls back to a plain toggle in the
-                            // toast popup, which has no menu.
+                            // Opens the per-app mute menu (mounted on the list
+                            // view, in the centre and the popup alike).
                             onPressed: (event) => {
                                 event.accepted = true
                                 const app = muteButton.appName
@@ -256,20 +256,26 @@ MouseArea { // Notification group area
                                 const soundOff = Notifications.isAppSoundOff(app)
                                 const pt = muteButton.mapToItem(menu, 0, muteButton.height + 2)
                                 const model = []
+                                // Colour scales with how long the silence lasts.
                                 if (muted) {
                                     model.push({ icon: "notifications_active", label: Translation.tr("Unmute"),
+                                                 iconColor: Appearance.colors.colPrimary,
                                                  onTriggered: () => Notifications.unmuteApp(app) })
                                 } else {
-                                    model.push({ icon: "schedule", label: Translation.tr("Mute for 15 minutes"),
+                                    model.push({ icon: "timer", label: Translation.tr("Mute for 15 minutes"),
+                                                 iconColor: Appearance.m3colors.m3tertiary,
                                                  onTriggered: () => Notifications.muteApp(app, 15) })
                                     model.push({ icon: "schedule", label: Translation.tr("Mute for 1 hour"),
+                                                 iconColor: Appearance.m3colors.m3secondary,
                                                  onTriggered: () => Notifications.muteApp(app, 60) })
                                     model.push({ icon: "notifications_off", label: Translation.tr("Mute forever"),
+                                                 iconColor: Appearance.m3colors.m3error,
                                                  onTriggered: () => Notifications.muteApp(app, 0) })
                                 }
                                 model.push({ separator: true })
                                 model.push({ icon: soundOff ? "volume_up" : "volume_off",
                                              label: soundOff ? Translation.tr("Enable sound") : Translation.tr("Disable sound"),
+                                             iconColor: Appearance.colors.colSubtext,
                                              onTriggered: () => Notifications.setAppSoundOff(app, !soundOff) })
                                 menu.popup(pt.x, pt.y, model)
                             }

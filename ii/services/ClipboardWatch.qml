@@ -25,6 +25,19 @@ Singleton {
     property string imagePath: ""
     /** Set when the copied text is a single URL — enables the "Open" action. */
     property string url: ""
+    /**
+     * Set when the copied text is a path to something that EXISTS on disk.
+     *
+     * Without this a copied path was invisible to the toast: `url` only ever
+     * matched http(s), so no Open button appeared, and the "Files" action fell
+     * through to a branch that ignores the clipboard entirely and opens
+     * ~/Pictures/Clipboard. Copying a file path and pressing Files took you to
+     * your home directory, which reads as "it cannot open that file".
+     *
+     * Existence is checked rather than guessed, so the button is never offered
+     * for a path that is merely plausible.
+     */
+    property string filePath: ""
     /** Bumped on every change — bind to this to trigger UI. */
     property int revision: 0
 
@@ -64,6 +77,7 @@ Singleton {
                     root.imagePath = (parts[2] ?? "") + "?v=" + (root.revision + 1);
                     root.preview = "";
                     root.url = "";
+                    root.filePath = "";
                 } else {
                     root.mime = "text/plain";
                     root.imagePath = "";
@@ -72,8 +86,40 @@ Singleton {
                     if (root.preview.length === 0) return;
                     const m = root.preview.match(/^\s*(https?:\/\/\S+)\s*$/);
                     root.url = m ? m[1] : "";
+                    root.filePath = "";
+                    if (!root.url) root._maybePath(root.preview);
                 }
                 root.revision++;
+            }
+        }
+    }
+
+    // ── file paths ──────────────────────────────────────────────────────
+    /// A single line that looks like a local path, expanded and then CHECKED.
+    function _maybePath(text) {
+        let t = String(text).trim()
+        if (t.length === 0 || t.indexOf("\n") >= 0) return
+        if (t.startsWith("file://")) t = decodeURIComponent(t.slice(7))
+        // Strip one layer of quotes — paths copied from a terminal often carry
+        // them, and they are not part of the name.
+        if ((t.startsWith("'") && t.endsWith("'")) || (t.startsWith('"') && t.endsWith('"')))
+            t = t.slice(1, -1)
+        if (t.startsWith("~/")) t = Quickshell.env("HOME") + t.slice(1)
+        if (!t.startsWith("/")) return
+        root._candidate = t
+        pathCheck.running = true
+    }
+
+    property string _candidate: ""
+
+    Process {
+        id: pathCheck
+        command: ["test", "-e", root._candidate]
+        onExited: (code) => {
+            // Only a path that is really there earns the button.
+            if (code === 0 && root._candidate.length > 0) {
+                root.filePath = root._candidate
+                root.revision++
             }
         }
     }

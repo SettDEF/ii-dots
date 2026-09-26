@@ -192,7 +192,7 @@ Singleton {
 
     // Anti-flashbang
     property int workspaceAnimationDelay: 500
-    property int contentSwitchDelay: 400 // was 30 — a full-screen grim|magick per
+    property int contentSwitchDelay: 400 // was 30 — a full-screen grim|tinct per
     // monitor fired on every window/title change; a title storm ran it back to
     // back. 400ms coalesces the burst into one capture.
     property string screenshotDir: "/tmp/quickshell/brightness/antiflashbang"
@@ -237,7 +237,7 @@ Singleton {
                 command: ["bash", "-c",
                     `mkdir -p '${StringUtils.shellSingleQuoteEscape(root.screenshotDir)}'`
                     + ` && grim -o '${StringUtils.shellSingleQuoteEscape(screenScope.screenName)}' -`
-                    + ` | magick png:- -colorspace Gray -format "%[fx:mean*100]" info:`
+                    + ` | "$HOME/.local/bin/tinct" image mean -`
                 ]
                 stdout: StdioCollector {
                     id: lightnessCollector

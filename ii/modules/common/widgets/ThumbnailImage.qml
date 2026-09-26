@@ -42,7 +42,7 @@ StyledImage {
         thumbnailGeneration.running = true;
     }
     // Guard: same lifecycle race as CliphistImage — Repeater item is gone,
-    // but the magick process can still emit `finished` and crash V4 GC.
+    // but the thumbnail process can still emit `finished` and crash V4 GC.
     property bool _gone: false
     Component.onDestruction: {
         root._gone = true;
@@ -55,15 +55,9 @@ StyledImage {
             const maxSize = Images.thumbnailSizes[root.thumbnailSizeName];
             const src     = root.sourcePath;
             const dst     = FileUtils.trimFileProtocol(root.thumbnailPath);
-            // Prefer vipsthumbnail: same speed as magick, ~30 MB peak, no
-            // thread fanout. Fall back to magick (capped) only if vips
-            // isn't installed or fails. Exit 1 on regen so the Image reloads.
-            // vipsthumbnail/magick can't decode video — without an ffmpeg
-            // step the thumbnail never lands, and this Process re-runs every
-            // time the tile re-lays out, pegging a core. Order: vips → magick
-            // (images) → ffmpeg (video/anything else). If ALL fail, drop a
-            // `.thumbfail` marker so we never retry that file (else infinite
-            // respawn). `[ -s ]` guards against half-written 0-byte outputs.
+            // tinct for pictures, ffmpeg for a video frame. Exit 1 on regen so the Image
+            // reloads; a `.thumbfail` marker stops a file that cannot be read from
+            // respawning this on every layout.
             return ["bash", "-c",
                 `dst='${dst}'; src='${src}'; max=${maxSize}; \\
                  [ -f "$dst" ] && exit 0; \\
@@ -75,10 +69,7 @@ StyledImage {
                           -frames:v 1 -vf "scale=\${max}:-2" "$dst" 2>/dev/null && [ -s "$dst" ]; then exit 1; fi; \\
                      : > "$dst.thumbfail" 2>/dev/null; exit 0 ;; \\
                  esac; \\
-                 if command -v vipsthumbnail >/dev/null && \\
-                    vipsthumbnail "$src" -s \${max}x\${max} -o "$dst" 2>/dev/null && [ -s "$dst" ]; then exit 1; fi; \\
-                 export MAGICK_THREAD_LIMIT=1 MAGICK_MEMORY_LIMIT=256MiB MAGICK_MAP_LIMIT=512MiB OMP_NUM_THREADS=1; \\
-                 if magick "$src" -resize \${max}x\${max} "$dst" 2>/dev/null && [ -s "$dst" ]; then exit 1; fi; \\
+                 if "$HOME/.local/bin/tinct" image thumb --size "$max" --jobs 1 "$src" "$dst" 2>/dev/null && [ -s "$dst" ]; then exit 1; fi; \\
                  : > "$dst.thumbfail" 2>/dev/null; exit 0`
             ]
         }

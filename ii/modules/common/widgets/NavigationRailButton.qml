@@ -17,15 +17,23 @@ TabButton {
     readonly property real visualWidth: root.expanded ? root.baseSize + 20 + itemText.implicitWidth : root.baseSize
 
     property real baseSize: 56
+    property real iconSize: 24
+    // 14 is off the ramp; kept as the default so other rails do not shift.
+    property real labelSize: 14
     property real baseHighlightHeight: 32
-    property real highlightCollapsedTopMargin: 8
+    property real highlightCollapsedTopMargin: 6
+    // Where the highlight pill starts inside the button.
+    readonly property real highlightY: root.expanded ? 0 : root.highlightCollapsedTopMargin
     padding: 0
 
     // The navigation item’s target area always spans the full width of the
     // nav rail, even if the item container hugs its contents.
     Layout.fillWidth: true
     // implicitWidth: contentItem.implicitWidth
-    implicitHeight: baseSize
+    // Collapsed, the label sits under the icon and needs its own room, or it
+    // runs into the next item.
+    implicitHeight: root.expanded ? baseSize
+        : highlightCollapsedTopMargin + baseHighlightHeight + 2 + itemText.implicitHeight + 6
 
     background: null
     PointingHandInteraction {}
@@ -96,13 +104,14 @@ TabButton {
             implicitHeight: root.baseHighlightHeight
             anchors {
                 left: parent.left
-                verticalCenter: parent.verticalCenter
+                top: parent.top
+                topMargin: root.expanded ? (root.baseSize - root.baseHighlightHeight) / 2 : root.highlightCollapsedTopMargin
             }
             MaterialSymbol {
                 id: navRailButtonIcon
                 rotation: root.buttonIconRotation
                 anchors.centerIn: parent
-                iconSize: 24
+                iconSize: root.iconSize
                 fill: toggled ? 1 : 0
                 font.weight: (toggled || root.hovered) ? Font.DemiBold : Font.Normal
                 text: buttonIcon
@@ -142,7 +151,7 @@ TabButton {
                 }
             }
             text: buttonText
-            font.pixelSize: 14
+            font.pixelSize: root.labelSize
             color: Appearance.colors.colOnLayer1
         }
     }

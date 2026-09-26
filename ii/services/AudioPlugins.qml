@@ -120,8 +120,35 @@ Singleton {
         if (chain.length === 0) return
         const args = [root.hostBin, "--name", p.name, "--sink"]
         for (const pl of chain) { args.push("--plugin"); args.push(pl.format + ":" + pl.path) }
-        hosts.createObject(root, { profileId: id, argv: args })
-        root._setRunning(id, true)
+
+        // Reap orphans, THEN launch - never both in the same breath. A host
+        // started before the shell reloaded is still running but no longer
+        // tracked, so isRunning says no and a second starts on top of it. The
+        // first version fired pkill and created the host immediately after,
+        // and since exec() does not wait, pkill ran a moment later and matched
+        // the brand new process: the profile could not be started at all.
+        //
+        // Anchored on the full binary path. An unanchored pattern matches ANY
+        // command line containing that text - including a shell that merely
+        // mentions it - and pkill does not ask twice.
+        root._pendingStart = { id: id, argv: args }
+        reaper.running = false
+        reaper.command = ["pkill", "-f", `^${root.hostBin} --name ${p.name} `]
+        reaper.running = true
+    }
+
+    property var _pendingStart: null
+
+    Process {
+        id: reaper
+        // pkill exits 1 when it matched nothing, which is the normal case.
+        onExited: {
+            const s = root._pendingStart
+            root._pendingStart = null
+            if (!s || root.isRunning(s.id)) return
+            hosts.createObject(root, { profileId: s.id, argv: s.argv })
+            root._setRunning(s.id, true)
+        }
     }
 
     function stopProfile(id) {
@@ -132,6 +159,29 @@ Singleton {
 
     property var _hosts: []
 
+    /// Show or hide a plugin's own editor. Goes through the running host
+    /// because carla_show_custom_ui draws the window from the process that
+    /// loaded the plugin; nothing outside can open it.
+    ///
+    /// `index` is the position in the HOSTABLE chain - what the host actually
+    /// loaded - which differs from the stored chain once a format is filtered.
+    function showPluginUi(profileId, index, on) {
+        for (const h of root._hosts)
+            if (h.profileId === profileId) { h.ui(index, on); return true }
+        return false
+    }
+
+    /// The host's index for a plugin, or -1 when it never loaded it.
+    function hostIndexOf(profile, chainIndex) {
+        const chain = profile?.chain ?? []
+        if (chainIndex < 0 || chainIndex >= chain.length) return -1
+        if (chain[chainIndex].format === "clap") return -1
+        let n = 0
+        for (let i = 0; i < chainIndex; i++)
+            if (chain[i].format !== "clap") n++
+        return n
+    }
+
     Component {
         id: hosts
         QtObject {
@@ -139,12 +189,19 @@ Singleton {
             property string profileId: ""
             property var argv: []
             function stop() { hostProc.signal(15) }
+            function ui(index, on) {
+                hostProc.write(`ui ${index} ${on ? "on" : "off"}\n`)
+            }
             property Process hostProc: Process {
                 command: hostObj.argv
                 running: true
-                stdout: StdioCollector {
-                    onStreamFinished: if (text.trim().length > 0)
-                        console.log("[audio-profile]", hostObj.profileId, text.trim())
+                // The control channel, open for the life of the chain.
+                stdinEnabled: true
+                stdout: SplitParser {
+                    onRead: line => {
+                        if (line.trim().length > 0)
+                            console.log("[audio-profile]", hostObj.profileId, line.trim())
+                    }
                 }
                 onExited: {
                     root._setRunning(hostObj.profileId, false)
@@ -295,6 +352,110 @@ Singleton {
         })
         root.revision++
         root.save()
+    }
+
+    // ---- Routing ---------------------------------------------------------
+    // A profile IS a sink, so "send this app through my plugins" is the same
+    // act as "send this app to that output":
+    //
+    //     app --> sink "carla_<name>" --> monitor --> chain --> output
+
+    /// Must match the host's own sanitising, or the UI hunts for a sink that
+    /// exists under a different name.
+    function sinkNameFor(profile) {
+        return "carla_" + String(profile?.name ?? "").replace(/[^a-zA-Z0-9]/g, "_")
+    }
+
+    /// The profile behind a node, so the routing list can label a chain as a
+    /// chain rather than showing "carla_my_profile" among the speakers.
+    function profileForSink(nodeName) {
+        const n = String(nodeName ?? "")
+        if (n.indexOf("carla_") !== 0) return null
+        return root.profiles.find(p => root.sinkNameFor(p) === n) ?? null
+    }
+
+    function isProfileSink(nodeName) { return root.profileForSink(nodeName) !== null }
+
+    /// The apps currently playing through a chain. carla-host names the null
+    /// sink's description after the profile, which is the same string
+    /// Audio.sinkForStream reports, so the two line up without a second lookup.
+    function appsRoutedTo(profile) {
+        const name = String(profile?.name ?? "")
+        if (name.length === 0) return []
+        return Audio.outputAppNodes.filter(n =>
+            n && String(n.name ?? "") !== name && Audio.sinkForStream(n.id) === name)
+    }
+
+    /// Send an app through a chain, starting the chain if it is not up yet.
+    /// Lives here rather than in the panel because it is the whole point of a
+    /// profile, and a caller should not have to know that "route into my
+    /// plugins" is spelled `target.object` on a null sink.
+    function routeInto(appNode, profile) {
+        if (!appNode || !profile) return
+        if (!root.isRunning(profile.id)) root.startProfile(profile.id)
+        root._pendingRoute = { app: appNode, sink: root.sinkNameFor(profile) }
+        routeWait.restart()
+    }
+
+    /// Back to automatic - the app follows the default output again.
+    function unroute(appNode) {
+        if (!appNode) return
+        routeProc.exec(["pw-metadata", "-d", String(appNode.id), "target.object"])
+        settle.restart()
+    }
+
+    property var _pendingRoute: null
+
+    /// The app on its way into a chain, or null. Starting a host and waiting
+    /// for its sink takes a second or two, and without this the UI showed
+    /// nothing at all in between - the click looked like it had missed.
+    function pendingAppFor(profile) {
+        const p = root._pendingRoute
+        return (p && p.sink === root.sinkNameFor(profile)) ? p.app : null
+    }
+
+    function isRoutePending(appNode) {
+        return !!(root._pendingRoute && appNode
+                  && root._pendingRoute.app?.id === appNode.id)
+    }
+
+    Process { id: routeProc }
+
+    // A sink that does not exist yet cannot be targeted, so a freshly started
+    // chain is waited for rather than raced.
+    Timer {
+        id: routeWait
+        interval: 400
+        repeat: true
+        property int tries: 0
+        onRunningChanged: if (running) tries = 0
+        onTriggered: {
+            tries++
+            const p = root._pendingRoute
+            if (!p) { stop(); return }
+            const node = Audio.outputDevices.find(d => d?.name === p.sink)
+            if (node) {
+                const target = node.properties?.["object.serial"] ?? node.name
+                routeProc.exec(["pw-metadata", String(p.app.id), "target.object", String(target)])
+                root._pendingRoute = null
+                stop()
+                settle.restart()
+            } else if (tries > 25) {      // ~10s; the host never came up
+                root._pendingRoute = null
+                stop()
+            }
+        }
+    }
+
+    // The graph needs a moment before it reports the move.
+    Timer { id: settle; interval: 350; onTriggered: Audio.refreshStreamSinks() }
+
+    /// Where a running chain plays OUT to - its own stream's destination.
+    function outputOf(profile) {
+        const name = String(profile?.name ?? "")
+        const self = Audio.outputAppNodes.find(n =>
+            Audio.appNodeDisplayName(n) === name)
+        return self ? Audio.sinkForStream(self.id) : ""
     }
 
     function profileById(id) {

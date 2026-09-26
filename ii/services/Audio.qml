@@ -3,6 +3,7 @@ pragma ComponentBehavior: Bound
 import qs.modules.common
 import QtQuick
 import Quickshell
+import Quickshell.Io
 import Quickshell.Services.Pipewire
 
 /**
@@ -22,8 +23,11 @@ Singleton {
     function friendlyDeviceName(node) {
         return (node.nickname || node.description || Translation.tr("Unknown"));
     }
+    /// Null-safe: a sheet that is not showing still evaluates its title, and a
+    /// bare property read there threw on every such frame.
     function appNodeDisplayName(node) {
-        return (node.properties["application.name"] || node.description || node.name)
+        if (!node) return ""
+        return (node.properties?.["application.name"] || node.description || node.name || "")
     }
 
     // Lists
@@ -65,6 +69,71 @@ Singleton {
         })
     }
     readonly property list<var> outputAppNodes: root.appNodes(true)
+
+    // ---- Where each stream actually goes ---------------------------------
+    // Not readable from the node: the link is a graph edge, and target.object
+    // exists only for streams pinned by hand. PulseAudio's view answers it.
+
+    /// PipeWire node id (as a string) -> the description of the sink it feeds.
+    property var streamSink: ({})
+
+    function sinkForStream(nodeId) {
+        return root.streamSink[String(nodeId)] ?? ""
+    }
+
+    /// Panels that display routing hold a watcher while they exist. Nothing
+    /// else consumes this, and polling the graph for an audience of nobody is
+    /// what made it expensive.
+    property int streamWatchers: 0
+
+    function refreshStreamSinks() {
+        if (!streamProc.running) streamProc.running = true
+    }
+
+    // Debounced, and only while something is watching. Bound straight to
+    // outputAppNodesChanged this fired about seventeen times a SECOND with
+    // audio playing - the list re-evaluates on any node change - so a bash and
+    // two pactl processes were being spawned continuously in the background.
+    Timer {
+        id: streamDebounce
+        interval: 600
+        onTriggered: root.refreshStreamSinks()
+    }
+
+    Process {
+        id: streamProc
+        // Text, NOT `pactl -f json`. Its JSON writer refuses any non-ASCII
+        // byte - "Invalid ASCII character: 0xff..." on stderr and nothing on
+        // stdout - so a single browser tab with an umlaut in its title took the
+        // whole listing out and the routing silently showed nothing. The plain
+        // listing has no such problem. LC_ALL=C pins the field labels.
+        command: ["bash", "-c",
+            "export LC_ALL=C; " +
+            "pactl list sinks | awk '/^Sink #/{i=substr($2,2)} " +
+            "/^\\tDescription: /{d=$0; sub(/^\\tDescription: /,\"\",d); print \"S\\t\" i \"\\t\" d}'; " +
+            "pactl list sink-inputs | awk '" +
+            "/^Sink Input #/{ if(id!=\"\") print \"I\\t\" id \"\\t\" sink; id=\"\"; sink=\"\" } " +
+            "/^\\tSink: /{ sink=$2 } " +
+            "/object\\.id = /{ v=$3; gsub(/\"/,\"\",v); id=v } " +
+            "END{ if(id!=\"\") print \"I\\t\" id \"\\t\" sink }'"]
+        stdout: StdioCollector {
+            onStreamFinished: {
+                const byIndex = {}
+                const next = {}
+                for (const line of text.split("\n")) {
+                    const f = line.split("\t")
+                    if (f.length < 3) continue
+                    if (f[0] === "S") byIndex[f[1]] = f.slice(2).join("\t")
+                    else if (f[0] === "I") next[f[1]] = byIndex[f[2]] ?? ""
+                }
+                root.streamSink = next
+            }
+        }
+    }
+
+    // A stream appearing or moving changes the answer.
+    onOutputAppNodesChanged: if (root.streamWatchers > 0) streamDebounce.restart()
+    onStreamWatchersChanged: if (root.streamWatchers > 0) root.refreshStreamSinks()
     readonly property list<var> inputAppNodes: root.appNodes(false)
     readonly property list<var> outputDevices: root.devices(true)
     readonly property list<var> inputDevices: root.devices(false)

@@ -137,6 +137,15 @@ Singleton {
         const ff = String(p["device.form_factor"] ?? "").toLowerCase();
         const bus = String(p["device.bus"] ?? "").toLowerCase();
 
+        // BlueZ's idea of what the thing IS survives the cable; the bus
+        // fallbacks below cannot. This is why a JBL Xtreme drew headphones.
+        const byDevice = Devices.audioFormFactorFor(root.productName(node))
+                      || Devices.audioFormFactorFor(Audio.friendlyDeviceName(node));
+        if (byDevice === "speaker") return "speaker";
+        if (byDevice === "headset") return "bluetooth-headset";
+        if (byDevice === "headphones") return bus === "bluetooth" ? "bluetooth-headset" : "headphones";
+        if (byDevice === "earbuds") return "earbuds";
+
         if (ff === "headset" || ff === "hands-free") return "bluetooth-headset";
         if (ff === "headphone") return bus === "bluetooth" ? "bluetooth-headset" : "headphones";
         if (ff === "earbud" || ff === "earpiece") return "earbuds";
@@ -152,7 +161,7 @@ Singleton {
         if (s.includes("earbud") || s.includes("airpod") || s.includes("buds")) return "earbuds";
         if (s.includes("headphone") || s.includes("headset") || s.includes("hearing"))
             return "headphones";
-        if (bus === "usb") return "headphones";
+        // No "usb -> headphones": a bus says how it is attached, not what it is.
         return "laptop";
     }
 
@@ -193,11 +202,25 @@ Singleton {
             case "headphones":
             case "bluetooth-headset": return "headphones-symbolic.svg";
             case "earbuds":           return "earbuds-symbolic.svg";
+            // Only where the drawing is true: it is a strap-carry capsule, and
+            // an Echo Dot is a puck. A wrong picture beats no generic one.
+            case "speaker":           return root.isStrapCapsuleSpeaker(node)
+                                             ? "speaker-portable-symbolic.svg" : "";
             case "laptop":            return root.isTabletChassis
                                              ? "tablet-audio-symbolic.svg"
                                              : "laptop-audio-symbolic.svg";
             default:                  return "";
         }
+    }
+
+    /// Speakers actually shaped like the icon. Matched on the model name: no
+    /// metadata describes a silhouette, and BlueZ says "loudspeaker" for a
+    /// puck, a boombox and a soundbar alike.
+    function isStrapCapsuleSpeaker(node) {
+        const n = ((root.productName(node) ?? "") + " "
+                 + (node?.description ?? "") + " " + (node?.name ?? "")).toLowerCase();
+        if (!n.includes("jbl")) return false;
+        return /xtreme|charge|flip|pulse|boombox|go\b|clip/.test(n);
     }
 
     function materialSymbolFor(node) {

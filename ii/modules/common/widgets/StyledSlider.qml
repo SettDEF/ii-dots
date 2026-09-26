@@ -1,6 +1,7 @@
 pragma ComponentBehavior: Bound
 import qs.modules.common
 import qs.modules.common.widgets
+import qs.modules.common.functions
 import qs.services
 import QtQuick
 import QtQuick.Controls
@@ -46,6 +47,15 @@ Slider {
     property real handleWidth: root.pressed ? handlePressedWidth : handleDefaultWidth
     property real handleMargins: 4
     property real trackDotSize: 3
+    /// Optional live meter drawn inside the track, independent of `value`:
+    /// the slider sets a level, the meter shows what is actually coming out.
+    /// 0..1, or -1 for no meter.
+    property real level: -1
+    /// Peak-hold marker, 0..1, or -1 for none.
+    property real peakHold: -1
+    /// Near clipping: the meter turns to the error colour.
+    property bool levelHot: false
+    property real meterThickness: Math.max(3, Math.round(root.trackWidth * 0.28))
     property bool usePercentTooltip: true
     property string tooltipContent: usePercentTooltip ? `${Math.round(((value - from) / (to - from)) * 100)}%` : `${Math.round(value)}`
     property bool wavy: configuration === StyledSlider.Configuration.Wavy // If true, the progress bar will have a wavy fill effect
@@ -84,6 +94,49 @@ Slider {
 
         Behavior on color {
             animation: Appearance.animation.elementMoveFast.colorAnimation.createObject(this)
+        }
+    }
+
+    // One half of the in-track meter. The track is two differently coloured
+    // fills, so the meter is drawn twice - clipped to each fill, in a colour
+    // that reads on that fill - rather than once in a colour that disappears
+    // on one of them.
+    component MeterHalf: Item {
+        required property real clipX
+        required property real clipWidth
+        required property color barColor
+        x: clipX
+        width: Math.max(0, clipWidth)
+        height: root.trackWidth
+        anchors.verticalCenter: parent.verticalCenter
+        clip: true
+        visible: root.level >= 0
+
+        Rectangle {
+            x: root.handleMargins - parent.clipX
+            anchors.verticalCenter: parent.verticalCenter
+            width: root.effectiveDraggingWidth * Math.max(0, Math.min(1, root.level))
+            height: root.meterThickness
+            radius: Appearance.rounding.full
+            color: root.levelHot ? Appearance.m3colors.m3error : parent.barColor
+            // Only the fall is eased: easing the rise would smooth away the
+            // transient a meter exists to show.
+            Behavior on width {
+                enabled: root.level < 0 || width > root.effectiveDraggingWidth * root.level
+                NumberAnimation { duration: 110; easing.type: Easing.OutCubic }
+            }
+        }
+
+        Rectangle {
+            visible: root.peakHold >= 0
+            x: root.handleMargins - parent.clipX
+               + root.effectiveDraggingWidth * Math.max(0, Math.min(1, root.peakHold)) - width / 2
+            anchors.verticalCenter: parent.verticalCenter
+            width: 2
+            height: Math.max(root.meterThickness + 4, root.trackWidth - 6)
+            radius: 1
+            color: root.levelHot ? Appearance.m3colors.m3error : parent.barColor
+            Behavior on x { NumberAnimation { duration: 160; easing.type: Easing.OutCubic } }
         }
     }
 
@@ -152,6 +205,21 @@ Slider {
             height: root.trackWidth
             color: root.trackColor
             radius: root.trackRadius
+        }
+
+        // In-track meter: over the filled half in the colour that sits on the
+        // fill, over the empty half in the fill's own colour.
+        MeterHalf {
+            clipX: 0
+            clipWidth: root.handleMargins + (root.visualPosition * root.effectiveDraggingWidth)
+                       - (root.handleWidth / 2 + root.handleMargins)
+            barColor: ColorUtils.transparentize(root.dotColorHighlighted, 0.35)
+        }
+        MeterHalf {
+            clipX: parent.width - (root.handleMargins + ((1 - root.visualPosition) * root.effectiveDraggingWidth)
+                   - (root.handleWidth / 2 + root.handleMargins))
+            clipWidth: parent.width - clipX
+            barColor: root.highlightColor
         }
 
         // Stop indicators

@@ -24,11 +24,17 @@ Singleton {
     // Force the dock to reveal even when it would otherwise be hidden.
     // Toggled by the bottom-edge gesture.
     property bool dockOpen: false
+    // Latte-style edit mode: outline, drag-to-resize, live settings panel.
+    property bool dockEditMode: false
     // Tablet mode lives in Config.options.tabletMode (persisted across reloads).
     // This is a read-only mirror so existing GlobalStates consumers keep working.
     readonly property bool tabletMode: Config.options?.tabletMode ?? false
     property bool overlayOpen: false
     property bool overviewOpen: false
+    // Windows-style launcher panel (modules/ii/startMenu/). Opened by
+    // Super+Space (panelFamilies/Shortcuts.qml), the "startMenu" IpcHandler,
+    // or the dock's apps-grid button.
+    property bool startMenuOpen: false
     // Sort & filter dropdown inside the launcher. Lives here rather than on
     // SearchWidget so the `/sort` command can drive it too, not just the
     // toolbar button.
@@ -119,12 +125,21 @@ Singleton {
     property bool statsHudEdit: false
     property bool statsHudSettingsOpen: false
     property bool audioSettingsOpen: false
+    property bool torrentsOpen: false
+    property bool deviceToolsOpen: false
+    property bool micOpen: false
     property bool irisOpen: false
     property bool wallEffectVarsOpen: false
     // Per-application colours (tinct app). A floating popup opened from
     // WallTune, dismissed by clicking away — the shape the connectivity
     // popup uses — rather than a docked panel in the settings stack.
     property bool appColorsOpen: false
+    property bool audioPluginsOpen: false
+    /// Which device the per-device controls dialog is about, and a counter the
+    /// sidebar watches. A name rather than the object: the device row is a
+    /// delegate and can be destroyed while the dialog is up.
+    property string deviceControlsName: ""
+    property int openDeviceControlsRequest: 0
     // Colour-grading values pushed from outside the display panel (the
     // launcher's `/display --saturation=1.4` and friends). The panel owns the
     // real state and watches this, so typed values and slider drags cannot
@@ -190,10 +205,13 @@ Singleton {
         "walltune":         "wallTuneOpen",
         "kinetix":          "kinetixOpen",
         "audio":            "audioSettingsOpen",
+        "mic":              "micOpen",
         "iris":          "irisOpen",
         "wallEffect":       "wallEffectVarsOpen",
         "statsHudSettings": "statsHudSettingsOpen",
-        "rogPower":         "rogPowerOpen"
+        "rogPower":         "rogPowerOpen",
+        "deviceTools":      "deviceToolsOpen",
+        "torrents":         "torrentsOpen",
     })
 
     Connections {
@@ -216,6 +234,7 @@ Singleton {
         "overviewOpen",
         "searchOpen",
         "sessionOpen",
+        "startMenuOpen",
         "shelfOpen",
         "wallpaperSelectorOpen",
         // wallTuneOpen deliberately NOT here: it is a stacked settings panel,
@@ -280,13 +299,11 @@ Singleton {
         interval: 200
         repeat: false
         onTriggered: {
-            console.log("[GlobalStates] selectorToHubTimer triggered, setting skwdWallOpen = true");
             root.skwdWallOpen = true
         }
     }
 
     function openHubFromSelector() {
-        console.log("[GlobalStates] openHubFromSelector called, setting wallpaperSelectorOpen = false and starting timer");
         root.wallpaperSelectorOpen = false
         selectorToHubTimer.start()
     }
@@ -298,16 +315,18 @@ Singleton {
     // Panels stay OPEN during region selection (so you can screenshot them);
     // they go input-transparent instead — each panel gates its `mask` on
     // regionSelectorOpen, so the selection drag passes straight through.
-    onOverviewOpenChanged:           if (overviewOpen)           closeOthers("overviewOpen")
+    // The launcher is skwd's only UI, so skwd goes when it does.
+    onOverviewOpenChanged: {
+        if (overviewOpen) closeOthers("overviewOpen")
+        else if (skwdWallOpen) skwdWallOpen = false
+    }
     onSearchOpenChanged:             if (searchOpen)             closeOthers("searchOpen")
     onSessionOpenChanged:            if (sessionOpen)            closeOthers("sessionOpen")
+    onStartMenuOpenChanged:          if (startMenuOpen)          closeOthers("startMenuOpen")
     onShelfOpenChanged:              if (shelfOpen)              closeOthers("shelfOpen")
     onWallpaperSelectorOpenChanged:  if (wallpaperSelectorOpen)  closeOthers("wallpaperSelectorOpen")
     // WallTune stacks now, so it must not close the other popups either.
-    onSkwdWallOpenChanged: {
-        console.log("[GlobalStates] skwdWallOpen changed to: " + skwdWallOpen + "\nStack trace:\n" + new Error().stack);
-        if (skwdWallOpen) closeOthers("skwdWallOpen")
-    }
+    onSkwdWallOpenChanged:           if (skwdWallOpen)           closeOthers("skwdWallOpen")
     onOverlayOpenChanged:            if (overlayOpen)            closeOthers("overlayOpen")
     onCrosshairOpenChanged:          if (crosshairOpen)          closeOthers("crosshairOpen")
     onCornerPopupOpenChanged:        if (cornerPopupOpen)        closeOthers("cornerPopupOpen")

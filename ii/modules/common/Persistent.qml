@@ -58,6 +58,19 @@ Singleton {
 
             property string hyprlandInstanceSignature: ""
 
+            property JsonObject devices: JsonObject {
+                // Per-device rules, applied when the device appears.
+                //
+                // Keyed by the PipeWire CARD NAME (`alsa_card.usb-Roland_DJ-808-01`)
+                // because that is the only identifier that survives a replug:
+                // the ALSA index renumbers, and the node id is new every time.
+                //
+                // A JSON string rather than nested JsonObjects — JsonObject has
+                // no dynamic keys, the same reason `draw.customPalettes` and
+                // `cheatsheet.mdScrollMap` are strings.
+                property string rules: "{}"
+            }
+
             property JsonObject ai: JsonObject {
                 property string model: "gemini-2.5-flash"
                 property real temperature: 0.5
@@ -68,6 +81,9 @@ Singleton {
                 // mdScrollMap: JsonObject doesn't take list properties.
                 property string customPalettes: "[]"
                 property string activePalette: "studio"
+                // Colours mixed by hand, most recent first. Same JSON-in-a-
+                // string reason as customPalettes.
+                property string recentColors: "[]"
             }
 
             property JsonObject cheatsheet: JsonObject {
@@ -91,6 +107,9 @@ Singleton {
                 property string activeMediaType: "all"
                 property string query: ""
                 property int activeIndex: 0
+                // Focused wallpaper by path; the index drifts as items arrive.
+                property string activePath: ""
+                property real lastPrune: 0
                 // JSON-encoded { "subreddit": pageNumber }. String for the
                 // same dynamic-key reason as mdScrollMap above.
                 property string redditPageMap: "{}"
@@ -99,6 +118,10 @@ Singleton {
                 property string forcedSort: ""
                 // JSON array of favourited wallpaper paths.
                 property string favorites: "[]"
+                property string whFilters: "{}"
+                property int rotateMinutes: 0
+                property string rotateFrom: "favorites"   // favorites | folder
+                property string rotateHistory: "[]"
             }
 
             // Native wallpaper selector (file-picker) filter state.
@@ -113,6 +136,13 @@ Singleton {
                     property bool collapsed: false
                     property int tab: 0
                 }
+            }
+
+            property JsonObject dock: JsonObject {
+                // Which edit-panel tab you were last on. Reopening on
+                // Behaviour every time is a step backwards from a panel you
+                // visit repeatedly while tuning one thing.
+                property int editTab: 0
             }
 
             property JsonObject booru: JsonObject {
@@ -132,8 +162,37 @@ Singleton {
                 property string appVolumes: "{}"
             }
 
+            property JsonObject mic: JsonObject {
+                // The hardware capture gain the user chose, in dB.
+                //
+                // Persisted because ALSA will not do it for us: mixer values live
+                // in the driver, and every replug, USB reset, card renumbering or
+                // profile switch drops them back to the factory value — 60 dB, i.e.
+                // maximum, on the NT1. Mic.qml re-applies this whenever the device
+                // reappears, which is the only way the setting survives at all.
+                property real gainDb: 20
+
+                // Which input to control, by PipeWire node name. Empty follows
+                // the system default — a bad default here, since that is a
+                // global setting other apps change, and it was observed pointing
+                // at a muted onboard input while the real mic sat unused.
+                property string preferredSource: ""
+
+                property bool noiseSuppression: false
+                property real vadThreshold: 74
+                property bool echoCancel: false
+                property bool highPass: false
+                property real highPassHz: 80
+            }
+
             property JsonObject lid: JsonObject {
                 property bool enabled: false   // react to lid close (clamshell / suspend)
+            }
+
+            property JsonObject gameMode: JsonObject {
+                property bool manual: false
+                property bool auto: true
+                property string saved: "{}"   // Hyprland values to put back
             }
 
             property JsonObject rog: JsonObject {
@@ -144,6 +203,7 @@ Singleton {
                 // Stored as a STRING (not nested JsonObjects/`property var`) to dodge
                 // the JsonAdapter reload segfault — see Config.qml playerColors.
                 property string presets: "[]"
+                property string chargerProfile: "Performance"   // the most the charger may use
             }
 
             property JsonObject touchpad: JsonObject {

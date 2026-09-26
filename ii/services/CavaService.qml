@@ -21,8 +21,7 @@ Singleton {
 
     readonly property bool active: GlobalStates.mediaControlsOpen
         || GlobalStates.cornerPopupOpen
-        || ShelfPlayer.isPlaying
-        || visualizerWants
+        || (!GameMode.active && (ShelfPlayer.isPlaying || visualizerWants))
 
     Process {
         id: cavaProc

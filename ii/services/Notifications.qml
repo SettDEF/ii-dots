@@ -67,11 +67,7 @@ Singleton {
             const index = root.list.findIndex((notif) => notif.notificationId === notificationId);
             const notifObject = root.list[index];
             print("[Notifications] Notification timer triggered for ID: " + notificationId + ", transient: " + notifObject?.isTransient);
-            // The notification can be gone before its 7s timer fires — the
-            // user dismissed it, or the app closed it — and then findIndex
-            // returns -1 and the lookup is undefined. The line above already
-            // used `?.` for exactly that reason; the line below did not, so
-            // every early dismissal threw.
+            // The notification may already be gone (dismissed or closed by the app).
             if (!notifObject) { destroy(); return; }
             if (notifObject.isTransient) root.discardNotification(notificationId);
             else root.timeoutNotification(notificationId);
@@ -81,11 +77,8 @@ Singleton {
 
     property bool silent: false
 
-    // Per-app mute + sound control. Persisted to muted-apps.json beside the
-    // notifications store so it survives restarts.
-    //   mutedApps[app]  = 0 (forever) | epoch-ms expiry (timed) | true (legacy)
-    //   soundOffApps[app] = true → popups still show but no shell sound.
-    // A muted app's notifications still log to history; they just don't pop up.
+    // Per-app mute + sound, persisted to muted-apps.json. Muted apps still log to history.
+    //   mutedApps[app] = 0 (forever) | expiry epoch-ms | true (legacy); soundOffApps[app] = true → silent
     property var mutedApps: ({})
     property var soundOffApps: ({})
     readonly property string mutedAppsPath: String(Directories.notificationsPath).replace(/notifications\.json$/, "muted-apps.json")
@@ -109,6 +102,12 @@ Singleton {
         const m = Object.assign({}, root.mutedApps);
         m[appName] = (minutes && minutes > 0) ? (Date.now() + minutes * 60000) : 0;
         root.mutedApps = m; root._persistMute();
+        root.hideAppPopups(appName);
+    }
+    // Also hide the app's current popups, or muting from a popup looks like a no-op.
+    function hideAppPopups(appName) {
+        root.popupList.filter(n => n.appName === appName)
+            .forEach(n => root.timeoutNotification(n.notificationId));
     }
     function unmuteApp(appName) {
         if (!appName) return;
@@ -138,7 +137,7 @@ Singleton {
     property var filePath: Directories.notificationsPath
     property list<Notif> list: []
     property var popupList: list.filter((notif) => notif.popup);
-    property bool popupInhibited: (GlobalStates?.sidebarRightOpen ?? false) || silent
+    property bool popupInhibited: (GlobalStates?.sidebarRightOpen ?? false) || silent || GameMode.fullscreenGame
     property var latestTimeForApp: ({})
     Component {
         id: notifComponent
@@ -154,13 +153,11 @@ Singleton {
     }
     
     onListChanged: {
-        // Update latest time for each app
         root.list.forEach((notif) => {
             if (!root.latestTimeForApp[notif.appName] || notif.time > root.latestTimeForApp[notif.appName]) {
                 root.latestTimeForApp[notif.appName] = Math.max(root.latestTimeForApp[notif.appName] || 0, notif.time);
             }
         });
-        // Remove apps that no longer have notifications
         Object.keys(root.latestTimeForApp).forEach((appName) => {
             if (!root.list.some((notif) => notif.appName === appName)) {
                 delete root.latestTimeForApp[appName];
@@ -170,7 +167,6 @@ Singleton {
 
     function appNameListForGroups(groups) {
         return Object.keys(groups).sort((a, b) => {
-            // Sort by time, descending
             return groups[b].time - groups[a].time;
         });
     }
@@ -187,7 +183,6 @@ Singleton {
                 };
             }
             groups[notif.appName].notifications.push(notif);
-            // Always set to the latest time in the group
             groups[notif.appName].time = latestTimeForApp[notif.appName] || notif.time;
         });
         return groups;
@@ -198,8 +193,7 @@ Singleton {
     property list<string> appNameList: appNameListForGroups(root.groupsByAppName)
     property list<string> popupAppNameList: appNameListForGroups(root.popupGroupsByAppName)
 
-    // Quickshell's notification IDs starts at 1 on each run, while saved notifications
-    // can already contain higher IDs. This is for avoiding id collisions
+    // Quickshell's IDs restart at 1 each run; offset past saved IDs to avoid collisions.
     property int idOffset
     signal initDone();
     signal notify(notification: var);
@@ -209,7 +203,6 @@ Singleton {
 
 	NotificationServer {
         id: notifServer
-        // actionIconsSupported: true
         actionsSupported: true
         bodyHyperlinksSupported: true
         bodyImagesSupported: true
@@ -238,12 +231,8 @@ Singleton {
                     });
                 }
                 root.unread++;
-                // Shell-owned notification sound. In the same branch as the
-                // popup, so it inherits the gating: no sound when globally
-                // silent, when the sidebar is open, or when this app is muted.
-                // Played via canberra (honours the user's sound theme); falls
-                // back to an Oxygen message sound. Disable apps' own sounds
-                // (e.g. Telegram) so this isn't doubled.
+                // Shell-owned sound, inside the popup branch so it shares its gating.
+                // Disable apps' own sounds (e.g. Telegram) to avoid doubling.
                 if ((Config?.options.notifications.sound ?? false) && !root.isAppSoundOff(newNotifObject.appName)) {
                     const ev = (Config?.options.notifications.soundName ?? "message-new-instant").replace(/'/g, "");
                     Quickshell.execDetached(["bash", "-c",
@@ -251,7 +240,6 @@ Singleton {
                 }
             }
             root.notify(newNotifObject);
-            // console.log(notifToString(newNotifObject));
             notifFileView.setText(stringifyList(root.list));
         }
     }
@@ -320,7 +308,6 @@ Singleton {
         if (notifServerIndex !== -1) {
             const notifServerNotif = notifServer.trackedNotifications.values[notifServerIndex];
             const action = notifServerNotif.actions.find((action) => action.identifier === notifIdentifier);
-            // console.log("Action found: " + JSON.stringify(action));
             action.invoke()
         } 
         else {
@@ -359,7 +346,6 @@ Singleton {
                     "urgency": notif.urgency,
                 });
             });
-            // Find largest notificationId
             let maxId = 0
             root.list.forEach((notif) => {
                 maxId = Math.max(maxId, notif.notificationId)
@@ -388,8 +374,7 @@ Singleton {
             try {
                 const o = JSON.parse(mutedAppsView.text());
                 if (o && typeof o === "object") {
-                    // New format: { muted:{...}, soundOff:{...} }. Legacy format
-                    // was the muted map directly.
+                    // Legacy format was the muted map directly.
                     root.mutedApps = (o.muted ?? (o.soundOff ? {} : o)) ?? {};
                     root.soundOffApps = o.soundOff ?? {};
                 }

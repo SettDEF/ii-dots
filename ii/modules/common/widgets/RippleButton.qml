@@ -160,7 +160,11 @@ Button {
             animation: Appearance?.animation.elementMoveFast.colorAnimation.createObject(this)
         }
 
-        layer.enabled: true
+        // Only while a ripple is on screen. The background rounds itself with
+        // `radius`; this mask exists solely to clip the ripple, and the ripple
+        // is zero-sized at rest. Unconditional, it cost one offscreen render
+        // target per button — 136 of them across the shell, permanently.
+        layer.enabled: ripple.visible
         layer.effect: OpacityMask {
             maskSource: Rectangle {
                 width: buttonBackground.width

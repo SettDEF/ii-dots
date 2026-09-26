@@ -60,11 +60,30 @@ Rectangle {
     border.color: ColorUtils.mix(Appearance.m3colors.m3outlineVariant,
                                  Appearance.colors.colLayer1Base, 0.4)
 
-    opacity: shown ? 1 : 0
-    scale: shown ? 1 : 0.93
-    transformOrigin: Item.TopLeft
+    // A Behavior does not run on a property's INITIAL binding, so a panel born
+    // with shown === true was simply at full opacity on frame one and the fade
+    // never ran. Opening a beat later is what makes it an animation.
+    property bool entered: false
+    Component.onCompleted: mp.entered = true
+
+    readonly property bool visualOpen: mp.shown && mp.entered
+    opacity: visualOpen ? 1 : 0
+    scale: visualOpen ? 1 : 0.93
+
+    // Grow from the corner nearest the cursor. A fixed top-left origin makes
+    // a menu that flipped to fit expand away from the click that summoned it.
+    transformOrigin: {
+        const flippedLeft = mp.originW !== 0 && mp.x < mp.originX;
+        const flippedUp = mp.y < mp.desiredY - 1;
+        if (flippedLeft) return flippedUp ? Item.BottomRight : Item.TopRight;
+        return flippedUp ? Item.BottomLeft : Item.TopLeft;
+    }
+
     Behavior on opacity { NumberAnimation { duration: 110 } }
     Behavior on scale  { NumberAnimation { duration: 110; easing.type: Easing.OutCubic } }
+
+    // A child is parented to `bounds`, so nothing else takes it down with us.
+    onShownChanged: if (!shown) mp._closeChild()
 
     ColumnLayout {
         id: mpCol
@@ -100,8 +119,9 @@ Rectangle {
                     MaterialSymbol {
                         text: row.modelData.icon ?? ""
                         iconSize: 17
-                        color: row.modelData.danger
-                            ? Appearance.m3colors.m3error : Appearance.colors.colOnLayer1
+                        color: row.modelData.iconColor
+                            ?? (row.modelData.danger ? Appearance.m3colors.m3error
+                                                     : Appearance.colors.colOnLayer1)
                     }
                     StyledText {
                         Layout.fillWidth: true

@@ -358,6 +358,9 @@ Singleton {
                 // otherwise scramble per-file crop lookups).
                 property string wallpaperSourcePath: ""
                 property string thumbnailPath: ""
+                // JSON { monitorName: imagePath }: monitors showing their own wallpaper.
+                // Cleared by any apply to all monitors.
+                property string monitorWallpapers: "{}"
                 property bool hideWhenFullscreen: true
                 // Per-wallpaper crop. offsetX/Y in [-1, 1] (fraction of
                 // movable space); scale ≥ 1 zooms in. 0/0/1 = default.
@@ -387,6 +390,10 @@ Singleton {
             property JsonObject bar: JsonObject {
                 property JsonObject autoHide: JsonObject {
                     property bool enable: false
+                    // Get out of the way of fullscreen windows. Independent of
+                    // `enable`: people who want the bar permanently visible
+                    // still do not want it painted over a fullscreen game.
+                    property bool onFullscreen: true
                     property int hoverRegionWidth: 2
                     property bool pushWindows: false
                     property JsonObject showWhenPressingSuper: JsonObject {
@@ -520,6 +527,32 @@ Singleton {
                 property bool monochromeIcons: true
                 property real height: 60
                 property real hoverRegionHeight: 2
+                // Detach from the screen edge so the dock reads as an island
+                // rather than a bar welded to the bottom.
+                property bool floating: true
+                property real floatingMargin: 8
+                // "bottom" | "top". Anything else is treated as bottom.
+                property string position: "bottom"
+                // Hover grows the card upward in a popup; the dock never
+                // changes size, so it reads as breaking out.
+                property bool mediaExpandOnHover: false
+                property real mediaExpandedHeight: 44
+                // Gap between dock items. 3 was tight enough that icons ran
+                // together into one blob at a glance.
+                property real spacing: 6
+                // Enabled dock widgets, in order, as a JSON array of ids from
+                // DockWidgets.catalog. A string because JsonAdapter segfaults
+                // on a `property var` inside a JsonObject.
+                property string widgets: "[]"
+                // Per-widget settings, { widgetId: { key: value } }. Defaults
+                // live in DockWidgets.catalog, so only overrides are stored.
+                property string widgetSettings: "{}"
+                // When the folder grid appears on hovering a file manager:
+                //   "always"    whenever the icon is hovered
+                //   "noWindows" only when that app has nothing open, so the
+                //               popup does not grow to hold both
+                //   "off"       never
+                property string folderGrid: "always"
                 property bool pinnedOnStartup: false
                 property bool hoverToReveal: true // When false, only reveals on empty workspace
                 property list<string> pinnedApps: [ // IDs of pinned entries
@@ -614,6 +647,10 @@ Singleton {
             }
 
             property JsonObject media: JsonObject {
+                // Corner radius of album artwork, everywhere it is drawn — the
+                // dock card and the media popup share one widget, so one value
+                // keeps them consistent. 0 = square.
+                property real coverRadius: 8
                 // Attempt to remove dupes (the aggregator playerctl one and browsers' native ones when there's plasma browser integration)
                 property bool filterDuplicatePlayers: true
                 // JSON-encoded map of desktopEntry substrings (lowercase) to accent colors.
