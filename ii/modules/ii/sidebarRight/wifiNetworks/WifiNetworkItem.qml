@@ -30,6 +30,19 @@ DialogListItem {
     readonly property bool isPreferred: Network.isPreferred(root.ssid)
     readonly property bool isConnecting: Network.wifiConnectTarget === root.wifiNetwork && !root.isActive
 
+    // DialogListItem is transparent by default, so every network was loose
+    // text on the dialog's own background and the expanded card had nothing
+    // holding it together. Each network is a surface now: faint when it is
+    // one of several in a list, solid once it is carrying a card of detail.
+    buttonRadius: Appearance.rounding.normal
+    colBackground: root.expanded
+        ? Appearance.colors.colLayer2
+        : ColorUtils.transparentize(Appearance.colors.colLayer2, 0.55)
+    colBackgroundHover: Appearance.colors.colLayer2Hover
+    Behavior on colBackground {
+        animation: Appearance.animation.elementMoveFast.colorAnimation.createObject(this)
+    }
+
     pointingHandCursor: !expanded
     onClicked: {
         if (expanded) {
@@ -204,7 +217,7 @@ DialogListItem {
                 Layout.fillWidth: true
                 implicitHeight: 52
                 radius: Appearance.rounding.small
-                color: Appearance.colors.colLayer2
+                color: Appearance.colors.colLayer1
                 ColumnLayout {
                     anchors.centerIn: parent
                     spacing: -1
@@ -441,9 +454,9 @@ DialogListItem {
                         Layout.fillWidth: true
                         buttonText: modelData.label
                         colBackground: sel ? Appearance.colors.colPrimary
-                                           : Appearance.colors.colLayer2
+                                           : Appearance.colors.colLayer1
                         colText: sel ? Appearance.colors.colOnPrimary
-                                     : Appearance.colors.colOnLayer2
+                                     : Appearance.colors.colOnLayer1
                         onClicked: Network.setBandLock(root.ssid, modelData.value)
                     }
                 }
@@ -491,8 +504,8 @@ DialogListItem {
                 Layout.fillWidth: true
                 visible: root.isActive
                 buttonText: Translation.tr("Disconnect")
-                colBackground: Appearance.colors.colLayer4
-                colText: Appearance.colors.colOnLayer4
+                colBackground: Appearance.colors.colLayer1
+                colText: Appearance.colors.colOnLayer1
                 onClicked: Network.disconnectWifiNetwork()
             }
             PrimaryActionButton {
@@ -509,7 +522,7 @@ DialogListItem {
                 // Outlined rather than filled: it is destructive, so it must
                 // read as different, but a solid red block next to a solid
                 // primary block makes the panel look like a warning.
-                colBackground: Appearance.colors.colLayer2
+                colBackground: Appearance.colors.colLayer1
                 colBackgroundHover: ColorUtils.transparentize(Appearance.colors.colError, 0.8)
                 colRipple: Appearance.colors.colErrorActive
                 colText: Appearance.colors.colError

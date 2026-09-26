@@ -16,6 +16,11 @@ WindowDialog {
     // Measured against the dialog's own bounds rather than the screen: it is
     // already sized to its host surface, and asking ScreenFit here would mean
     // resolving a window that is null on first load.
+    // Sized to the screen, not to the content. Sizing to netList.contentHeight
+    // was tried and reverted: an expanded row animates its height, so the
+    // list's measurement lags and the dialog shrank around content that was
+    // still growing — clipping the buttons out of reach. A little empty space
+    // below a short list is the cheaper mistake.
     backgroundHeight: Math.max(400, Math.min(900, root.height - 80))
 
     // The live link figures shell out to `iw`, so they are only polled while
@@ -193,7 +198,9 @@ WindowDialog {
         Layout.rightMargin: -Appearance.rounding.large
 
         clip: true
-        spacing: 0
+        // The rows are surfaces now, so they need a gap or they fuse into one
+        // block and the containment is wasted.
+        spacing: 5
         animateAppearance: false
 
         model: ScriptModel {
