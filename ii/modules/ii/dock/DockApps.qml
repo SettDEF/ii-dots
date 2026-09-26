@@ -115,7 +115,15 @@ Item {
         // for every ScreencopyView to report content, which a reused view
         // never re-signalled — that was the popup skipping hovers.
         readonly property int previewCount: previewPopup.appTopLevel?.toplevels?.length ?? 0
-        property bool hovered: popupMouseArea.containsMouse || root.buttonHovered
+        // containsMouse only counts while the popup is actually up.
+        //
+        // Hiding unmaps the window, so the MouseArea never gets an onExited
+        // and containsMouse stays true forever. `hovered` was then permanently
+        // true, which re-showed the popup over the icon, which made the icon
+        // fire onExited, which cleared buttonHovered — measured as a 2ms
+        // flip-flop between the two on every hover after the first.
+        property bool hovered: (previewPopup.show && popupMouseArea.containsMouse)
+            || root.buttonHovered
         // A file manager is worth hovering even with nothing open.
         property bool shouldShow: previewPopup.hovered
             && (previewPopup.previewCount > 0 || root.showFolderGrid)
@@ -124,7 +132,10 @@ Item {
         onShouldShowChanged: updateTimer.restart()
         Timer {
             id: updateTimer
-            interval: 100
+            // Appearing is what the user is waiting for; disappearing is what
+            // needs damping so a pass along the dock does not strobe. One
+            // delay for both made every appearance feel late.
+            interval: previewPopup.shouldShow ? 35 : 160
             onTriggered: {
                 previewPopup.show = previewPopup.shouldShow
             }
@@ -136,7 +147,31 @@ Item {
             edges: Edges.Top | Edges.Left
 
         }
-        visible: popupBackground.visible
+        // Never bind the window's visibility to a child's `visible`: in QML
+        // that property reads EFFECTIVE visibility, which is false whenever an
+        // ancestor is hidden — so the window was hidden because the child read
+        // hidden, and the child read hidden because the window was hidden.
+        // Measured as show=true, opacity=1, visible=false.
+        //
+        // The fade lives on the window instead, so nothing inside it decides
+        // whether it exists.
+        property real panelOpacity: previewPopup.show ? 1 : 0
+        Behavior on panelOpacity {
+            animation: Appearance.animation.elementMoveFast.numberAnimation.createObject(this)
+        }
+        visible: previewPopup.panelOpacity > 0
+        // Input only where the panel actually is.
+        //
+        // The window spans the whole dock width, so without a mask its
+        // MouseArea claimed the pointer even while the panel was invisible —
+        // measured: popupHovered=true with visible=false. Hovering an icon
+        // therefore handed the pointer straight to the hidden popup,
+        // buttonHovered fell back to false a frame later, and the show/hide
+        // machine flip-flopped. That is the hover that works once and then
+        // will not come back.
+        mask: Region {
+            item: previewPopup.show ? popupMouseArea : null
+        }
         color: "transparent"
         implicitWidth: root.QsWindow.window?.width ?? 1
         implicitHeight: popupMouseArea.implicitHeight
@@ -158,17 +193,12 @@ Item {
             }
             StyledRectangularShadow {
                 target: popupBackground
-                opacity: previewPopup.show ? 1 : 0
-                visible: opacity > 0
-                Behavior on opacity {
-                    animation: Appearance.animation.elementMoveFast.numberAnimation.createObject(this)
-                }
+                opacity: previewPopup.panelOpacity
             }
             Rectangle {
                 id: popupBackground
                 property real padding: 5
-                opacity: previewPopup.show ? 1 : 0
-                visible: opacity > 0
+                opacity: previewPopup.panelOpacity
                 // Rises and settles rather than only fading: a panel that
                 // appears at full size reads as a different surface arriving,
                 // one that grows from the dock reads as the icon's own.
@@ -177,9 +207,6 @@ Item {
                     Behavior on y {
                         animation: Appearance.animation.elementMoveFast.numberAnimation.createObject(this)
                     }
-                }
-                Behavior on opacity {
-                    animation: Appearance.animation.elementMoveFast.numberAnimation.createObject(this)
                 }
                 clip: true
                 color: root.panelColor
@@ -284,7 +311,14 @@ Item {
                                     // set never re-signalled new content, which
                                     // is the hover that works once and then
                                     // shows nothing.
-                                    captureSource: previewPopup.show ? windowButton.modelData : null
+                                    // Attached as soon as a hover is INTENDED
+                                    // (shouldShow), not when the popup arrives:
+                                    // attaching on show left the previews blank
+                                    // for the first frames, which reads as lag.
+                                    // live stays tied to show, so nothing is
+                                    // captured continuously behind a closed
+                                    // popup.
+                                    captureSource: previewPopup.shouldShow ? windowButton.modelData : null
                                     live: previewPopup.show
                                     paintCursor: true
                                     constraintSize: Qt.size(root.maxWindowPreviewWidth, root.maxWindowPreviewHeight)
