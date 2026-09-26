@@ -122,4 +122,9 @@ ColumnLayout {
     }
 
     Item { Layout.fillHeight: true }
+
+    WidgetLaunchRow {
+        appName: "Timos"
+        appPath: "/mnt/storage/dev/projects/desktop/timos/timos.qml"
+    }
 }
