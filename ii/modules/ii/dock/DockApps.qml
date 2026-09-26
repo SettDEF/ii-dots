@@ -319,7 +319,11 @@ Item {
                                     // captured continuously behind a closed
                                     // popup.
                                     captureSource: previewPopup.shouldShow ? windowButton.modelData : null
+                                    // Off, the view still attaches and grabs
+                                    // one frame, so the preview is a still
+                                    // rather than a blank box.
                                     live: previewPopup.show
+                                        && (Config.options.dock.livePreviews ?? true)
                                     paintCursor: true
                                     constraintSize: Qt.size(root.maxWindowPreviewWidth, root.maxWindowPreviewHeight)
                                     layer.enabled: true

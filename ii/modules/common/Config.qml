@@ -525,6 +525,12 @@ Singleton {
                 property bool showAppsButton: true
                 property bool showMedia: true
                 property bool monochromeIcons: true
+                // Window previews redraw every frame while the popup is up —
+                // one GPU copy per previewed window per frame, and the most
+                // expensive thing in the config. Off, a preview is a single
+                // frame grabbed when the hover starts: it stops moving, and
+                // integrated graphics get the rest of the frame back.
+                property bool livePreviews: true
                 property real height: 60
                 property real hoverRegionHeight: 2
                 // Detach from the screen edge so the dock reads as an island
