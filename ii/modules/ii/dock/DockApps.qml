@@ -169,6 +169,15 @@ Item {
                 property real padding: 5
                 opacity: previewPopup.show ? 1 : 0
                 visible: opacity > 0
+                // Rises and settles rather than only fading: a panel that
+                // appears at full size reads as a different surface arriving,
+                // one that grows from the dock reads as the icon's own.
+                transform: Translate {
+                    y: previewPopup.show ? 0 : 8
+                    Behavior on y {
+                        animation: Appearance.animation.elementMoveFast.numberAnimation.createObject(this)
+                    }
+                }
                 Behavior on opacity {
                     animation: Appearance.animation.elementMoveFast.numberAnimation.createObject(this)
                 }
@@ -263,8 +272,20 @@ Item {
                                 }
                                 ScreencopyView {
                                     id: screencopyView
-                                    captureSource: previewPopup ? windowButton.modelData : null
-                                    live: true
+                                    // Both gated on the popup being up. live:true
+                                    // captured every previewed window every
+                                    // frame for the life of the popup object —
+                                    // a GPU copy per window per frame, running
+                                    // while nothing was on screen.
+                                    //
+                                    // Detaching captureSource when hidden also
+                                    // forces a fresh attach on the next hover.
+                                    // A delegate reused with its source still
+                                    // set never re-signalled new content, which
+                                    // is the hover that works once and then
+                                    // shows nothing.
+                                    captureSource: previewPopup.show ? windowButton.modelData : null
+                                    live: previewPopup.show
                                     paintCursor: true
                                     constraintSize: Qt.size(root.maxWindowPreviewWidth, root.maxWindowPreviewHeight)
                                     layer.enabled: true

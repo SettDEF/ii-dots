@@ -37,9 +37,14 @@ DockButton {
 
     Loader {
         anchors.fill: parent
-        active: appToplevel.toplevels.length > 0
-        // The last window closing takes the MouseArea away mid-hover, so no
-        // onExited ever arrives — clear the flag here instead.
+        // Always: gating this on having windows meant a pinned app with
+        // nothing open could not be hovered at all — and took the folder grid
+        // with it, since showFolderGrid exists precisely for a file manager
+        // with no windows. It could never fire.
+        //
+        // It also removes the reason this Loader had a guard: the MouseArea
+        // no longer disappears mid-hover when the last window closes.
+        active: true
         onActiveChanged: {
             if (!active && appListRoot.lastHoveredButton === root)
                 appListRoot.buttonHovered = false
