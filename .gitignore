@@ -1,0 +1,6 @@
+# Build artefacts that kept getting committed.
+__pycache__/
+*.pyc
+
+# A df --output typo lands this at the root.
+target,size,avail,pcent

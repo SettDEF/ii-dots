@@ -11,6 +11,9 @@ CACHE_DIR="$XDG_CACHE_HOME/quickshell"
 STATE_DIR="$XDG_STATE_HOME/quickshell"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SHELL_CONFIG_FILE="$XDG_CONFIG_HOME/illogical-impulse/config.json"
+TINCT_BIN="$HOME/.local/bin/tinct"
+# "W<tab>H" from the header, without decoding the image.
+img_dims() { "$TINCT_BIN" image probe "$1" 2>/dev/null | cut -f1,2; }
 WALL_DB="$STATE_DIR/wallpaper_history.jsonl"
 MATUGEN_DIR="$XDG_CONFIG_HOME/matugen"
 terminalscheme="$SCRIPT_DIR/terminal/scheme-base.json"
@@ -123,16 +126,17 @@ check_and_prompt_upscale() {
     min_width_desired="$(hyprctl monitors -j | jq '([.[].width] | max)' | xargs)"
     min_height_desired="$(hyprctl monitors -j | jq '([.[].height] | max)' | xargs)"
 
-    if command -v identify &>/dev/null && [ -f "$img" ]; then
+    if [ -x "$TINCT_BIN" ] && [ -f "$img" ]; then
         local img_width img_height
         if is_video "$img"; then
             img_width=$min_width_desired
             img_height=$min_height_desired
         else
-            img_width=$(identify -ping -format "%w" "$img" 2>/dev/null)
-            img_height=$(identify -ping -format "%h" "$img" 2>/dev/null)
+            read -r img_width img_height < <(img_dims "$img")
         fi
-        if [[ "$img_width" -lt "$min_width_desired" || "$img_height" -lt "$min_height_desired" ]]; then
+        # Unreadable size: say nothing rather than warn about a 0x0 image.
+        if [[ "$img_width" =~ ^[0-9]+$ && "$img_height" =~ ^[0-9]+$ ]] &&
+           [[ "$img_width" -lt "$min_width_desired" || "$img_height" -lt "$min_height_desired" ]]; then
             # Quickshell collapses the notification body to one elided line
             # when not expanded — keep the punchline (numbers + arrow) at the
             # FRONT so it survives the squeeze. Use the proper multiplication
@@ -192,7 +196,10 @@ create_restore_script() {
 
 pkill -f -9 mpvpaper
 
+# Monitors with their own image wallpaper keep it.
+skip=\$(jq -r '.background.monitorWallpapers // "{}" | fromjson | keys[]' "$SHELL_CONFIG_FILE" 2>/dev/null)
 for monitor in \$(hyprctl monitors -j | jq -r '.[] | .name'); do
+    grep -qxF "\$monitor" <<< "\$skip" && continue
     setsid mpvpaper -o "$VIDEO_OPTS" "\$monitor" "$video_path" >/dev/null 2>&1 &
     sleep 0.1
 done
@@ -212,7 +219,7 @@ EOF
 set_wallpaper_path() {
     local path="$1"
     if [ -f "$SHELL_CONFIG_FILE" ]; then
-        jq --arg path "$path" '.background.wallpaperPath = $path | .background.wallpaperSourcePath = $path' "$SHELL_CONFIG_FILE" > "$SHELL_CONFIG_FILE.tmp" && mv "$SHELL_CONFIG_FILE.tmp" "$SHELL_CONFIG_FILE"
+        jq --arg path "$path" '.background.wallpaperPath = $path | .background.wallpaperSourcePath = $path | .background.monitorWallpapers = "{}"' "$SHELL_CONFIG_FILE" > "$SHELL_CONFIG_FILE.tmp" && mv "$SHELL_CONFIG_FILE.tmp" "$SHELL_CONFIG_FILE"
     fi
     log_wallpaper_recent "$path"
 }
@@ -559,8 +566,8 @@ fi
 case "$ext" in
     mp4|webm|mkv|avi|mov) dims="[video]" ;;
     *)
-        if command -v identify &>/dev/null; then
-            dims="$(identify -ping -format '%wx%h' "$src" 2>/dev/null || true)"
+        if [ -x "$TINCT_BIN" ]; then
+            dims="$(img_dims "$src" | tr '\t' x)"
         fi
         ;;
 esac
@@ -816,10 +823,11 @@ switch() {
                 continue
             fi
 
-            if [[ -n "$_reddit_ratio" ]] && command -v identify &>/dev/null && ! is_video "$candidate"; then
+            if [[ -n "$_reddit_ratio" ]] && [ -x "$TINCT_BIN" ] && ! is_video "$candidate"; then
                 local img_w img_h ratio_w ratio_h expected actual ok
-                img_w=$(identify -ping -format "%w" "$candidate" 2>/dev/null)
-                img_h=$(identify -ping -format "%h" "$candidate" 2>/dev/null)
+                read -r img_w img_h < <(img_dims "$candidate")
+                # No readable size: keep the image instead of deleting it over bad maths.
+                [[ "$img_w" =~ ^[1-9][0-9]*$ && "$img_h" =~ ^[1-9][0-9]*$ ]] || { selected_url="$url"; tmp_img="$candidate"; break; }
                 ratio_w="${_reddit_ratio%%:*}"
                 ratio_h="${_reddit_ratio##*:}"
                 expected=$(echo "scale=4; $ratio_w / $ratio_h" | bc)

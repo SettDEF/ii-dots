@@ -61,7 +61,7 @@ fi
 
 tmp="$CACHE_DIR/processed-$slot.png"
 
-# Map sliders to ImageMagick values
+# Map sliders to the adjust values (ImageMagick's scale)
 brightness=$((slBrightness + 50))
 saturation=$((slSaturation * 2))
 hue=$((slHueShift * 2))
@@ -79,10 +79,10 @@ temp=$((slTemperature - 50))
 tBoost=$(( (temp < 0 ? -temp : temp) * 8 / 10 ))
 
 # Palette remap runs FIRST — quantise the source onto the chosen palette,
-# then the magick adjustments below run on top so the sliders/curve stay
+# then the adjustments below run on top so the sliders/curve stay
 # visible. (A quantise-last order snapped every pixel back to a fixed swatch
 # and wiped the adjustments — popular palettes "didn't support" them.)
-magickSrc="$NEW_WALL"
+adjustSrc="$NEW_WALL"
 if [ -n "$remapPalette" ] && [ "$remapPalette" != "null" ]; then
     rdmc="$HOME/.scripts/rdmcpape"
     if [ -f "$rdmc" ]; then
@@ -93,49 +93,27 @@ if [ -n "$remapPalette" ] && [ "$remapPalette" != "null" ]; then
         fi
         mkdir -p "$CACHE_DIR"
         "$rdmc" $palArg --colors "$remapColors" --dither "$remapDither" --output "$tmp" "$NEW_WALL"
-        magickSrc="$tmp"
+        adjustSrc="$tmp"
     fi
 fi
 
-args=("magick" "$magickSrc" "-modulate" "$brightness,$saturation,$hue" "-brightness-contrast" "0,$contrast")
-
+args=("$HOME/.local/bin/tinct" image adjust --brightness "$brightness" --saturation "$saturation" --hue "$hue" --contrast "$contrast")
 if [ "$temp" -gt 0 ]; then
-    args+=("-channel" "Red" "-evaluate" "add" "${tBoost}%" "+channel" "-channel" "Blue" "-evaluate" "subtract" "${tBoost}%" "+channel")
+    args+=(--temperature "$tBoost")
 elif [ "$temp" -lt 0 ]; then
-    args+=("-channel" "Red" "-evaluate" "subtract" "${tBoost}%" "+channel" "-channel" "Blue" "-evaluate" "add" "${tBoost}%" "+channel")
+    args+=(--temperature "-$tBoost")
+fi
+[ "$(echo "$sharpness > 0" | bc)" -eq 1 ] && args+=(--sharpen "$sharpness")
+[ "$(echo "$blur > 0" | bc)" -eq 1 ] && args+=(--blur "$blur")
+[ "$grain" -gt 0 ] && args+=(--grain "$(echo "scale=2; $grain / 100" | bc)")
+if [ "$curvePoints" != "[[0,0],[1,1]]" ] && [ -n "$curvePoints" ] && [ "$curvePoints" != "null" ]; then
+    args+=(--curve "$(echo "$curvePoints" | jq -r 'map(join(",")) | join(";")')")
 fi
 
-if [ "$(echo "$sharpness > 0" | bc)" -eq 1 ]; then
-    args+=("-unsharp" "0x${sharpness}")
-fi
+args+=("$adjustSrc" "$tmp")
 
-if [ "$(echo "$blur > 0" | bc)" -eq 1 ]; then
-    args+=("-blur" "0x${blur}")
-fi
-
-if [ "$grain" -gt 0 ]; then
-    attenuate=$(echo "scale=2; $grain / 100" | bc)
-    args+=("-attenuate" "$attenuate" "+noise" "Gaussian")
-fi
-
-# Tone curves
-if [ "$curvePoints" != "[[0,0],[1,1]]" ]; then
-    curvePy="$SCRIPT_DIR/walltune-curve.py"
-    lutPath="$CACHE_DIR/curve.pgm"
-    if [ -f "$curvePy" ]; then
-        ptsStr=$(echo "$curvePoints" | jq -r 'map(join(",")) | join(";")')
-        python3 "$curvePy" lut "$ptsStr" "$lutPath"
-        args+=("-interpolate" "Bicubic" "$lutPath" "-clut")
-    fi
-fi
-
-args+=("$tmp")
-
-# Execute ImageMagick processing
 mkdir -p "$CACHE_DIR"
 "${args[@]}"
-
-# (Palette remap already applied above, before the magick adjustments.)
 
 # Call switchwall to rebuild the palette and update running apps
 switchwall="$SCRIPT_DIR/switchwall.sh"
@@ -171,7 +149,7 @@ if [ -f "$cj" ]; then
     thumb_path="$thumb_dir/$ts.png"
     
     # Generate visual thumbnail of the processed wallpaper
-    magick "$tmp" -thumbnail 160x120 "$thumb_path"
+    "$HOME/.local/bin/tinct" image thumb --size 160 --jobs 1 "$tmp" "$thumb_path"
     
     jq -cn --arg p "$pri" --arg s "$sec" --arg t "$ter" --arg w "$NEW_WALL" \
           --arg th "$thumb_path" --argjson st "$snapJson" --argjson ts "$ts" \

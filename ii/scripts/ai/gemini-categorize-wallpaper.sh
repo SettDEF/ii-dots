@@ -15,7 +15,7 @@ RESIZED_IMG_PATH="/tmp/quickshell/ai/wallpaper.jpg"
 
 # Resize image for speed
 mkdir -p "$(dirname "$RESIZED_IMG_PATH")"
-magick "$SOURCE_IMG_PATH" -resize 200x -quality 50 "$RESIZED_IMG_PATH"
+"$HOME/.local/bin/tinct" image thumb --width --size 200 --quality 50 "$SOURCE_IMG_PATH" "$RESIZED_IMG_PATH"
 
 # Get API key
 API_KEY=$(secret-tool lookup 'application' 'illogical-impulse' | jq -r '.apiKeys.gemini')
