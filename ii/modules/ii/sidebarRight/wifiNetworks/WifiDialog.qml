@@ -66,13 +66,25 @@ WindowDialog {
         text: Translation.tr("Connect to Wi-Fi")
     }
 
-    // No separator rule: the control strip below IS the separation between
-    // the header and the list. A hairline plus a full-width opaque strip
-    // underneath it draws the same boundary twice, and the strip would hide
-    // the line anyway — so the line only ever cost a band of empty space.
+    // Header exactly as DevicesDialog has it — separator when idle, swapped
+    // for the progress bar while scanning. These two dialogs are the same
+    // object with different contents, and the header is where that reads
+    // first; a Wi-Fi panel that separates its header differently from the
+    // Bluetooth one looks like a different app.
     //
-    // No text filter here either: the strip's sort modes and the two toggles
-    // narrow the list without a field competing with the title for the row.
+    // No text filter here: the strip's sort modes and the two toggles narrow
+    // the list without a field competing with the title for the row.
+    WindowDialogSeparator {
+        visible: !Network.wifiScanning
+    }
+    StyledIndeterminateProgressBar {
+        visible: Network.wifiScanning
+        Layout.fillWidth: true
+        Layout.topMargin: -8
+        Layout.bottomMargin: -8
+        Layout.leftMargin: -Appearance.rounding.large
+        Layout.rightMargin: -Appearance.rounding.large
+    }
 
     // ── Sort and filter, one strip ──────────────────────────────────────
     // A single container holding both: four sort segments, a hairline, then
@@ -86,33 +98,11 @@ WindowDialog {
     Rectangle {
         id: strip
         Layout.fillWidth: true
-        Layout.topMargin: 2
+        Layout.topMargin: 8
         Layout.bottomMargin: 8
         implicitHeight: 34
         radius: Appearance.rounding.full
         color: Appearance.colors.colLayer2
-        clip: true
-
-        // Scanning shows as a sweep across the strip rather than a bar of its
-        // own. A separate progress bar reintroduced exactly the horizontal
-        // line that removing the header rule got rid of, and put it back only
-        // sometimes — so the dialog's layout shifted every time a scan began.
-        Rectangle {
-            id: scanSweep
-            visible: Network.wifiScanning
-            height: parent.height
-            width: parent.width * 0.35
-            radius: parent.radius
-            color: ColorUtils.transparentize(Appearance.colors.colPrimary, 0.88)
-            x: -width
-            XAnimator on x {
-                running: scanSweep.visible
-                loops: Animation.Infinite
-                from: -scanSweep.width
-                to: strip.width
-                duration: 1100
-            }
-        }
 
         Rectangle {
             id: indicator
