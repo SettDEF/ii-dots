@@ -141,6 +141,13 @@ Item {
     implicitHeight: overviewBackground.implicitHeight + Appearance.sizes.elevationMargin * 2
 
     property Component windowComponent: OverviewWindow {}
+
+    // One instance for the whole grid: a menu per tile would build dozens of
+    // popup windows for something only one of them can show at a time.
+    OverviewWindowMenu {
+        id: windowMenu
+        anchorItem: root
+    }
     property list<OverviewWindow> windowWidgets: []
     
     function getWsRow(ws) {
@@ -461,7 +468,18 @@ Item {
                         }
                     }
 
-                    z: Drag.active ? root.windowDraggingZ : (root.windowZ + windowData?.floating)
+                    // Smaller windows sit ABOVE larger ones, because each tile
+                    // fills its own rect with a MouseArea: give two tiles the
+                    // same z and a window that covers the workspace swallows
+                    // every click meant for the ones beneath it. That is why a
+                    // small window next to a maximised one could not be
+                    // dragged or clicked at all.
+                    readonly property real windowArea:
+                        (windowData?.size[0] ?? 0) * (windowData?.size[1] ?? 0)
+                    z: Drag.active ? root.windowDraggingZ
+                        : root.windowZ
+                          + (windowData?.floating ? 1000 : 0)
+                          + Math.max(0, 900 - Math.round(windowArea / 10000))
                     Drag.hotSpot.x: width / 2
                     Drag.hotSpot.y: height / 2
                     MouseArea {
@@ -470,9 +488,15 @@ Item {
                         hoverEnabled: true
                         onEntered: hovered = true // For hover color change
                         onExited: hovered = false // For hover color change
-                        acceptedButtons: Qt.LeftButton | Qt.MiddleButton
+                        acceptedButtons: Qt.LeftButton | Qt.MiddleButton | Qt.RightButton
                         drag.target: parent
                         onPressed: (mouse) => {
+                            if (mouse.button === Qt.RightButton) {
+                                windowMenu.anchorItem = window
+                                windowMenu.openFor(window.windowData)
+                                mouse.accepted = true
+                                return
+                            }
                             root.draggingFromWorkspace = windowData?.workspace.id
                             window.pressed = true
                             window.Drag.active = true
