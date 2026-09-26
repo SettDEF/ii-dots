@@ -253,9 +253,18 @@ Singleton {
         const index = root.list.findIndex((notif) => notif.notificationId === id);
         const notifServerIndex = notifServer.trackedNotifications.values.findIndex((notif) => notif.id + root.idOffset === id);
         if (index !== -1) {
+            // createObject(root, ...) gives the object a QML parent, so it is
+            // C++-owned and never garbage-collected. Dropping it from the
+            // array only drops the array's reference — the object stays a
+            // child of this singleton for the life of the shell, holding its
+            // strings AND its reference to the server's Notification, which
+            // carries the image. destroy() is deferred to the next event loop
+            // pass, so callers reading it during this call are unaffected.
+            const dead = root.list[index];
             root.list.splice(index, 1);
             notifFileView.setText(stringifyList(root.list));
             triggerListChange()
+            if (dead && dead.destroy) dead.destroy();
         }
         if (notifServerIndex !== -1) {
             notifServer.trackedNotifications.values[notifServerIndex].dismiss()
@@ -264,7 +273,12 @@ Singleton {
     }
 
     function discardAllNotifications() {
+        // Same as discardNotification: clearing the array frees nothing on its
+        // own. Without this, "clear all" made the history look empty while
+        // every object it had ever held stayed resident.
+        const dead = root.list.slice(0);
         root.list = []
+        for (const n of dead) if (n && n.destroy) n.destroy();
         triggerListChange()
         notifFileView.setText(stringifyList(root.list));
         notifServer.trackedNotifications.values.forEach((notif) => {
