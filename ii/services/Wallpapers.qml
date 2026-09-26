@@ -16,8 +16,7 @@ pragma ComponentBehavior: Bound
 Singleton {
     id: root
 
-    property string thumbgenScriptPath: `${FileUtils.trimFileProtocol(Directories.scriptPath)}/thumbnails/thumbgen-venv.sh`
-    property string generateThumbnailsMagickScriptPath: `${FileUtils.trimFileProtocol(Directories.scriptPath)}/thumbnails/generate-thumbnails-magick.sh`
+    property string thumbgenScriptPath: `${FileUtils.trimFileProtocol(Directories.scriptPath)}/thumbnails/generate-thumbnails.sh`
     property alias directory: folderModel.folder
     readonly property string effectiveDirectory: FileUtils.trimFileProtocol(folderModel.folder.toString())
     property url defaultFolder: Qt.resolvedUrl(`${Directories.pictures}/Wallpapers`)
@@ -181,7 +180,7 @@ Singleton {
     }
 
     // Skip if a run for the same (dir, size) is already in flight —
-    // killing it would orphan magick children mid-decode.
+    // killing it would orphan thumbnail children mid-decode.
     // Pixel size per spec directory, so the daemon is asked for the same
     // dimensions the script would have produced.
     readonly property var _thumbPixels: ({ "normal": 128, "large": 256, "x-large": 512, "xx-large": 1024 })
@@ -214,8 +213,7 @@ Singleton {
         thumbgenProc.running = false
         thumbgenProc.command = [
             "bash", "-c",
-            `${thumbgenScriptPath} --size ${size} --machine_progress -d '${dir.replace(/'/g, "'\\''")}' \\
-                 || ${generateThumbnailsMagickScriptPath} --size ${size} -d '${dir.replace(/'/g, "'\\''")}'`,
+            `${thumbgenScriptPath} --size ${size} --machine_progress -d '${dir.replace(/'/g, "'\\''")}'`,
         ]
         root.thumbnailGenerationProgress = 0
         thumbgenProc.running = true

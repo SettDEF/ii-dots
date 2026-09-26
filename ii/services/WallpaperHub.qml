@@ -2,6 +2,7 @@ pragma Singleton
 
 import QtQuick
 import Quickshell
+import qs.modules.common
 
 /**
  * Shared state for the launcher's wallpaper-hub mode (the skwd controls that
@@ -26,12 +27,9 @@ Singleton {
     // Wallhaven palette codes, comma separated. "" = no filter. The same
     // string skwd's filter panel edits.
     property string colors: ""
+    // One colour: quarry's colour predicate takes a single value.
     function toggleColor(wh) {
-        const arr = root.colors.length > 0 ? root.colors.split(",") : []
-        const i = arr.indexOf(wh)
-        if (i >= 0) arr.splice(i, 1)
-        else arr.push(wh)
-        root.colors = arr.join(",")
+        root.colors = root.colors === wh ? "" : wh
     }
     function colorSelected(wh) {
         return root.colors.split(",").indexOf(wh) >= 0
@@ -48,11 +46,51 @@ Singleton {
         if (m[path]) delete m[path]
         else m[path] = true
         root.favoritePaths = m
+        if (Persistent.ready) Persistent.states.skwd.favorites = JSON.stringify(Object.keys(m))
     }
 
     // Navigate an ALREADY-open skwd to a sub (Persistent restore only runs on
     // a fresh open).
+    // Wallhaven filters, sent to quarry as query terms.
+    property bool whSfw: true
+    property string whRatio: ""        // "" | 16:9 | 16:10 | 21:9 | 9:16
+    property int whMinWidth: 0
+    property string whSort: ""         // "" | new | random | large | wide
+    readonly property string whTerms: [
+        root.whSfw ? "-nsfw" : "",
+        root.whRatio ? "ratio:" + root.whRatio : "",
+        root.whMinWidth > 0 ? "w>=" + root.whMinWidth : "",
+        root.whSort ? "sort:" + root.whSort : "",
+        root.colors ? "color:#" + root.colors : "",
+    ].filter(t => t.length > 0).join(" ")
+    function setWh(key, value) {
+        root[key] = value
+        if (Persistent.ready) Persistent.states.skwd.whFilters = JSON.stringify(
+            { whSfw: root.whSfw, whRatio: root.whRatio, whMinWidth: root.whMinWidth, whSort: root.whSort })
+    }
+    function _restoreWh() {
+        if (!Persistent.ready) return
+        try {
+            const f = JSON.parse(Persistent.states.skwd.whFilters || "{}")
+            for (const k of ["whSfw", "whRatio", "whMinWidth", "whSort"]) if (f[k] !== undefined) root[k] = f[k]
+        } catch (e) {}
+        try {
+            const favs = JSON.parse(Persistent.states.skwd.favorites || "[]")
+            const m = {}
+            favs.forEach(p => { if (p) m[p] = true })
+            root.favoritePaths = m
+        } catch (e) {}
+    }
+    Component.onCompleted: root._restoreWh()
+    Connections {
+        target: Persistent
+        function onReadyChanged() { root._restoreWh() }
+    }
+
     signal navigate(string sub)
+    // Typed text for the sources that search rather than pick a sub.
+    signal search(string text)
+    property string viewLayout: "carousel"   // carousel | grid
 
     // Enter in the launcher's skwd search: open the highlighted entry, or the
     // typed text.
@@ -79,6 +117,7 @@ Singleton {
     // can render the same panel skwd does without reaching into skwd.
     property var focusedItem: null
     property var focusedMeta: null
+    property var focusedTheme: null      // tinct palette the focused wallpaper would apply
 
     // Details drawer — the image-info and post panels in skwd's carousel.
     // Kept here rather than in SkwdWallContent so the launcher bar and skwd's

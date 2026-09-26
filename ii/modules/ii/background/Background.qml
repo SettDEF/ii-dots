@@ -36,10 +36,8 @@ Variants {
 
         required property var modelData
 
-        // Hide when fullscreen
-        property list<HyprlandWorkspace> workspacesForMonitor: Hyprland.workspaces.values.filter(workspace => workspace.monitor && workspace.monitor.name == monitor.name)
-        property var activeWorkspaceWithFullscreen: workspacesForMonitor.filter(workspace => ((workspace.toplevels.values.filter(window => window.wayland?.fullscreen)[0] != undefined) && workspace.active))[0]
-        visible: GlobalStates.screenLocked || (!(activeWorkspaceWithFullscreen != undefined)) || !Config?.options.background.hideWhenFullscreen
+        visible: GlobalStates.screenLocked || !GameMode.fullscreenOn(modelData)
+            || (!Config.options.background.hideWhenFullscreen && !GameMode.active)
 
         // Workspaces
         property HyprlandMonitor monitor: Hyprland.monitorFor(modelData)
@@ -47,12 +45,17 @@ Variants {
         property int firstWorkspaceId: relevantWindows[0]?.workspace.id || 1
         property int lastWorkspaceId: relevantWindows[relevantWindows.length - 1]?.workspace.id || 10
         // Wallpaper
+        readonly property string monitorWallpaper: {
+            try { return JSON.parse(Config.options.background.monitorWallpapers || "{}")[bgRoot.modelData?.name] ?? "" }
+            catch (e) { return "" }
+        }
         property bool wallpaperIsVideo: {
+            if (bgRoot.monitorWallpaper.length > 0) return false
             const p = Config.options.background.wallpaperPath.toLowerCase()
             return [".mp4", ".webm", ".mkv", ".avi", ".mov", ".m4v", ".gif"]
                 .some(ext => p.endsWith(ext))
         }
-        property string wallpaperPath: wallpaperIsVideo ? Config.options.background.thumbnailPath : Config.options.background.wallpaperPath
+        property string wallpaperPath: bgRoot.monitorWallpaper || (wallpaperIsVideo ? Config.options.background.thumbnailPath : Config.options.background.wallpaperPath)
         property bool wallpaperSafetyTriggered: {
             const enabled = Config.options.workSafety.enable.wallpaper;
             const sensitiveWallpaper = (CF.StringUtils.stringListContainsSubstring(wallpaperPath.toLowerCase(), Config.options.workSafety.triggerCondition.fileKeywords));
@@ -60,21 +63,14 @@ Variants {
             return enabled && sensitiveWallpaper && sensitiveNetwork;
         }
         property real wallpaperToScreenRatio: Math.min(wallpaperWidth / screen.width, wallpaperHeight / screen.height)
-        // User-set crop for the current wallpaper. Looked up from the
-        // perFile JSON map keyed on wallpaperPath, falling back to the
-        // top-level offsetX/Y/scale if no per-file entry.
-        // Crop entries are keyed by the ORIGINAL source file, not the
-        // currently-displayed wallpaperPath. Walltune outputs alternate
-        // between processed-a.png / processed-b.png on each apply, so
-        // keying by wallpaperPath would pick up the WRONG entry (or none)
-        // on the next walltune cycle.
+        // User crop, keyed by the ORIGINAL source file (walltune alternates between
+        // processed-a/b.png outputs); falls back to the top-level offsetX/Y/scale.
         readonly property string _cropKey: {
             const src = Config.options.background.wallpaperSourcePath || ""
             return src.length > 0 ? src : wallpaperPath
         }
         readonly property var _userCrop: {
-            // Touch `rev` so the binding re-evaluates on Save — JsonObject's
-            // string propertyChanged isn't always reliable.
+            // Touch `rev` so this re-evaluates on Save; the string's change signal is unreliable.
             const _ = Config.options.background.crop.rev
             try {
                 const m = JSON.parse(Config.options.background.crop.perFile || "{}")
@@ -87,18 +83,11 @@ Variants {
         property real userOffsetY: _userCrop.offsetY || 0
         property real userScale:   _userCrop.scale   || 1
         property bool userFit:     _userCrop.fit     === true
-        // Fit mode = "show the entire image" — applying the workspace
-        // parallax zoom (1.07× by default) would re-crop the edges, so
-        // the bg wouldn't match the adjuster's preview. Skip it when
-        // userFit is on.
+        // Fit shows the whole image, so skip the parallax zoom (it would re-crop the edges).
         property real preferredWallpaperScale: userFit
             ? userScale
             : Config.options.background.parallax.workspaceZoom * userScale
-        // effectiveWallpaperScale must be a BINDING — not a one-shot
-        // imperative assignment — so it re-evaluates when the user saves a
-        // new crop (changes userScale via preferredWallpaperScale). Before:
-        // saving a new scale silently did nothing because the proc only
-        // ran on wallpaperPathChanged.
+        // Must stay a binding so a newly saved crop scale takes effect.
         property real effectiveWallpaperScale: {
             const w = wallpaperWidth, h = wallpaperHeight
             const sw = screen.width, sh = screen.height
@@ -107,8 +96,7 @@ Variants {
                 // Undersized → must fit; can't go below the cover scale.
                 return Math.max(sw / w, sh / h)
             }
-            // Oversized → free to honour user zoom, capped by what the
-            // image can supply without stretching past native pixels.
+            // Oversized → honour user zoom, capped at native pixels.
             return Math.min(preferredWallpaperScale, w / sw, h / sh)
         }
         property int wallpaperWidth: modelData.width // Some reasonable init value, to be updated
@@ -133,7 +121,6 @@ Variants {
         screen: modelData
         exclusionMode: ExclusionMode.Ignore
         WlrLayershell.layer: (GlobalStates.screenLocked && !scaleAnim.running) ? WlrLayer.Overlay : WlrLayer.Background
-        // WlrLayershell.layer: WlrLayer.Background
         WlrLayershell.namespace: "quickshell:background"
         anchors {
             top: true
@@ -142,15 +129,8 @@ Variants {
             right: true
         }
 
-        // Feeds InputMode. Without a probe instantiated SOMEWHERE, InputMode
-        // never leaves "mouse" — which meant every touch adaptation in the
-        // shell (and TouchEdges' whole input region, which gates on isTouch)
-        // was dead code. Passive: HoverHandler does not block, and the
-        // TapHandler uses DragThreshold so it never takes an exclusive grab.
-        // z below the desktop widgets: at the component default (999) this
-        // filled the window above them and swallowed every press, so no
-        // widget could be dragged. It still sees anything that reaches the
-        // wallpaper, which is all the touch probe needs.
+        // Feeds InputMode (touch detection); passive, never takes an exclusive grab.
+        // z: -1 keeps it below the desktop widgets, or it swallows every press.
         InputModeProbe { z: -1 }
         color: {
             if (!bgRoot.wallpaperSafetyTriggered || bgRoot.wallpaperIsVideo)
@@ -163,7 +143,6 @@ Variants {
 
         onWallpaperPathChanged: {
             bgRoot.updateZoomScale();
-            // Clock position gets updated after zoom scale is updated
         }
 
         // Wallpaper zoom scale
@@ -174,27 +153,20 @@ Variants {
         Process {
             id: getWallpaperSizeProc
             property string path: bgRoot.wallpaperPath
-            command: ["magick", "identify", "-ping", "-format", "%w %h", path]
+            command: ["bash", "-c", 'exec "$HOME/.local/bin/tinct" image probe "$1"', "_", path]
             stdout: StdioCollector {
                 id: wallpaperSizeOutputCollector
                 onStreamFinished: {
                     const output = wallpaperSizeOutputCollector.text;
-                    const [width, height] = output.split(" ").map(Number);
+                    const [width, height] = output.trim().split(/\s+/).map(Number);
                     if (!width || !height) return;
                     bgRoot.wallpaperWidth = width;
                     bgRoot.wallpaperHeight = height;
-                    // effectiveWallpaperScale is now a pure binding above —
-                    // it picks up the new sizes (and any userScale change)
-                    // automatically.
                 }
             }
         }
 
-        // For video wallpapers, the actual renderer is mpvpaper (external
-        // process), not the QML Image. Updating userOffsetX/Y/scale in QML
-        // therefore does nothing visually until mpvpaper is restarted with
-        // the new --video-zoom / --video-pan-x / --video-pan-y options.
-        // Restart it on every crop save (rev bump).
+        // Video wallpapers are rendered by mpvpaper, so a crop save must restart it with the new pan/zoom.
         Process {
             id: videoCropRestartProc
             command: ["bash", "-c", "true"]
@@ -203,8 +175,7 @@ Variants {
             target: Config.options.background.crop
             function onRevChanged() {
                 if (!bgRoot.wallpaperIsVideo) return
-                // Re-run switchwall (which now reads the saved crop and
-                // launches mpvpaper with the matching mpv options).
+                // switchwall reads the saved crop and relaunches mpvpaper.
                 const sw = Quickshell.shellPath("scripts/colors/switchwall.sh")
                 const vid = Config.options.background.wallpaperPath
                 if (!vid || vid.length === 0) return
@@ -222,30 +193,30 @@ Variants {
             id: previewTimer
             interval: 250 // Brief delay to simulate loading time
             repeat: false
+            // A real source change supersedes the preview; settling anyway flashed black.
+            property int token: -1
             onTriggered: {
+                if (previewTimer.token !== wallpaper.transitionToken) return
                 wallpaper.previewOpacityMultiplier = 1
-                wallpaper.state = "active"
-                wallpaperPrevContainer.state = "hidden"
+                wallpaper.resolveTransition()
             }
         }
 
         function triggerTransitionPreview() {
             if (wallpaper.status !== Image.Ready || bgRoot.wallpaperIsVideo) return
             previewTimer.stop()
-            
-            // 1. Reset main wallpaper's preview opacity multiplier so it's fully opaque initially
+
             wallpaper.previewOpacityMultiplier = 1
             wallpaper.state = "active"
-            
-            // 2. Setup the previous wallpaper copy
+
             wallpaperPrev.source = wallpaper.source
             wallpaperPrevContainer.state = "visible"
-            
-            // 3. Force main wallpaper to fade out (revealing wallpaperPrev)
-            // Need a tiny delay before setting to 0 so QML processes the source update of wallpaperPrev
+
+            // Defer so wallpaperPrev's source update lands before the fade-out starts
             Qt.callLater(() => {
                 wallpaper.previewOpacityMultiplier = 0
                 wallpaper.state = "loading"
+                previewTimer.token = wallpaper.transitionToken
                 previewTimer.start()
             })
         }
@@ -262,24 +233,20 @@ Variants {
             clip: true
 
             // ── Wallpaper effect ────────────────────────────────────
-            // A pack effect running on the wallpaper itself. Sampling effects
-            // (the warps) get the wallpaper image directly as their source,
-            // so they distort the picture with no screen capture involved.
+            // Sampling effects (warps) take the wallpaper image directly as their source.
             Loader {
                 id: bgEffect
                 anchors.fill: parent
                 z: 1
                 readonly property var fx:
                     AppDisplay.effectByPath(Config.options.background.effect ?? "")
-                active: !!fx
+                active: !!fx && !GameMode.active
                 sourceComponent: EffectRenderer {
                     fx: bgEffect.fx
                     rounding: 0
                     // Warps read the wallpaper directly; overlay kinds ignore it.
                     sourceItem: bgEffect.fx?.samples === true ? wallpaper : null
-                    // Merge the user's per-effect variable overrides on top of
-                    // the legacy single strength value. Empty map → renderer
-                    // falls back to each param's declared default.
+                    // User per-effect overrides on top of the legacy strength; null → declared defaults.
                     values: {
                         let v = {};
                         try {
@@ -300,9 +267,7 @@ Variants {
                 visible: opacity > 0 && !blurLoader.active
                 property real previewOpacityMultiplier: 1
                 opacity: ((status === Image.Ready && !bgRoot.wallpaperIsVideo) ? 1 : 0) * previewOpacityMultiplier
-                // cache=false: walltune slot alternation can land on the
-                // same path twice (apply→reprocess→apply same image); Qt's
-                // cached pixels then linger and the old wallpaper stays.
+                // cache=false: walltune can reuse the same path, and Qt's cached pixels would linger.
                 cache: false
                 smooth: false
 
@@ -313,29 +278,59 @@ Variants {
                 transformOrigin: Item.Center
                 Behavior on opacity { NumberAnimation { duration: 500; easing.type: Easing.OutCubic } }
 
+                // Every load outcome must resolve, not just Ready: workSafety's
+                // blanked source left the hidden wallpaper pinned in prev.
+
+                /// Bumped per source change; stale previews check it.
+                property int transitionToken: 0
+                /// Prev fades from this, not the last source set — that may have failed.
+                property string lastGoodSource: ""
+
+                function resolveTransition() {
+                    wallpaperWatchdog.stop()
+                    wallpaper.state = "active"
+                    const blanked = String(wallpaper.source).length === 0
+                    // Blanked = workSafety hiding it, so drop prev. Failed = keep prev.
+                    if (blanked || wallpaper.status === Image.Ready)
+                        wallpaperPrevContainer.state = "hidden"
+                }
+
+                /// Named, not an arrow: Qt.callLater dedupes by function identity.
+                function settleIfReady() {
+                    if (wallpaper.status === Image.Ready) wallpaper.resolveTransition()
+                }
+
+                Timer {
+                    id: wallpaperWatchdog
+                    interval: 8000
+                    repeat: false
+                    onTriggered: wallpaper.resolveTransition()
+                }
+
                 onStatusChanged: {
                     if (status === Image.Ready) {
-                        wallpaper.state = "active"
-                        wallpaperPrevContainer.state = "hidden"
+                        wallpaper.lastGoodSource = String(wallpaper.source)
+                        wallpaper.resolveTransition()
+                    } else if (status === Image.Error
+                               || (status === Image.Null && String(wallpaper.source).length === 0)) {
+                        // Null is transient mid-assignment; only an empty source counts.
+                        wallpaper.resolveTransition()
                     }
                 }
 
                 onSourceChanged: {
-                    if (previousSource !== "" && previousSource !== source) {
-                        wallpaperPrev.source = previousSource
+                    const src = String(source)
+                    wallpaper.transitionToken++
+                    if (wallpaper.lastGoodSource !== "" && wallpaper.lastGoodSource !== src) {
+                        wallpaperPrev.source = wallpaper.lastGoodSource
                         wallpaperPrevContainer.state = "visible"
                         wallpaper.state = "loading"
+                        wallpaperWatchdog.restart()
 
-                        if (status === Image.Ready) {
-                            Qt.callLater(() => {
-                                if (status === Image.Ready) {
-                                    wallpaper.state = "active"
-                                    wallpaperPrevContainer.state = "hidden"
-                                }
-                            })
-                        }
+                        // Already decoded: no further statusChanged will fire.
+                        if (status === Image.Ready) Qt.callLater(wallpaper.settleIfReady)
                     }
-                    previousSource = source
+                    if (src.length === 0) wallpaper.resolveTransition()
                 }
 
                 state: "active"
@@ -381,14 +376,6 @@ Variants {
                     }
                 ]
 
-                // NB: must NOT be a binding (`: source`). A binding would
-                // auto-update previousSource as soon as source changes —
-                // so by the time onSourceChanged runs, previousSource is
-                // already == source and the if-guard above always fails,
-                // killing every transition (fade / slide / zoom / wipe).
-                // Capture the initial value once via Component.onCompleted.
-                property string previousSource: ""
-                Component.onCompleted: previousSource = source
                 // Range = groups that workspaces span on
                 property int chunkSize: Config?.options.bar.workspaces.shown ?? 10
                 property int lower: Math.floor(bgRoot.firstWorkspaceId / chunkSize) * chunkSize
@@ -396,9 +383,7 @@ Variants {
                 property int range: upper - lower
                 property real valueX: {
                     let result = 0.5;
-                    // While the user is framing in the adjuster, hold the
-                    // parallax at center so what they see is what the bg
-                    // paints. Parallax resumes once the adjuster closes.
+                    // Hold parallax centered while the adjuster is open so the preview matches.
                     if (GlobalStates.wallpaperAdjusterOpen) return 0.5
                     if (Config.options.background.parallax.enableWorkspace && !bgRoot.verticalParallax) {
                         result = ((bgRoot.monitor.activeWorkspace?.id - lower) / range);
@@ -423,14 +408,14 @@ Variants {
                 source: bgRoot.wallpaperSafetyTriggered ? "" : bgRoot.wallpaperPath
                 fillMode: bgRoot.userFit ? Image.PreserveAspectFit : Image.PreserveAspectCrop
                 Behavior on x {
-                    enabled: wallpaper.state === "active" && !activeTransition.running
+                    enabled: wallpaper.state === "active" && !activeTransition.running && !GameMode.active
                     NumberAnimation {
                         duration: 600
                         easing.type: Easing.OutCubic
                     }
                 }
                 Behavior on y {
-                    enabled: wallpaper.state === "active" && !activeTransition.running
+                    enabled: wallpaper.state === "active" && !activeTransition.running && !GameMode.active
                     NumberAnimation {
                         duration: 600
                         easing.type: Easing.OutCubic
@@ -483,6 +468,18 @@ Variants {
                     }
                 }
 
+
+                /// Frees the previous wallpaper's texture once the crossfade
+                /// is over. It is a second full-resolution copy — ~16 MB on
+                /// this display — and it was held for the life of the shell
+                /// for a fade that lasts 700ms.
+                Timer {
+                    interval: 1200
+                    repeat: false
+                    running: wallpaperPrevContainer.state === "hidden"
+                             && String(wallpaperPrev.source) !== ""
+                    onTriggered: wallpaperPrev.source = ""
+                }
                 state: "hidden"
                 states: [
                     State {
@@ -585,10 +582,7 @@ Variants {
                     leftMargin: {
                         const xOnWallpaper = bgRoot.movableXSpace;
                         const extraMove = (wallpaper.effectiveValueX * 2 * bgRoot.movableXSpace) * (parallaxFactor - 1);
-                        // Counter the user-crop pan applied to the wallpaper
-                        // image — otherwise widgetCanvas drifts off-screen
-                        // with the wallpaper and the clock lands outside the
-                        // visible region.
+                        // Counter the user-crop pan, or the widgets drift off-screen with the wallpaper.
                         const userPan = bgRoot.userOffsetX * bgRoot.movableXSpace;
                         return xOnWallpaper - extraMove - userPan;
                     }
@@ -599,9 +593,11 @@ Variants {
                         return yOnWallpaper - extraMove - userPan;
                     }
                     Behavior on leftMargin {
+                        enabled: !GameMode.active
                         animation: Appearance.animation.elementMove.numberAnimation.createObject(this)
                     }
                     Behavior on topMargin {
+                        enabled: !GameMode.active
                         animation: Appearance.animation.elementMove.numberAnimation.createObject(this)
                     }
                 }
@@ -664,8 +660,7 @@ Variants {
                     }
                 }
 
-                // Every desktop widget wants the same five geometry values.
-                // Written once here so adding one is a single line below.
+                // Shared geometry for every desktop widget.
                 QtObject {
                     id: geo
                     readonly property real w: bgRoot.screen.width
@@ -677,7 +672,7 @@ Variants {
 
                 component Slot: FadeLoader {
                     required property string key
-                    shown: Config.options.background.widgets[key].enable
+                    shown: Config.options.background.widgets[key].enable && !GameMode.active
                 }
 
                 Slot { key: "resources"; sourceComponent: ResourcesWidget {

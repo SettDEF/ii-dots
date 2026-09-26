@@ -341,7 +341,6 @@ MouseArea {
         }
 
         const home = FileUtils.trimFileProtocol(Directories.home);
-        const scriptDir = home + "/.config/quickshell/ii/scripts/colors";
         const cacheDir = home + "/.cache/quickshell/walltune";
 
         const mode = root.useDarkMode ? "dark" : "light";
@@ -373,37 +372,19 @@ MouseArea {
 
         const srcWall = wallPath;
 
-        // Build magick args
-        let magickArgs = ["magick", srcWall,
-            "-modulate", brightness + "," + saturation + "," + hue,
-            "-brightness-contrast", "0," + contrast];
-
-        if (temp > 0) {
-            magickArgs = magickArgs.concat(["-channel", "Red",  "-evaluate", "add",      tBoost + "%", "+channel",
-                                            "-channel", "Blue", "-evaluate", "subtract", tBoost + "%", "+channel"]);
-        } else if (temp < 0) {
-            magickArgs = magickArgs.concat(["-channel", "Red",  "-evaluate", "subtract", tBoost + "%", "+channel",
-                                            "-channel", "Blue", "-evaluate", "add",      tBoost + "%", "+channel"]);
-        }
-
-        if (parseFloat(sharpness) > 0) magickArgs = magickArgs.concat(["-unsharp", "0x" + sharpness]);
-        if (parseFloat(blur)      > 0) magickArgs = magickArgs.concat(["-blur",    "0x" + blur]);
-        if (grain > 0)                 magickArgs = magickArgs.concat(["-attenuate", (grain / 100).toFixed(2), "+noise", "Gaussian"]);
-
-        // Tone curve check
-        const lutPath = cacheDir + "/curve.pgm";
+        // tinct image adjust (ImageMagick's maths); source then output go last.
         const curvePoints = s.curvePoints !== undefined ? s.curvePoints : [[0,0],[1,1]];
         const useLut = (curvePoints.length !== 2 || curvePoints[0][0] !== 0 || curvePoints[0][1] !== 0 || curvePoints[1][0] !== 1 || curvePoints[1][1] !== 1);
-
-        if (useLut) magickArgs = magickArgs.concat(["-interpolate", "Bicubic", lutPath, "-clut"]);
-        magickArgs.push(tmp);
-
-        // Curve python generation step
-        const curvePy = scriptDir + "/walltune-curve.py";
-        const ptsStr  = curvePoints.map(p => p[0] + "," + p[1]).join(";");
-        const lutStep = useLut
-            ? `python3 '${curvePy}' lut '${ptsStr}' '${lutPath}'`
-            : `:`;
+        let adjustArgs = [home + "/.local/bin/tinct", "image", "adjust",
+            "--brightness", String(brightness), "--saturation", String(saturation), "--hue", String(hue),
+            "--contrast", String(contrast)];
+        if (temp !== 0 && tBoost > 0) adjustArgs = adjustArgs.concat(["--temperature", String(temp > 0 ? tBoost : -tBoost)]);
+        if (parseFloat(sharpness) > 0) adjustArgs = adjustArgs.concat(["--sharpen", sharpness]);
+        if (parseFloat(blur)      > 0) adjustArgs = adjustArgs.concat(["--blur", blur]);
+        if (grain > 0)                 adjustArgs = adjustArgs.concat(["--grain", (grain / 100).toFixed(2)]);
+        if (useLut) adjustArgs = adjustArgs.concat(["--curve", curvePoints.map(p => p[0] + "," + p[1]).join(";")]);
+        adjustArgs.push(srcWall);
+        adjustArgs.push(tmp);
 
         // Switchwall and remapping settings
         const switchwall = Directories.wallpaperSwitchScriptPath;
@@ -422,7 +403,7 @@ MouseArea {
         const practicalArg = selectedPractical !== "" ? "--practical " + selectedPractical : "";
         const remapArg     = (remapPalette !== "" && remapPalette !== "matugen") ? "--remap " + remapPalette : "";
 
-        // Remap runs FIRST so the magick adjustments land on top of the
+        // Remap runs FIRST so the adjustments land on top of the
         // palette and stay visible (see WallTuneContent.qml for the rationale).
         let preRemapStep = ":";
         if (remapPalette !== "") {
@@ -431,7 +412,7 @@ MouseArea {
                 ? "--matugen"
                 : "--palette " + remapPalette;
             preRemapStep = `'${rdmc}' ${palArg} --colors ${remapColors} --dither ${remapDither} --output '${tmp}' '${srcWall}'`;
-            magickArgs[1] = tmp;  // adjustments now read the remapped file
+            adjustArgs[adjustArgs.length - 2] = tmp;  // adjustments read the remapped file
         }
 
         // Save updated state file step
@@ -471,7 +452,7 @@ MouseArea {
             `  thumb_dir="${cacheDir}/thumbs"`,
             `  mkdir -p "$thumb_dir"`,
             `  thumb_path="$thumb_dir/$ts.png"`,
-            `  magick '${tmp}' -thumbnail 160x120 "$thumb_path"`,
+            `  "$HOME/.local/bin/tinct" image thumb --size 160 --jobs 1 '${tmp}' "$thumb_path"`,
             `  jq -cn --arg p "$pri" --arg s "$sec" --arg t "$ter" --arg w '${srcWall}' \\`,
             `        --arg th "$thumb_path" --argjson st '${snapJson}' --argjson ts "$ts" \\`,
             `        '{ts:$ts, primary:$p, secondary:$s, tertiary:$t, wallpaper:$w, thumbnail:$th, state:$st}' >> "$hist"`,
@@ -495,25 +476,25 @@ MouseArea {
 
         if (applyMode === "colors") {
             const colorsTmp = cacheDir + "/colors-source.png";
-            const magickArgsColors = magickArgs.slice();
-            magickArgsColors[magickArgsColors.length - 1] = colorsTmp;
+            const adjustArgsColors = adjustArgs.slice();
+            adjustArgsColors[adjustArgsColors.length - 1] = colorsTmp;
             pipelineSteps = [
                 preRemapStep,
-                magickArgsColors.map(a => `'${a.replace(/'/g, "'\\''")}'`).join(" "),
+                adjustArgsColors.map(a => `'${a.replace(/'/g, "'\\''")}'`).join(" "),
                 `'${switchwall}' --image '${colorsTmp}' --mode ${mode} --no-wallpaper-update ${schemeArg} ${theoryArg} ${styleArg} ${practicalArg} ${remapArg}`,
                 `jq --arg p '${srcWall}' --arg src '${srcWall}' '.background.wallpaperPath = $p | .background.wallpaperSourcePath = $src' '${cfg}' > '${cfg}.tmp' && mv '${cfg}.tmp' '${cfg}'`,
             ];
         } else if (applyMode === "wallpaper") {
             pipelineSteps = [
                 preRemapStep,
-                magickArgs.map(a => `'${a.replace(/'/g, "'\\''")}'`).join(" "),
+                adjustArgs.map(a => `'${a.replace(/'/g, "'\\''")}'`).join(" "),
                 `jq --arg p '${tmp}' --arg src '${srcWall}' '.background.wallpaperPath = $p | .background.wallpaperSourcePath = $src' '${cfg}' > '${cfg}.tmp' && mv '${cfg}.tmp' '${cfg}'`,
                 `'${switchwall}' --image '${srcWall}' --mode ${mode} --no-wallpaper-update ${schemeArg}`,
             ];
         } else { // "both"
             pipelineSteps = [
                 preRemapStep,
-                magickArgs.map(a => `'${a.replace(/'/g, "'\\''")}'`).join(" "),
+                adjustArgs.map(a => `'${a.replace(/'/g, "'\\''")}'`).join(" "),
                 `'${switchwall}' --image '${tmp}' --mode ${mode} --no-wallpaper-update ${schemeArg} ${theoryArg} ${styleArg} ${practicalArg} ${remapArg}`,
                 `jq --arg p '${tmp}' --arg src '${srcWall}' '.background.wallpaperPath = $p | .background.wallpaperSourcePath = $src' '${cfg}' > '${cfg}.tmp' && mv '${cfg}.tmp' '${cfg}'`,
             ];
@@ -522,7 +503,6 @@ MouseArea {
         const script = [
             "set -e",
             `mkdir -p '${cacheDir}'`,
-            lutStep,
             ...pipelineSteps,
             saveStateStep,
             histStep
@@ -853,12 +833,7 @@ notify-send -a "WallTune" -i "color-management" "WallTune" "Applied custom confi
                                 Behavior on border.width { NumberAnimation { duration: 120 } }
 
                                 ClippingRectangle {
-                                    // Pre-generates a small thumbnail via
-                                    // `magick`, caches it under the Freedesktop
-                                    // thumbnail spec, then loads THAT instead
-                                    // of decoding the full 4 K PNG every time.
-                                    // Solves the silent-drop issue where large
-                                    // images blew QML's scenegraph budget.
+                                    // Loads a cached thumbnail, not the full 4K image, which blew the scenegraph budget.
                                     anchors.fill: parent
                                     anchors.margins: parent.border.width
                                     radius: 6
@@ -870,7 +845,7 @@ notify-send -a "WallTune" -i "color-management" "WallTune" "Applied custom confi
                                         sourceSize.width: 320
                                         sourceSize.height: 320
                                         fillMode: Image.PreserveAspectCrop
-                                        // Animated formats blow up magick (~8 GB / m4v).
+                                        // Animated formats get no thumbnail.
                                         generateThumbnail: {
                                             const p = (modelData || "").toLowerCase()
                                             return !p.match(/\.(gif|mp4|webm|m4v|mkv|mov|avi)(\?|$)/)

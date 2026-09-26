@@ -131,6 +131,19 @@ RowLayout {
         StyledToolTip { text: Translation.tr("Image info & post") }
     }
 
+    IconToolbarButton {
+        id: viewToggle
+        Layout.alignment: Qt.AlignVCenter
+        Layout.topMargin: 4
+        Layout.bottomMargin: 4
+        visible: root.showActions
+        readonly property bool grid: WallpaperHub.viewLayout === "grid"
+        text: viewToggle.grid ? "view_carousel" : "grid_view"
+        onClicked: WallpaperHub.viewLayout = viewToggle.grid ? "carousel" : "grid"
+        colText: Appearance.colors.colOnSurfaceVariant
+        StyledToolTip { text: viewToggle.grid ? Translation.tr("Carousel") : Translation.tr("Grid") }
+    }
+
     // ── Filter (sort chips) + refresh ─────────────────────────────────
     IconToolbarButton {
         Layout.alignment: Qt.AlignVCenter

@@ -7,9 +7,8 @@ import qs.modules.common
 import qs.modules.common.functions
 
 /**
- * The colour-filter swatches, shared by the launcher bar and skwd's own
- * toolbar. Multi-select, editing the single selection in WallpaperHub
- * (Wallhaven's fixed palette codes).
+ * The Wallhaven colour-filter swatches in the launcher bar. One colour at a
+ * time, stored in WallpaperHub (Wallhaven's fixed palette codes).
  */
 Rectangle {
     id: root

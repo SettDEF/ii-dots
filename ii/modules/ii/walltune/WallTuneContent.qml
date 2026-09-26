@@ -26,10 +26,7 @@ Rectangle {
     // alternates, so wallpaperPath always changes (forces Image reload).
     property string lastProcessedSlot: "a"
 
-    // Animated wallpapers (mpvpaper-driven video) can't go through the
-    // ImageMagick processing chain — magick can't tune an mp4 frame-by-
-    // frame. When the active wallpaper is a video, WallTune disables its
-    // apply pipeline and shows a notice instead of corrupting the file.
+    // Video wallpapers can't be tuned frame by frame, so WallTune shows a notice instead.
     readonly property bool sourceIsVideo: {
         const w = (sourceWall && sourceWall !== "") ? sourceWall : currentWall
         return /\.(mp4|webm|mkv|avi|mov|gif)$/i.test(w || "")
@@ -568,9 +565,7 @@ Rectangle {
     }
     function refreshHistogram() {
         if (!currentWall || currentWall === "") return
-        histProc.command = ["python3",
-            home + "/.config/quickshell/ii/scripts/colors/walltune-curve.py",
-            "histogram", currentWall]
+        histProc.command = [home + "/.local/bin/tinct", "image", "histogram", currentWall]
         histProc.running = true
     }
     Process { id: blueScanProc; stdout: StdioCollector { onStreamFinished: {
@@ -638,8 +633,7 @@ Rectangle {
             reprocessProc.running = false
             return
         }
-        // Animated wallpaper — magick can't process video. Bail quietly;
-        // the UI shows the "animated wallpaper" notice instead.
+        // Video: the UI shows the notice instead.
         if (sourceIsVideo) {
             processing = false
             return
@@ -686,8 +680,7 @@ Rectangle {
         const temp   = slTemperature - 50
         const tBoost = Math.abs(Math.round(temp * 0.8))
 
-        // Resolve true source wallpaper up-front so the magick chain operates
-        // on the un-edited file (otherwise edits compound across reprocesses).
+        // The un-edited source, so edits don't compound across reprocesses.
         const srcWall = (sourceWall && sourceWall !== "") ? sourceWall : currentWall
 
         // baseImage = what the chain READS from before any per-run edits.
@@ -701,39 +694,22 @@ Rectangle {
                                 ? currentWall : ""
         const baseImage = (stackable && prevProcessed !== "") ? prevProcessed : srcWall
 
-        // When a palette remap is active, the magick adjustments run on the
-        // ALREADY-remapped file (produced by preRemapStep below) instead of the
-        // raw source — so brightness / contrast / saturation / curve land on
-        // top of the palette and stay visible. Quantising last (the old order)
-        // snapped every pixel back to a fixed swatch and wiped the sliders,
-        // which is why popular palettes "didn't support the adjustments".
-        const magickSrc = (remapPalette !== "") ? tmp : baseImage
+        // With a palette remap the adjustments run on the remapped file, so the
+        // sliders stay visible on top of the palette.
+        const adjustSrc = (remapPalette !== "") ? tmp : baseImage
 
-        // Build magick args as a flat array — no backslash continuation
-        let args = ["magick", magickSrc,
-            "-modulate", brightness + "," + saturation + "," + hue,
-            "-brightness-contrast", "0," + contrast]
-
-        if (temp > 0) { // warm: +red -blue
-            args = args.concat(["-channel", "Red",  "-evaluate", "add",      tBoost + "%", "+channel",
-                                "-channel", "Blue", "-evaluate", "subtract", tBoost + "%", "+channel"])
-        } else if (temp < 0) { // cool: -red +blue
-            args = args.concat(["-channel", "Red",  "-evaluate", "subtract", tBoost + "%", "+channel",
-                                "-channel", "Blue", "-evaluate", "add",      tBoost + "%", "+channel"])
-        }
-
-        if (parseFloat(sharpness) > 0) args = args.concat(["-unsharp", "0x" + sharpness])
-        if (parseFloat(blur)      > 0) args = args.concat(["-blur",    "0x" + blur])
-        if (grain > 0)                 args = args.concat(["-attenuate", (grain / 100).toFixed(2), "+noise", "Gaussian"])
-
-        // Tone curve via -clut against a generated 256x1 PGM LUT.
-        const lutPath = cacheDir + "/curve.pgm"
+        // tinct image adjust: ImageMagick's maths, output path last so the
+        // pipeline can swap it.
         const useLut = !curveIsIdentity()
-        // ImageMagick 7.1.2 dropped "Bicubic" from -list interpolate; the
-        // closest cubic replacement is Catrom (Catmull-Rom). "Bicubic" makes
-        // magick exit non-zero, which under `set -e` kills the rest of the
-        // pipeline — wallpaper never updates, history never writes.
-        if (useLut) args = args.concat(["-interpolate", "Catrom", lutPath, "-clut"])
+        let args = [home + "/.local/bin/tinct", "image", "adjust",
+            "--brightness", String(brightness), "--saturation", String(saturation), "--hue", String(hue),
+            "--contrast", String(contrast)]
+        if (temp !== 0 && tBoost > 0) args = args.concat(["--temperature", String(temp > 0 ? tBoost : -tBoost)])
+        if (parseFloat(sharpness) > 0) args = args.concat(["--sharpen", sharpness])
+        if (parseFloat(blur)      > 0) args = args.concat(["--blur", blur])
+        if (grain > 0)                 args = args.concat(["--grain", (grain / 100).toFixed(2)])
+        if (useLut) args = args.concat(["--curve", curvePoints.map(p => p[0] + "," + p[1]).join(";")])
+        args.push(adjustSrc)
 
         args.push(tmp)
 
@@ -753,16 +729,10 @@ Rectangle {
         // so switchwall doesn't swallow the following token as its value.
         const moCsv        = root.mixOrderArg()
         const mixOrderArg  = moCsv !== "" ? "--mix-order " + moCsv : ""
-        // Build LUT-generation step (only when the curve is not identity).
-        const curvePy = scriptDir + "/walltune-curve.py"
-        const ptsStr  = curvePoints.map(p => p[0] + "," + p[1]).join(";")
-        const lutStep = useLut
-            ? `python3 '${curvePy}' lut '${ptsStr}' '${lutPath}'`
-            : `:`
 
         // Palette remap — runs FIRST, quantising the SOURCE wallpaper onto the
-        // chosen palette into `tmp`. The magick adjustments above then read
-        // `tmp` (via magickSrc), so the sliders/curve sit on top of the
+        // chosen palette into `tmp`. The adjustments above then read
+        // `tmp` (via adjustSrc), so the sliders/curve sit on top of the
         // palette. matugen still extracts the theme from the final adjusted
         // image, so the popular-palette look and the adjustments both apply.
         let preRemapStep = ":"
@@ -813,7 +783,7 @@ Rectangle {
             `  thumb_dir="${cacheDir}/thumbs"`,
             `  mkdir -p "$thumb_dir"`,
             `  thumb_path="$thumb_dir/$ts.png"`,
-            `  magick '${tmp}' -thumbnail 160x120 "$thumb_path"`,
+            `  "$HOME/.local/bin/tinct" image thumb --size 160 --jobs 1 '${tmp}' "$thumb_path"`,
             `  jq -cn --arg p "$pri" --arg s "$sec" --arg t "$ter" --arg w '${srcWall}' \\`,
             `        --arg th "$thumb_path" --argjson st '${snapJson}' --argjson ts "$ts" \\`,
             `        '{ts:$ts, primary:$p, secondary:$s, tertiary:$t, wallpaper:$w, thumbnail:$th, state:$st}' >> "$hist"`,
@@ -840,18 +810,18 @@ Rectangle {
             // Magick to a temp file → matugen on it (theme from adjusted) →
             // force wallpaperPath back to the source wallpaper.
             const colorsTmp = cacheDir + "/colors-source.png"
-            const magickArgsColors = args.slice()
-            magickArgsColors[magickArgsColors.length - 1] = colorsTmp
+            const adjustArgsColors = args.slice()
+            adjustArgsColors[adjustArgsColors.length - 1] = colorsTmp
             pipelineSteps = [
                 ["remap",   preRemapStep],
-                ["tune",    magickArgsColors.map(a => `'${a.replace(/'/g, "'\\''")}'`).join(" ")],
+                ["tune",    adjustArgsColors.map(a => `'${a.replace(/'/g, "'\\''")}'`).join(" ")],
                 ["extract", `timeout 150 '${switchwall}' --image '${colorsTmp}' --mode ${mode} --no-wallpaper-update ${schemeArg} ${theoryArg} ${styleArg} ${practicalArg} ${remapArg} ${mixOrderArg}`],
                 // Snap wallpaperPath back to the source so the bg layer shows
                 // the un-edited wallpaper.
                 ["apply",   `jq --arg p '${srcWall}' --arg src '${srcWall}' '.background.wallpaperPath = $p | .background.wallpaperSourcePath = $src' '${cfg}' > '${cfg}.tmp' && mv '${cfg}.tmp' '${cfg}'`],
             ]
         } else if (applyMode === "wallpaper") {
-            // Remap source → magick adjustments on top → set wallpaper path to
+            // Remap source → tinct adjustments on top → set wallpaper path to
             // the result → re-extract theme from the ORIGINAL source so the
             // theme stays "normal".
             pipelineSteps = [
@@ -862,7 +832,7 @@ Rectangle {
                 ["extract", `timeout 150 '${switchwall}' --image '${srcWall}' --mode ${mode} --no-wallpaper-update ${schemeArg}`],
             ]
         } else { // "both"
-            // Remap source → magick adjustments on top → SET WALLPAPER → theme
+            // Remap source → tinct adjustments on top → SET WALLPAPER → theme
             // from the final image. The wallpaper switch runs BEFORE theme
             // extraction on purpose: extract is the slowest, most failure-prone
             // step (external helpers, dbus) and when it ran first, any hang or
@@ -898,12 +868,11 @@ Rectangle {
             `trap 'echo "WT_PHASE:error"' ERR`,
             `mkdir -p '${cacheDir}'`,
             // Guard: a missing/garbage source wallpaper (e.g. config.wallpaperPath
-            // clobbered to "--help") makes magick fail and, under set -e, aborts the
+            // clobbered to "--help") makes the adjust step fail and, under set -e, aborts the
             // whole pipeline BEFORE switchwall — so colours silently never apply.
             // Fail loudly with an error phase instead of a confusing no-op.
             `[ -f '${srcWall}' ] || { echo "WT_PHASE:error"; echo "walltune: source wallpaper not found: '${srcWall}'" >&2; exit 1; }`,
             `echo "WT_PHASE:start"`,
-            lutStep,
             ...phasedShell,
             `echo "WT_PHASE:history"`,
             histStep,
@@ -1031,7 +1000,7 @@ Rectangle {
     // Thin progress strip just below the header. Drives the visible "yes,
     // something is happening, here's how far along" feedback — width follows
     // root.progress (phase index / total). A shimmer sweeps the filled
-    // portion so the bar never *looks* frozen during the long magick step.
+    // portion so the bar never *looks* frozen during the long adjust step.
     Rectangle {
         id: progressStrip
         anchors {
@@ -1370,7 +1339,7 @@ Rectangle {
             }
         }
 
-        // Animated-wallpaper notice — the magick tuning pipeline can't
+        // Animated-wallpaper notice — the tuning pipeline can't
         // touch a video, so the controls below are inert for one.
         Rectangle {
             Layout.fillWidth: true

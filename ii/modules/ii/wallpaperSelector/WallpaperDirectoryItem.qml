@@ -11,7 +11,7 @@ MouseArea {
     id: root
     required property var fileModelData
     property bool isDirectory: fileModelData.fileIsDir
-    // Animated → cheap ffmpeg poster, not magick (which decodes every frame).
+    // Animated → cheap ffmpeg poster.
     property bool isVideo: !isDirectory
         && /\.(mp4|webm|mkv|avi|mov|m4v|gif)$/i.test(fileModelData.fileName ?? "")
     property bool useThumbnail: !isVideo && Images.isValidImageByName(fileModelData.fileName)

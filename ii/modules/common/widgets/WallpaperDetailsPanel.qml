@@ -17,6 +17,7 @@
 //       meta: WallpaperHub.focusedMeta
 //       onContextMenuRequested: (x, y) => menu.popup(x, y, itemsFor(item))
 //   }
+import qs.services
 import qs.modules.common
 import qs.modules.common.widgets
 import qs.modules.common.functions
@@ -29,6 +30,7 @@ Item {
 
     property var item: null
     property var meta: null
+    property var theme: null       // flat tinct {role: hex}
     property real rowHeight: 40
 
     signal contextMenuRequested(real x, real y)
@@ -87,6 +89,74 @@ Item {
             text: qsTr("Focus a wallpaper to see its details")
             font.pixelSize: Appearance.font.pixelSize.smaller
             color: Appearance.colors.colSubtext
+        }
+
+        // ── Theme this wallpaper would apply ──────────────────────────
+        Rectangle {
+            id: themeCard
+            readonly property var t: root.theme
+            visible: root.item !== null
+            Layout.fillWidth: true
+            Layout.leftMargin: 12
+            Layout.rightMargin: 12
+            Layout.topMargin: 4
+            Layout.bottomMargin: 6
+            Layout.preferredHeight: 52
+            radius: Appearance.rounding.small
+            color: themeCard.t ? themeCard.t.surfaceContainer : Appearance.colors.colLayer2
+            border.width: 1
+            border.color: themeCard.t ? themeCard.t.outlineVariant : Appearance.colors.colLayer0Border
+            Behavior on color { ColorAnimation { duration: 200 } }
+
+            RowLayout {
+                anchors.fill: parent
+                anchors.leftMargin: 12
+                anchors.rightMargin: 8
+                spacing: 8
+                opacity: themeCard.t ? 1 : 0.5
+
+                MaterialSymbol {
+                    text: "palette"
+                    iconSize: 18
+                    color: themeCard.t ? themeCard.t.primary : Appearance.colors.colSubtext
+                }
+                StyledText {
+                    Layout.fillWidth: true
+                    text: themeCard.t ? qsTr("Theme preview") : qsTr("Reading colours…")
+                    font.pixelSize: Appearance.font.pixelSize.smaller
+                    font.weight: Font.DemiBold
+                    color: themeCard.t ? themeCard.t.onSurface : Appearance.colors.colSubtext
+                    elide: Text.ElideRight
+                }
+                Repeater {
+                    model: ["secondary", "tertiary", "surfaceBright"]
+                    delegate: Rectangle {
+                        required property string modelData
+                        implicitWidth: 18
+                        implicitHeight: 18
+                        radius: 9
+                        color: themeCard.t ? themeCard.t[modelData] : Appearance.colors.colLayer3
+                        Behavior on color { ColorAnimation { duration: 200 } }
+                    }
+                }
+                Rectangle {
+                    implicitWidth: sampleText.implicitWidth + 24
+                    implicitHeight: 32
+                    radius: height / 2
+                    color: themeCard.t ? themeCard.t.primary : Appearance.colors.colLayer3
+                    TapHandler { onTapped: WallpaperHub.applyFocused() }
+                    HoverHandler { cursorShape: Qt.PointingHandCursor }
+                    Behavior on color { ColorAnimation { duration: 200 } }
+                    StyledText {
+                        id: sampleText
+                        anchors.centerIn: parent
+                        text: qsTr("Apply")
+                        font.pixelSize: Appearance.font.pixelSize.smaller
+                        font.weight: Font.DemiBold
+                        color: themeCard.t ? themeCard.t.onPrimary : Appearance.colors.colSubtext
+                    }
+                }
+            }
         }
 
         Repeater {
