@@ -156,7 +156,7 @@ Singleton {
     // ── Persistence ───────────────────────────────────────────────
     FileView {
         id: store
-        path: Qt.resolvedUrl("file:///home/caesar/.local/state/quickshell/app-usage.json")
+        path: Qt.resolvedUrl(`file://${Quickshell.env("HOME")}/.local/state/quickshell/app-usage.json`)
         onLoaded: {
             try {
                 const d = JSON.parse(store.text() || "{}")

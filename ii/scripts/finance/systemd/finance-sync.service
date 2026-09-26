@@ -1,6 +1,6 @@
 [Unit]
 Description=Sync bank data for the quickshell sidebar
-Documentation=file:///home/caesar/.config/quickshell/ii/scripts/finance/README.md
+Documentation=file://%h/.config/quickshell/ii/scripts/finance/README.md
 After=network-online.target
 
 [Service]

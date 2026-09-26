@@ -13,7 +13,7 @@ pub const APP_ID_KEY: &str = "ENABLE_BANKING_APP_ID";
 pub const KEY_PATH_KEY: &str = "ENABLE_BANKING_KEY_PATH";
 
 pub fn home() -> PathBuf {
-    PathBuf::from(std::env::var("HOME").unwrap_or_else(|_| "/home/caesar".into()))
+    PathBuf::from(std::env::var("HOME").expect("HOME is not set"))
 }
 
 /// Reads `NAME=value` out of ~/.secure/apikeys.

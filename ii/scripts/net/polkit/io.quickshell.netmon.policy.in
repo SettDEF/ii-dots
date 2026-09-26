@@ -11,7 +11,7 @@
       <allow_inactive>no</allow_inactive>
       <allow_active>auth_admin</allow_active>
     </defaults>
-    <annotate key="org.freedesktop.policykit.exec.path">/home/caesar/.config/quickshell/ii/scripts/net/netmon-daemon.sh</annotate>
+    <annotate key="org.freedesktop.policykit.exec.path">@HOME@/.config/quickshell/ii/scripts/net/netmon-daemon.sh</annotate>
     <annotate key="org.freedesktop.policykit.exec.allow_gui">true</annotate>
   </action>
 </policyconfig>

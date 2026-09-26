@@ -11,7 +11,7 @@ import QtQuick.Controls
 Item {
     id: root
 
-    readonly property string home: "/home/caesar"
+    readonly property string home: `${Quickshell.env("HOME")}`
 
     property string currentPath: home + "/Downloads"
     property var navHistory: []

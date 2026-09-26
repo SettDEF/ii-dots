@@ -20,7 +20,7 @@ Singleton {
     // ~/.newsboat/cache.db when it exists (older configs), otherwise
     // fall back to the XDG ~/.local/share/newsboat/cache.db.  The bash
     // command picks whichever is on disk.
-    readonly property string home: Quickshell.env("HOME") || "/home/caesar"
+    readonly property string home: Quickshell.env("HOME") || `${Quickshell.env("HOME")}`
     readonly property string cacheLegacy: home + "/.newsboat/cache.db"
     readonly property string cacheXdg:    home + "/.local/share/newsboat/cache.db"
 

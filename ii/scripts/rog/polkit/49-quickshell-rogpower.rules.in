@@ -1,10 +1,10 @@
-// Let the active local user "caesar" set the ROG APU power limit without a
+// Let the active local user "@USER@" set the ROG APU power limit without a
 // password prompt. Scoped to one action id + one exec.path (rog-power.sh,
 // which only writes the asus-wmi PPT attributes and clamps to a safe range).
 polkit.addRule(function(action, subject) {
     if (action.id == "io.quickshell.rogpower.set" &&
         subject.active && subject.local &&
-        subject.user == "caesar") {
+        subject.user == "@USER@") {
         return polkit.Result.YES;
     }
 });

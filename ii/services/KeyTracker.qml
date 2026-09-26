@@ -70,7 +70,7 @@ Singleton {
     // fork/exec, just a syscall.
     FileView {
         id: xpFile
-        path: Qt.resolvedUrl("file:///home/caesar/.local/share/qs-hud-xp")
+        path: Qt.resolvedUrl(`file://${Quickshell.env("HOME")}/.local/share/qs-hud-xp`)
         onLoaded: {
             const v = parseFloat((text() || "0").trim())
             if (isFinite(v)) root.xpTotal = v

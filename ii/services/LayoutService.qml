@@ -186,7 +186,7 @@ for c in json.load(sys.stdin):
     // change, including focus events that originate on other monitors.
 
     // ── Persistence ───────────────────────────────────────────────────
-    readonly property string statePath: "/home/caesar/.local/state/quickshell/user/generated/layouts.json"
+    readonly property string statePath: `${Quickshell.env("HOME")}/.local/state/quickshell/user/generated/layouts.json`
 
     FileView {
         id: stateFile

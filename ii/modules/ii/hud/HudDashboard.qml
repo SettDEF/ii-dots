@@ -46,7 +46,7 @@ Item {
 
     FileView {
         id: ttFile
-        path: "/home/caesar/.config/illogical-impulse/timetable.json"
+        path: `${Quickshell.env("HOME")}/.config/illogical-impulse/timetable.json`
         watchChanges: true
         onFileChanged: reload()
         onLoaded: {

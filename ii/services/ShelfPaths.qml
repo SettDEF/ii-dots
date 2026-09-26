@@ -27,7 +27,7 @@ Singleton {
     Process { id: ensureDirProc }
 
     function _defaults() {
-        const home = Directories.home ?? "/home/caesar"
+        const home = Directories.home ?? `${Quickshell.env("HOME")}`
         return [
             { label: "Downloads",   path: home + "/Downloads",                          icon: "download",   filter: "zip",          mode: "zip",   extractTo: "/mnt/storage/usr/mooon/vault/beatbattle.net" },
             { label: "BeatBattle",  path: "/mnt/storage/usr/mooon/vault/beatbattle.net", icon: "piano",       filter: "wav,mp3,flac", mode: "audio", extractTo: "" },

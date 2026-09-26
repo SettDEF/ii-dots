@@ -35,7 +35,7 @@ CHOICE=$(echo -e "$OPTIONS" | fuzzel -d -p "MiniMeters Control" --width=55 --lin
 
 case "$CHOICE" in
     *Start*)
-        /home/caesar/Applications/MiniMeters-x86_64.AppImage &
+        "$HOME/Applications/MiniMeters-x86_64.AppImage" &
         ;;
     *Pin*)
         hyprctl dispatch "hl.dsp.window.pin({ window = \"address:$ADDRESS\" })"
@@ -49,7 +49,7 @@ case "$CHOICE" in
     *Restart*)
         pkill -ix minimeters
         sleep 0.4
-        nohup /home/caesar/Applications/MiniMeters-x86_64.AppImage >/dev/null 2>&1 &
+        nohup "$HOME/Applications/MiniMeters-x86_64.AppImage" >/dev/null 2>&1 &
         ;;
     *Stop*)
         pkill -ix minimeters

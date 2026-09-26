@@ -15,7 +15,7 @@ QuickToggleModel {
     property bool mmRunning:  false
     property bool mmHasLayer: false
     readonly property bool mmZombie: mmRunning && !mmHasLayer  // running but no surface
-    readonly property string mmPath: "/home/caesar/Applications/MiniMeters-x86_64.AppImage"
+    readonly property string mmPath: `${Quickshell.env("HOME")}/Applications/MiniMeters-x86_64.AppImage`
 
     toggled: mmRunning && mmHasLayer
     icon: mmZombie ? "refresh" : "equalizer"
@@ -30,7 +30,7 @@ QuickToggleModel {
     }
 
     altAction: () => {
-        Quickshell.execDetached(["/home/caesar/.config/quickshell/ii/scripts/hyprland/minimeters_control.sh"])
+        Quickshell.execDetached([`${Quickshell.env("HOME")}/.config/quickshell/ii/scripts/hyprland/minimeters_control.sh`])
     }
 
     function startMM()   { Quickshell.execDetached([mmPath]); Qt.callLater(() => mmCheckProc.running = true) }

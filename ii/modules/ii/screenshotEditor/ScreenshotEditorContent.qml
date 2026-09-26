@@ -103,7 +103,7 @@ Item {
                 String(ts.getHours()).padStart(2,"0") +
                 String(ts.getMinutes()).padStart(2,"0") +
                 String(ts.getSeconds()).padStart(2,"0")
-            const saveDir  = "/home/caesar/Pictures/Screenshots"
+            const saveDir  = `${Quickshell.env("HOME")}/Pictures/Screenshots`
             const savePath = saveDir + "/screenshot-" + stamp + ".png"
 
             const shortPath = savePath.replace(/^\/home\/caesar\//, "~/")

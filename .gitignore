@@ -1,6 +1,15 @@
-# Build artefacts that kept getting committed.
+# Assistant tooling and per-machine permissions — not part of the config.
+.claude/
+
+# Rendered from the .in templates at install time; they carry absolute paths
+# and the installing user's name, so they are per-machine by definition.
+ii/scripts/**/polkit/*.policy
+ii/scripts/**/polkit/*.rules
+
+# Build artefacts.
 __pycache__/
 *.pyc
+target/
 
 # A df --output typo lands this at the root.
 target,size,avail,pcent

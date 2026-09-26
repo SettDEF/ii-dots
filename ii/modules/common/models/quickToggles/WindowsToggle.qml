@@ -15,9 +15,9 @@ QuickToggleModel {
 
     mainAction: () => {
         if (root.toggled) {
-            Quickshell.execDetached(["/home/caesar/.scripts/start_windows_vm.sh", "stop"])
+            Quickshell.execDetached([`${Quickshell.env("HOME")}/.scripts/start_windows_vm.sh`, "stop"])
         } else {
-            Quickshell.execDetached(["/home/caesar/.scripts/start_windows_vm.sh", "start"])
+            Quickshell.execDetached([`${Quickshell.env("HOME")}/.scripts/start_windows_vm.sh`, "start"])
         }
     }
 
@@ -38,7 +38,7 @@ QuickToggleModel {
     Process {
         id: vmNotificationDaemon
         running: true
-        command: ["/home/caesar/.config/quickshell/ii/scripts/vm_notification_daemon.py"]
+        command: [`${Quickshell.env("HOME")}/.config/quickshell/ii/scripts/vm_notification_daemon.py`]
     }
 
     Timer {

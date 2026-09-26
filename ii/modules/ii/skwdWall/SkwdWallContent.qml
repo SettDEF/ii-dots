@@ -17,7 +17,7 @@ Item {
     id: root
     signal close()
 
-    readonly property string home: "/home/caesar"
+    readonly property string home: `${Quickshell.env("HOME")}`
     // local | wallhaven | reddit | videos, owned by WallpaperHub.
     readonly property string activeSource: WallpaperHub.source
     readonly property string activeMediaType: WallpaperHub.mediaType   // all | pic | vid | we

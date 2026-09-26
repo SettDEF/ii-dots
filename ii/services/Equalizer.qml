@@ -43,7 +43,7 @@ Singleton {
     // ── Persistence ────────────────────────────────────────────────────
     FileView {
         id: store
-        path: Qt.resolvedUrl("file:///home/caesar/.local/state/quickshell/equalizer.json")
+        path: Qt.resolvedUrl(`file://${Quickshell.env("HOME")}/.local/state/quickshell/equalizer.json`)
         onLoaded: {
             try {
                 const d = JSON.parse(store.text() || "{}")

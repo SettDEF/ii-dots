@@ -14,7 +14,7 @@ Item {
     id: root
     signal closeRequested()
 
-    readonly property string home: "/home/caesar"
+    readonly property string home: `${Quickshell.env("HOME")}`
     readonly property string saveDir: home + "/.cache/quickshell/screendraw"
     readonly property string notesFile: home + "/.local/state/quickshell/screendraw-notes.json"
 

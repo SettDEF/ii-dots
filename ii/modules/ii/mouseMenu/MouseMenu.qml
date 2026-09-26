@@ -171,7 +171,7 @@ Scope {
                                         horizontalAlignment: Text.AlignHCenter
                                         verticalAlignment: Text.AlignVCenter
                                     }
-                                    onClicked: Quickshell.execDetached(["/home/caesar/.scripts/logitune-cli", "--set-smartshift", "freespin"])
+                                    onClicked: Quickshell.execDetached([`${Quickshell.env("HOME")}/.scripts/logitune-cli`, "--set-smartshift", "freespin"])
                                 }
                                 RippleButton {
                                     id: smartshiftBtn
@@ -184,7 +184,7 @@ Scope {
                                         horizontalAlignment: Text.AlignHCenter
                                         verticalAlignment: Text.AlignVCenter
                                     }
-                                    onClicked: Quickshell.execDetached(["/home/caesar/.scripts/logitune-cli", "--set-smartshift", "ratchet"])
+                                    onClicked: Quickshell.execDetached([`${Quickshell.env("HOME")}/.scripts/logitune-cli`, "--set-smartshift", "ratchet"])
                                 }
                             }
                         }
@@ -216,7 +216,7 @@ Scope {
                                             horizontalAlignment: Text.AlignHCenter
                                             verticalAlignment: Text.AlignVCenter
                                         }
-                                        onClicked: Quickshell.execDetached(["/home/caesar/.scripts/logitune-cli", "--set-dpi", modelData.toString()])
+                                        onClicked: Quickshell.execDetached([`${Quickshell.env("HOME")}/.scripts/logitune-cli`, "--set-dpi", modelData.toString()])
                                     }
                                 }
                             }
@@ -237,7 +237,7 @@ Scope {
                                     onAccepted: {
                                         const val = parseInt(text)
                                         if (!isNaN(val) && val >= 200 && val <= 8000) {
-                                            Quickshell.execDetached(["/home/caesar/.scripts/logitune-cli", "--set-dpi", val.toString()])
+                                            Quickshell.execDetached([`${Quickshell.env("HOME")}/.scripts/logitune-cli`, "--set-dpi", val.toString()])
                                             customDpiInput.inputItem.focus = false
                                         }
                                     }
@@ -257,7 +257,7 @@ Scope {
                                         const val = parseInt(customDpiInput.text)
                                         if (!isNaN(val) && val >= 200 && val <= 8000) {
                                             root.mouseDpi = val
-                                            Quickshell.execDetached(["/home/caesar/.scripts/logitune-cli", "--set-dpi", val.toString()])
+                                            Quickshell.execDetached([`${Quickshell.env("HOME")}/.scripts/logitune-cli`, "--set-dpi", val.toString()])
                                             customDpiInput.inputItem.focus = false
                                         }
                                     }
@@ -288,7 +288,7 @@ Scope {
                                 checked: root.mouseHiResScroll
                                 onToggled: {
                                     root.mouseHiResScroll = checked
-                                    Quickshell.execDetached(["/home/caesar/.scripts/logitune-cli", "--set-hires", checked ? "on" : "off"])
+                                    Quickshell.execDetached([`${Quickshell.env("HOME")}/.scripts/logitune-cli`, "--set-hires", checked ? "on" : "off"])
                                 }
                             }
                         }

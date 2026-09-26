@@ -97,7 +97,7 @@ Item {
     // (/mnt/nuke9100) blocks for the autofs timeout, inside Qt, and stalled the whole shell.
     QtObject {
         id: dirModel
-        readonly property string folder: (Quickshell.env("HOME") || "/home/caesar") + "/Desktop"
+        readonly property string folder: Quickshell.env("HOME") + "/Desktop"
         property var entries: []
         readonly property int count: dirModel.entries.length
         property bool ready: false
@@ -596,7 +596,7 @@ Item {
             + " | xclip -i -selection clipboard -t x-special/gnome-copied-files 2>/dev/null")
     }
     function _paste() {
-        const dest = (Quickshell.env("HOME") || "/home/caesar") + "/Desktop"
+        const dest = Quickshell.env("HOME") + "/Desktop"
         _sh(`
             clip="$(wl-paste -t x-special/gnome-copied-files 2>/dev/null || xclip -o -selection clipboard -t x-special/gnome-copied-files 2>/dev/null)"
             [ -z "$clip" ] && exit 0
@@ -615,11 +615,11 @@ Item {
         `.trim())
     }
     function _newFolder() {
-        const dest = (Quickshell.env("HOME") || "/home/caesar") + "/Desktop"
+        const dest = Quickshell.env("HOME") + "/Desktop"
         _sh(`d=${root._q(dest)}; i=1; n="New folder"; while [ -e "$d/$n" ]; do n="New folder ($i)"; i=$((i+1)); done; mkdir -p "$d/$n"`)
     }
     function _newFile() {
-        const dest = (Quickshell.env("HOME") || "/home/caesar") + "/Desktop"
+        const dest = Quickshell.env("HOME") + "/Desktop"
         _sh(`d=${root._q(dest)}; i=1; n="New file.txt"; while [ -e "$d/$n" ]; do n="New file ($i).txt"; i=$((i+1)); done; touch "$d/$n"`)
     }
     function _refresh() {

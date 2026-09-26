@@ -14,7 +14,7 @@ import Qt5Compat.GraphicalEffects
 Rectangle {
     id: root
 
-    readonly property string home: "/home/caesar"
+    readonly property string home: `${Quickshell.env("HOME")}`
     readonly property string blueprintsDir: home + "/.config/aether/blueprints"
     readonly property string stateFile: home + "/.local/state/quickshell/walltune-state.json"
     readonly property string currentWall: Config.options.background.wallpaperPath

@@ -17,7 +17,7 @@ Singleton {
     property bool mounted: false
     property string mountFree: "—"
     property bool loading: false
-    readonly property string home: Quickshell.env("HOME") || "/home/caesar"
+    readonly property string home: Quickshell.env("HOME") || `${Quickshell.env("HOME")}`
     readonly property string scriptPath: home + "/.scripts/offload"
     readonly property string mountPath: "/mnt/nuke9100"
 

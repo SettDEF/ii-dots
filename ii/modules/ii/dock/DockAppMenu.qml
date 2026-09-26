@@ -39,6 +39,17 @@ PopupWindow {
     // AppVolumes lists every open app, so a silent one still gets a row — its
     // level is remembered and applied once it opens a stream.
     readonly property var volRow: {
+        // PID first. The name-derived key cannot join a Steam or Proton game
+        // to its stream: the window is class `steam_app_default` while the
+        // stream is named after the game, so per-app volume silently did
+        // nothing for every game. The pid is the same on both sides.
+        const pids = root.toplevels.map(t => root._winData(t)?.pid).filter(p => p > 0);
+        if (pids.length > 0) {
+            for (const r of (AppVolumes.rows ?? [])) {
+                const np = parseInt(r.node?.properties?.["application.process.id"] ?? -1, 10);
+                if (np > 0 && pids.indexOf(np) >= 0) return r;
+            }
+        }
         const key = AppVolumes.appKey(root.appId);
         if (key.length === 0) return null;
         return (AppVolumes.rows ?? []).find(r => r.key === key) ?? null;
@@ -49,6 +60,13 @@ PopupWindow {
     // node is silently discarded. Tracking is held for a moment after the menu
     // closes: a handler can fire on the way out, and losing the tracker before
     // the write lands is exactly how the volume presets used to do nothing.
+    // node.properties — where the pid lives — is empty without a tracker, so
+    // the match above needs ALL app nodes tracked, not just the matched one.
+    // Only while the menu is open: there are two or three of them.
+    PwObjectTracker {
+        objects: root.visible ? (Audio.outputAppNodes ?? []) : []
+    }
+
     property bool _holdTrack: false
     onVisibleChanged: {
         if (root.visible) { root._holdTrack = true; trackHold.stop(); }
@@ -158,16 +176,34 @@ PopupWindow {
                 onTriggered: () => AppVolumes.toggleMute(root.volRow)
             }, { separator: true });
         }
-        // A slider, not five presets: volume is a range, and 25% steps were
-        // never the point. Dragging it applies live, which also keeps the
-        // menu — and therefore the PwObjectTracker this write depends on —
-        // open for the whole gesture.
+        // Slider AND presets. The slider is the range; the presets are the
+        // two or three levels anyone actually reuses, reachable in one click
+        // without a drag. Dragging also keeps the menu — and therefore the
+        // PwObjectTracker this write depends on — open for the gesture.
         out.push({
             slider: true,
             icon: "volume_up",
             value: AppVolumes.volumeFor(root.volRow),
             onMoved: v => AppVolumes.setVolume(root.volRow, v)
-        });
+        }, { separator: true });
+
+        const cur = Math.round(AppVolumes.volumeFor(root.volRow) * 100);
+        for (const pct of [100, 75, 50, 25, 0])
+            out.push({
+                icon: root._check(cur === pct), iconColor: root._tick(cur === pct),
+                label: `${pct}%`,
+                onTriggered: () => AppVolumes.setVolume(root.volRow, pct / 100)
+            });
+
+        // An app with no stream open has nothing to be loud with. The level
+        // is still worth setting — it is applied the moment the app starts
+        // playing — but without saying so, a slider that changes nothing
+        // audible reads as broken. Which is exactly how it was reported.
+        if (!root.volLive)
+            out.push({ separator: true }, {
+                icon: "schedule",
+                label: Translation.tr("Not playing — saved for next time")
+            });
         return out;
     }
 

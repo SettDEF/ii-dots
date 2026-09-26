@@ -62,8 +62,179 @@ WindowDialog {
         return list;
     }
 
-    WindowDialogTitle {
-        text: Translation.tr("Connect to Wi-Fi")
+    // Title and controls share one row. The strip used to cost a whole row
+    // of its own — ~48px with its margins — while the title row sat mostly
+    // empty. That row is now list.
+    RowLayout {
+        Layout.fillWidth: true
+        spacing: 10
+
+        WindowDialogTitle {
+            Layout.fillWidth: true
+            text: Translation.tr("Wi-Fi")
+        }
+
+        // ── Sort and filter, one strip ──────────────────────────────────────
+        // A single container holding both: four sort segments, a hairline, then
+        // the two filter toggles. Split across two containers of the same colour
+        // and shape they read as one control that had been cut in half.
+        //
+        // The selection is ONE pill that slides between segments, rather than
+        // each segment colouring itself. Four independently-filling rectangles
+        // make a hover look like a second selection however faint it is, because
+        // the eye reads "two pills" before it reads "two shades".
+        Rectangle {
+            id: strip
+            Layout.preferredWidth: 236
+            // 32 and the 18%-primary hover come from RssDialog's toolbar, which
+            // occupies this same slot — title, separator, controls. Matching its
+            // metrics is what makes this read as the shell's toolbar rather than
+            // as a control this dialog invented.
+            implicitHeight: 32
+            radius: Appearance.rounding.full
+            color: Appearance.colors.colLayer2
+
+        Rectangle {
+                id: indicator
+                // Set by whichever segment is currently selected.
+                property real targetX: 0
+                property real targetW: 0
+                x: targetX
+                width: targetW
+                y: 3
+                height: parent.height - 6
+                radius: Appearance.rounding.full
+                color: Appearance.colors.colPrimary
+                visible: targetW > 0
+                Behavior on x {
+                    animation: Appearance.animation.elementMoveFast.numberAnimation.createObject(this)
+                }
+                Behavior on width {
+                    animation: Appearance.animation.elementMoveFast.numberAnimation.createObject(this)
+                }
+            }
+
+            RowLayout {
+                id: segRow
+                anchors { fill: parent; margins: 3 }
+                spacing: 2
+
+                Repeater {
+                    model: [
+                        { label: Translation.tr("Smart"),  value: "smart"  },
+                        { label: Translation.tr("Signal"), value: "signal" },
+                        { label: Translation.tr("Name"),   value: "name"   },
+                        { label: Translation.tr("Band"),   value: "band"   }
+                    ]
+                    delegate: Item {
+                        id: seg
+                        required property var modelData
+                        readonly property bool sel: root.sortMode === modelData.value
+                        Layout.fillWidth: true
+                        Layout.fillHeight: true
+
+                        // Report geometry to the indicator whenever this segment
+                        // is the selected one — including on resize, so the pill
+                        // follows the dialog rather than being placed once.
+                        function place() {
+                            if (!seg.sel) return;
+                            indicator.targetX = segRow.x + seg.x;
+                            indicator.targetW = seg.width;
+                        }
+                        onSelChanged: place()
+                        onXChanged: place()
+                        onWidthChanged: place()
+                        Component.onCompleted: place()
+
+                        HoverHandler { id: segHover; cursorShape: Qt.PointingHandCursor }
+                        TapHandler { onTapped: root.sortMode = seg.modelData.value }
+
+                        StyledText {
+                            anchors.fill: parent
+                            horizontalAlignment: Text.AlignHCenter
+                            verticalAlignment: Text.AlignVCenter
+                            text: seg.modelData.label
+                            font.pixelSize: Appearance.font.pixelSize.smaller
+                            // Hover brightens the label instead of drawing a
+                            // second pill behind it.
+                            color: seg.sel ? Appearance.colors.colOnPrimary
+                                 : segHover.hovered ? Appearance.colors.colOnLayer2
+                                 : Appearance.colors.colSubtext
+                            Behavior on color {
+                                animation: Appearance.animation.elementMoveFast.colorAnimation.createObject(this)
+                            }
+                        }
+                    }
+                }
+
+                // Separates "how the list is ordered" from "what is in it".
+                Rectangle {
+                    Layout.preferredWidth: 1
+                    Layout.topMargin: 6
+                    Layout.bottomMargin: 6
+                    Layout.fillHeight: true
+                    color: Appearance.colors.colOnLayer2
+                    opacity: 0.18
+                }
+
+                component FilterToggle: Item {
+                    id: toggle
+                    property string icon: ""
+                    property bool on: false
+                    signal picked
+                    Layout.preferredWidth: 30
+                    Layout.fillHeight: true
+
+                    HoverHandler { id: tHover; cursorShape: Qt.PointingHandCursor }
+                    TapHandler { onTapped: toggle.picked() }
+
+                    Rectangle {
+                        anchors.fill: parent
+                        radius: Appearance.rounding.full
+                        // The 18%-primary hover is RssDialog's toolbar tint. Safe
+                        // here, unlike on the sort segments: these are independent
+                        // toggles with no sliding indicator to be confused with.
+                        color: toggle.on ? Appearance.colors.colPrimary
+                             : tHover.hovered ? Qt.alpha(Appearance.colors.colPrimary, 0.18)
+                             : "transparent"
+                        Behavior on color {
+                            animation: Appearance.animation.elementMoveFast.colorAnimation.createObject(this)
+                        }
+                    }
+                    // Filled and aligned, not centred: MaterialSymbol is a Text
+                    // item, so anchors.centerIn centres its line box — ascent and
+                    // descent included — which leaves the glyph sitting low
+                    // against a row of centred labels.
+                    MaterialSymbol {
+                        anchors.fill: parent
+                        horizontalAlignment: Text.AlignHCenter
+                        verticalAlignment: Text.AlignVCenter
+                        text: toggle.icon
+                        iconSize: 17
+                        fill: toggle.on ? 1 : 0
+                        color: toggle.on ? Appearance.colors.colOnPrimary
+                             : tHover.hovered ? Appearance.colors.colOnLayer2
+                             : Appearance.colors.colSubtext
+                        Behavior on color {
+                            animation: Appearance.animation.elementMoveFast.colorAnimation.createObject(this)
+                        }
+                    }
+                }
+
+                FilterToggle {
+                    icon: "bookmark"
+                    on: root.savedOnly
+                    onPicked: root.savedOnly = !root.savedOnly
+                    StyledToolTip { text: Translation.tr("Saved networks only") }
+                }
+                FilterToggle {
+                    icon: "lock"
+                    on: root.hideOpen
+                    onPicked: root.hideOpen = !root.hideOpen
+                    StyledToolTip { text: Translation.tr("Hide open networks") }
+                }
+            }
+        }
     }
 
     // Header exactly as DevicesDialog has it — separator when idle, swapped
@@ -86,169 +257,7 @@ WindowDialog {
         Layout.rightMargin: -Appearance.rounding.large
     }
 
-    // ── Sort and filter, one strip ──────────────────────────────────────
-    // A single container holding both: four sort segments, a hairline, then
-    // the two filter toggles. Split across two containers of the same colour
-    // and shape they read as one control that had been cut in half.
-    //
-    // The selection is ONE pill that slides between segments, rather than
-    // each segment colouring itself. Four independently-filling rectangles
-    // make a hover look like a second selection however faint it is, because
-    // the eye reads "two pills" before it reads "two shades".
-    Rectangle {
-        id: strip
-        Layout.fillWidth: true
-        Layout.topMargin: 8
-        Layout.bottomMargin: 8
-        // 32 and the 18%-primary hover come from RssDialog's toolbar, which
-        // occupies this same slot — title, separator, controls. Matching its
-        // metrics is what makes this read as the shell's toolbar rather than
-        // as a control this dialog invented.
-        implicitHeight: 32
-        radius: Appearance.rounding.full
-        color: Appearance.colors.colLayer2
 
-        Rectangle {
-            id: indicator
-            // Set by whichever segment is currently selected.
-            property real targetX: 0
-            property real targetW: 0
-            x: targetX
-            width: targetW
-            y: 3
-            height: parent.height - 6
-            radius: Appearance.rounding.full
-            color: Appearance.colors.colPrimary
-            visible: targetW > 0
-            Behavior on x {
-                animation: Appearance.animation.elementMoveFast.numberAnimation.createObject(this)
-            }
-            Behavior on width {
-                animation: Appearance.animation.elementMoveFast.numberAnimation.createObject(this)
-            }
-        }
-
-        RowLayout {
-            id: segRow
-            anchors { fill: parent; margins: 3 }
-            spacing: 2
-
-            Repeater {
-                model: [
-                    { label: Translation.tr("Smart"),  value: "smart"  },
-                    { label: Translation.tr("Signal"), value: "signal" },
-                    { label: Translation.tr("Name"),   value: "name"   },
-                    { label: Translation.tr("Band"),   value: "band"   }
-                ]
-                delegate: Item {
-                    id: seg
-                    required property var modelData
-                    readonly property bool sel: root.sortMode === modelData.value
-                    Layout.fillWidth: true
-                    Layout.fillHeight: true
-
-                    // Report geometry to the indicator whenever this segment
-                    // is the selected one — including on resize, so the pill
-                    // follows the dialog rather than being placed once.
-                    function place() {
-                        if (!seg.sel) return;
-                        indicator.targetX = segRow.x + seg.x;
-                        indicator.targetW = seg.width;
-                    }
-                    onSelChanged: place()
-                    onXChanged: place()
-                    onWidthChanged: place()
-                    Component.onCompleted: place()
-
-                    HoverHandler { id: segHover; cursorShape: Qt.PointingHandCursor }
-                    TapHandler { onTapped: root.sortMode = seg.modelData.value }
-
-                    StyledText {
-                        anchors.fill: parent
-                        horizontalAlignment: Text.AlignHCenter
-                        verticalAlignment: Text.AlignVCenter
-                        text: seg.modelData.label
-                        font.pixelSize: Appearance.font.pixelSize.smaller
-                        // Hover brightens the label instead of drawing a
-                        // second pill behind it.
-                        color: seg.sel ? Appearance.colors.colOnPrimary
-                             : segHover.hovered ? Appearance.colors.colOnLayer2
-                             : Appearance.colors.colSubtext
-                        Behavior on color {
-                            animation: Appearance.animation.elementMoveFast.colorAnimation.createObject(this)
-                        }
-                    }
-                }
-            }
-
-            // Separates "how the list is ordered" from "what is in it".
-            Rectangle {
-                Layout.preferredWidth: 1
-                Layout.topMargin: 6
-                Layout.bottomMargin: 6
-                Layout.fillHeight: true
-                color: Appearance.colors.colOnLayer2
-                opacity: 0.18
-            }
-
-            component FilterToggle: Item {
-                id: toggle
-                property string icon: ""
-                property bool on: false
-                signal picked
-                Layout.preferredWidth: 30
-                Layout.fillHeight: true
-
-                HoverHandler { id: tHover; cursorShape: Qt.PointingHandCursor }
-                TapHandler { onTapped: toggle.picked() }
-
-                Rectangle {
-                    anchors.fill: parent
-                    radius: Appearance.rounding.full
-                    // The 18%-primary hover is RssDialog's toolbar tint. Safe
-                    // here, unlike on the sort segments: these are independent
-                    // toggles with no sliding indicator to be confused with.
-                    color: toggle.on ? Appearance.colors.colPrimary
-                         : tHover.hovered ? Qt.alpha(Appearance.colors.colPrimary, 0.18)
-                         : "transparent"
-                    Behavior on color {
-                        animation: Appearance.animation.elementMoveFast.colorAnimation.createObject(this)
-                    }
-                }
-                // Filled and aligned, not centred: MaterialSymbol is a Text
-                // item, so anchors.centerIn centres its line box — ascent and
-                // descent included — which leaves the glyph sitting low
-                // against a row of centred labels.
-                MaterialSymbol {
-                    anchors.fill: parent
-                    horizontalAlignment: Text.AlignHCenter
-                    verticalAlignment: Text.AlignVCenter
-                    text: toggle.icon
-                    iconSize: 17
-                    fill: toggle.on ? 1 : 0
-                    color: toggle.on ? Appearance.colors.colOnPrimary
-                         : tHover.hovered ? Appearance.colors.colOnLayer2
-                         : Appearance.colors.colSubtext
-                    Behavior on color {
-                        animation: Appearance.animation.elementMoveFast.colorAnimation.createObject(this)
-                    }
-                }
-            }
-
-            FilterToggle {
-                icon: "bookmark"
-                on: root.savedOnly
-                onPicked: root.savedOnly = !root.savedOnly
-                StyledToolTip { text: Translation.tr("Saved networks only") }
-            }
-            FilterToggle {
-                icon: "lock"
-                on: root.hideOpen
-                onPicked: root.hideOpen = !root.hideOpen
-                StyledToolTip { text: Translation.tr("Hide open networks") }
-            }
-        }
-    }
 
         ColumnLayout {
             Layout.fillWidth: true
