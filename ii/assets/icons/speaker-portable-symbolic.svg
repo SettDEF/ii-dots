@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  A portable Bluetooth speaker - drawn from the JBL Xtreme, which is the shape
+  the whole category copied: a horizontal capsule with a carry strap over it.
+
+  WHY NO DRIVER CIRCLES
+  The first two attempts drew the two front drivers, because that is what the
+  thing looks like. At 20px two circles side by side inside a rounded body read
+  as a pair of goggles every time - the eye takes any symmetric pair of discs in
+  a frame as eyes, and no amount of stroke tuning beats that. A grille of short
+  vertical ticks says "speaker" at this size and cannot be misread, and the
+  strap is what makes it PORTABLE rather than a bookshelf box.
+
+  WHY NOT THE PREVIEW ARTWORK
+  The 96-grid *-preview.svg files are a different drawing for a different size;
+  scaled down to 20px their shapes collapse. This is the list one.
+
+  24 grid, ~1.8 stroke, currentColor - the CustomIcon contract.
+-->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24"
+     fill="none" stroke="currentColor" stroke-width="1.8"
+     stroke-linecap="round" stroke-linejoin="round">
+  <!-- The carry strap, over the top. -->
+  <path d="M 6.8 8.6 C 8 3.8, 16 3.8, 17.2 8.6"/>
+  <!-- The cabinet: a capsule lying on its side. -->
+  <rect x="2.2" y="8.6" width="19.6" height="11.2" rx="5.6"/>
+  <!-- Grille. Short ticks, not discs. -->
+  <path d="M 9 11.8 V 16.6"/>
+  <path d="M 12 11.8 V 16.6"/>
+  <path d="M 15 11.8 V 16.6"/>
+</svg>
