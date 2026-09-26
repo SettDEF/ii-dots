@@ -1,8 +1,90 @@
 # not-finished backlog — dock + wallpaper
 
-Updated 2026-09-26. Angles covered so far: **correctness**, **rendered pixels**,
-**prior art**. Open: real-runtime cost, failure behaviour, first-run/empty states,
-scale, repeat use, accessibility.
+Updated 2026-09-26 (round 4). Angles covered: **correctness**, **rendered
+pixels**, **prior art**, **real-runtime cost** (partly), **repeat use**,
+**failure behaviour**. Open: first-run/empty states, scale, accessibility,
+the seams.
+
+## Round 4 — repeat use + failure behaviour
+
+### Where the 1.4 GB actually is — measured, and it is NOT a QML leak
+    RSS                 1482 MB at 6h19m uptime (was ~870 MB / ~1.13 GB earlier)
+    anonymous           1289 MB of it
+    JS GC heap          21.8 MB          <- the QML/JS side is innocent
+    fonts               55 MB
+    GPU (drm)           159 MB GTT + 293 MB VRAM
+    threads             164, of which 13 QSGRenderThread and ~80 Mesa gl/gdrv/traceq
+    mapped surfaces     11 (bar, dock, background, desktopIcons, screenCorners x2 monitors)
+    RSS over 60s idle   1462.9 -> 1460.8 MB, i.e. FLAT
+
+So: ~13 Qt Quick windows, each with its own render thread and Mesa GL context,
+at roughly 100 MB apiece. That is inherent to having a bar + dock + background
++ desktop-icons layer on two monitors; it is not unbounded growth, and it is
+not the eager PanelLoaders (54 of them, but only 11 surfaces are mapped —
+non-visible panels do NOT each hold a context). Do not re-investigate the JS
+heap: at 21.8 MB it cannot be the story.
+
+**Not yet explained:** why the baseline moved 870 MB -> 1482 MB across one
+session. Could be my own panel-opening and wallpaper churn rather than growth.
+Needs a clean measurement: fresh shell, note RSS, leave it alone for hours.
+
+### Fixed this round — all verified, not inferred
+- [x] **Per-app volume never worked at all.** `PopupMenuPanel` dismissed the
+      menu before calling the row handler; `DockAppMenu`'s PwObjectTracker is
+      gated on visibility; a write to an untracked PipeWire node is silently
+      discarded. Proven both ways: untracked write left PipeWire at 100%, the
+      same write while tracked moved it to 55%. Handler now runs before the
+      dismiss, tracking is held 1.5s past close, and the 25% presets are a
+      slider (new `slider` row type in PopupMenuPanel).
+- [x] **Notifications leaked every object ever created.** `createObject(root,
+      ...)` is C++-owned; discard spliced the array and clear reassigned it,
+      neither destroyed anything. "Clear all" freed nothing. 31 notifications
+      arrived in this session's first hours alone.
+- [x] **A corrupt file destroyed the data behind it.** Notification history
+      and the to-do list both did a bare JSON.parse in FileView.onLoaded: a
+      truncated file threw, left the list empty, and the next save persisted
+      that. Both now keep memory state.
+- [x] **Weather showed "0" when the fetch failed** — `?? "--°"` does not catch
+      0, which is the default. Keys off lastRefresh now.
+
+### Next, ranked — failure behaviour (reviewed, NOT yet verified by me)
+- [unverified | severity high] `modules/ii/rog/RogPowerContent.qml:161-170`
+      falls back to 0 for watts/temp/RPM with no exit check and a 2s retry
+      forever: the panel reads "0 W / 0°C / 0 RPM" — looks like the machine is
+      dead — when asusd is simply not answering.
+- [unverified | severity high] `services/Network.qml:416-448,485` ignores
+      nmcli's exit code; failure falls through to "disconnected" and
+      wifiEnabled=false, so a NetworkManager outage is indistinguishable in
+      the bar from the user having turned Wi-Fi off.
+- [unverified | severity med-high] `services/HyprlandData.qml:132-194` — five
+      JSON.parse calls on hyprctl output with no try/catch. A partial read
+      during a Hyprland reload silently aborts the handler and every consumer
+      keeps showing a stale snapshot as if live.
+- [unverified | severity low-med] `modules/ii/deviceControl/DeviceControl.qml`
+      shows "Balanced"/"Integrated" as confident defaults when asusctl and
+      supergfxctl never answered.
+- [unverified | severity low] `services/Brightness.qml:120-136` sets
+      `monitor.ready = true` unconditionally, so a failed brightnessctl parse
+      gives a NaN brightness that the UI treats as controllable.
+
+Reviewer also confirmed these are already GOOD and need no work: Devices
+battery pollers, Kalends, Finance (surfaces a real error string), PlayerService,
+MonitorManager, Qbt.
+
+### Growth structures found but NOT the main cause — fix if convenient
+- `services/LatexRenderer.qml:19-45` — processedHashes/Expressions/paths grow
+  per unique expression, never trimmed.
+- `services/Booru.qml:322-436` — `responses` accumulates per search, no cap.
+- `services/AppUsage.qml:31,58` — one bucket per calendar day, forever,
+  reloaded at every startup.
+
+Ruled out as leaks (do not re-check): ResourceUsage histories (shift against a
+cap), CavaService, Kalends.byDay, DeviceRules.history (capped at 12),
+ClipboardWatch, WallpaperRecents, WallpaperHub, TrayService, MprisController.
+
+---
+## Earlier rounds
+
 
 ## Done this round
 - [x] Dock edit panel rebuilt Latte/Plasma-shaped (tabs + action bar). Verified by capture.
