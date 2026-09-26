@@ -155,8 +155,14 @@ WindowDialog {
                 }
                 HoverHandler { id: tHover; cursorShape: Qt.PointingHandCursor }
                 TapHandler { onTapped: picked() }
+                // Filled and aligned, not centred: MaterialSymbol is a Text
+                // item, so anchors.centerIn centres its line box — ascent and
+                // descent included — which leaves the glyph itself sitting
+                // low against a row of centred labels.
                 MaterialSymbol {
-                    anchors.centerIn: parent
+                    anchors.fill: parent
+                    horizontalAlignment: Text.AlignHCenter
+                    verticalAlignment: Text.AlignVCenter
                     text: parent.icon
                     iconSize: 17
                     fill: parent.on ? 1 : 0
