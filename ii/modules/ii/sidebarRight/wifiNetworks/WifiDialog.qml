@@ -100,7 +100,11 @@ WindowDialog {
         Layout.fillWidth: true
         Layout.topMargin: 8
         Layout.bottomMargin: 8
-        implicitHeight: 34
+        // 32 and the 18%-primary hover come from RssDialog's toolbar, which
+        // occupies this same slot — title, separator, controls. Matching its
+        // metrics is what makes this read as the shell's toolbar rather than
+        // as a control this dialog invented.
+        implicitHeight: 32
         radius: Appearance.rounding.full
         color: Appearance.colors.colLayer2
 
@@ -201,7 +205,12 @@ WindowDialog {
                 Rectangle {
                     anchors.fill: parent
                     radius: Appearance.rounding.full
-                    color: toggle.on ? Appearance.colors.colPrimary : "transparent"
+                    // The 18%-primary hover is RssDialog's toolbar tint. Safe
+                    // here, unlike on the sort segments: these are independent
+                    // toggles with no sliding indicator to be confused with.
+                    color: toggle.on ? Appearance.colors.colPrimary
+                         : tHover.hovered ? Qt.alpha(Appearance.colors.colPrimary, 0.18)
+                         : "transparent"
                     Behavior on color {
                         animation: Appearance.animation.elementMoveFast.colorAnimation.createObject(this)
                     }
