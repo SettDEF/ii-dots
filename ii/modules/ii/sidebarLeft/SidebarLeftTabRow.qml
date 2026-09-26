@@ -14,9 +14,9 @@ Flow {
     required property int currentIndex
     signal picked(int index)
 
-    // 3px, not 2: at 2 the pills touch closely enough that the active one
-    // looks like a highlight sitting on a strip rather than one tab of several.
-    spacing: 3
+    // 4px: circles need a little more air than a stadium did, or the active
+    // one looks wedged between its neighbours.
+    spacing: 4
 
     Repeater {
         model: root.tabs
@@ -26,12 +26,13 @@ Flow {
             required property int index
             readonly property bool active: root.currentIndex === pill.index
 
-            // Wider than tall, so the active indicator reads as a tab pill and
-            // not as a blob: at 34x30 the radius made it all but circular. 36x28
-            // still fits five tabs plus the divider in the 460px sidebar once
+            // Square, so the active indicator is a true circle — the same shape
+            // as the QuickToggleButtons at the other end of the row, just
+            // smaller. A stadium here read as a different kind of control.
+            // Five of these plus the divider still fit the 460px sidebar once
             // the "Tools" label has collapsed.
-            implicitHeight: 28
-            implicitWidth: 36
+            implicitHeight: 32
+            implicitWidth: 32
             radius: Appearance.rounding.full
             color: pill.active ? Appearance.colors.colPrimary
                  : (pillHov.hovered ? Appearance.colors.colLayer1Hover : "transparent")
