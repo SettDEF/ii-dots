@@ -66,12 +66,13 @@ WindowDialog {
         text: Translation.tr("Connect to Wi-Fi")
     }
 
-    // No text filter here: the header stays a plain title. The Saved / Secured
-    // chips and the sort modes below already narrow the list, without a field
-    // competing with the title for the row.
-    WindowDialogSeparator {
-        visible: !Network.wifiScanning
-    }
+    // No separator rule: the control strip below IS the separation between
+    // the header and the list. A hairline plus a full-width opaque strip
+    // underneath it draws the same boundary twice, and the strip would hide
+    // the line anyway — so the line only ever cost a band of empty space.
+    //
+    // No text filter here either: the strip's sort modes and the two toggles
+    // narrow the list without a field competing with the title for the row.
     StyledIndeterminateProgressBar {
         visible: Network.wifiScanning
         Layout.fillWidth: true
@@ -92,7 +93,8 @@ WindowDialog {
     Rectangle {
         id: strip
         Layout.fillWidth: true
-        Layout.topMargin: 10
+        Layout.topMargin: 2
+        Layout.bottomMargin: 8
         implicitHeight: 34
         radius: Appearance.rounding.full
         color: Appearance.colors.colLayer2
