@@ -53,8 +53,10 @@ hl.window_rule({
 })
 
 -- XWayland windows that ask to be 0x0 make Hyprland pick something arbitrary.
+-- `match` takes class and title only -- xwayland and floating are not match
+-- properties here, so the empty class/title pair carries the whole selector.
 hl.window_rule({
     name  = "xwayland-zero-size-nofocus",
-    match = { class = "^$", title = "^$", xwayland = true, floating = true },
+    match = { class = "^$", title = "^$" },
     no_initial_focus = true,
 })
