@@ -245,13 +245,70 @@ ApplicationWindow {
             Layout.fillWidth: true
             Layout.fillHeight: false
             implicitHeight: Math.max(titleText.implicitHeight, windowControlsRow.implicitHeight)
+            // Rail toggle and the config-file shortcut, in the header rather
+            // than stacked above the page list.
+            Row {
+                id: headerActions
+                anchors.verticalCenter: parent.verticalCenter
+                anchors.left: parent.left
+                anchors.leftMargin: 6
+                spacing: 2
+
+                NavigationRailExpandButton {
+                    anchors.verticalCenter: parent.verticalCenter
+                    Layout.leftMargin: 0
+                    rail: navRail
+                    focus: root.visible
+                }
+
+                RippleButton {
+                    id: configButton
+                    property bool justCopied: false
+
+                    anchors.verticalCenter: parent.verticalCenter
+                    // Same box and same glyph size as the rail toggle beside it.
+                    implicitWidth: 40
+                    implicitHeight: 40
+                    buttonRadius: Appearance.rounding.full
+
+                    onClicked: Qt.openUrlExternally(
+                        `${Directories.config}/illogical-impulse/config.json`)
+                    altAction: () => {
+                        Quickshell.clipboardText = CF.FileUtils.trimFileProtocol(
+                            `${Directories.config}/illogical-impulse/config.json`);
+                        configButton.justCopied = true;
+                        revertTextTimer.restart();
+                    }
+
+                    contentItem: MaterialSymbol {
+                        anchors.fill: parent
+                        horizontalAlignment: Text.AlignHCenter
+                        verticalAlignment: Text.AlignVCenter
+                        text: configButton.justCopied ? "check" : "edit_document"
+                        iconSize: 24
+                        color: Appearance.colors.colOnLayer0
+                    }
+
+                    Timer {
+                        id: revertTextTimer
+                        interval: 1500
+                        onTriggered: configButton.justCopied = false
+                    }
+                    StyledToolTip {
+                        text: configButton.justCopied
+                            ? Translation.tr("Path copied")
+                            : Translation.tr("Open the config file\nRight-click to copy its path")
+                    }
+                }
+            }
+
             StyledText {
                 id: titleText
                 anchors {
-                    left: Config.options.windows.centerTitle ? undefined : parent.left
+                    left: Config.options.windows.centerTitle ? undefined : headerActions.right
                     horizontalCenter: Config.options.windows.centerTitle ? parent.horizontalCenter : undefined
                     verticalCenter: parent.verticalCenter
-                    leftMargin: 12
+                    leftMargin: 10
                 }
                 color: Appearance.colors.colOnLayer0
                 text: Translation.tr("Settings")
@@ -382,7 +439,9 @@ ApplicationWindow {
                 id: navRailWrapper
                 Layout.fillHeight: true
                 Layout.margins: 5
-                implicitWidth: navRail.expanded ? 150 : fab.baseSize
+                // 56 is NavigationRailButton.baseSize — the collapsed rail is
+                // one button wide.
+                implicitWidth: navRail.expanded ? 150 : 56
                 Behavior on implicitWidth {
                     animation: Appearance.animation.elementMoveFast.numberAnimation.createObject(this)
                 }
@@ -396,38 +455,6 @@ ApplicationWindow {
                     spacing: 10
                     expanded: root.width > 900
                     
-                    NavigationRailExpandButton {
-                        focus: root.visible
-                    }
-
-                    FloatingActionButton {
-                        id: fab
-                        property bool justCopied: false
-                        iconText: justCopied ? "check" : "edit"
-                        buttonText: justCopied ? Translation.tr("Path copied") : Translation.tr("Config file")
-                        expanded: navRail.expanded
-                        downAction: () => {
-                            Qt.openUrlExternally(`${Directories.config}/illogical-impulse/config.json`);
-                        }
-                        altAction: () => {
-                            Quickshell.clipboardText = CF.FileUtils.trimFileProtocol(`${Directories.config}/illogical-impulse/config.json`);
-                            fab.justCopied = true;
-                            revertTextTimer.restart()
-                        }
-
-                        Timer {
-                            id: revertTextTimer
-                            interval: 1500
-                            onTriggered: {
-                                fab.justCopied = false;
-                            }
-                        }
-
-                        StyledToolTip {
-                            text: Translation.tr("Open the shell config file\nAlternatively right-click to copy path")
-                        }
-                    }
-
                     // Scrollable: eleven pages plus four headings is ~840px
                     // against a ~690px content area.
                     // A sibling, not an attached bar: attached lives inside the
@@ -443,11 +470,17 @@ ApplicationWindow {
                         orientation: Qt.Vertical
                         hitWidth: 14
 
-                        // Only as far left as there is window to the left of
-                        // it, or it draws outside and gets clipped.
-                        readonly property real leftRoom:
-                            navRailWrapper.mapToItem(null, 0, 0).x
-                        x: -Math.min(hitWidth, leftRoom)
+                        // Centred in the margin between the window edge and the
+                        // rail, so it clears the entries without leaving it.
+                        // Measured, with a fallback: mapToItem can hand back
+                        // nothing before the first layout, and the NaN that
+                        // follows collapses x to 0 — on top of the entries.
+                        readonly property real leftRoom: {
+                            const p = navRailWrapper.mapToItem(null, 0, 0);
+                            const v = p ? p.x : NaN;
+                            return (v > 0 && v === v) ? v : root.contentPadding + 5;
+                        }
+                        x: -(leftRoom + hitWidth) / 2
                         y: navRail.y + railFlick.y
                         height: railFlick.height
 
@@ -464,13 +497,13 @@ ApplicationWindow {
                         /// Scroll the current entry into view, if it is not.
                         function revealCurrent() {
                             const b = (railTabs.buttons ?? [])[root.currentPage];
-                            const range = railFlick.contentHeight - railFlick.height;
-                            if (!b || range <= 0) return;
+                            const span = railFlick.contentHeight;
+                            if (!b || span <= 0) return;
                             if (b.y < railFlick.contentY)
-                                railScroll.snapAnimTo(Math.max(0, b.y / range));
+                                railScroll.snapAnimTo(Math.max(0, b.y / span));
                             else if (b.y + b.height > railFlick.contentY + railFlick.height)
-                                railScroll.snapAnimTo(Math.min(1,
-                                    (b.y + b.height - railFlick.height) / range));
+                                railScroll.snapAnimTo(Math.max(0,
+                                    (b.y + b.height - railFlick.height) / span));
                         }
 
                         /// Landmarks come from the buttons: only they know what a

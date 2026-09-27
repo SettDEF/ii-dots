@@ -71,8 +71,8 @@ ScrollBar {
     }
 
 
-    /// Landmarks: [{ at, label, major }]. `at` is a fraction of the scrollable
-    /// range; `major` draws the bigger dot. Empty = a plain scroll bar.
+    /// Landmarks: [{ at, label, major }]. `at` is a fraction of the CONTENT,
+    /// the same scale as `position`; `major` draws the bigger dot.
     property var markers: []
     /// Pull radius, as a fraction of the range.
     property real snapRadius: 0.035
@@ -88,9 +88,11 @@ ScrollBar {
         if (!items || !flick) return [];
         const list = Array.isArray(items) ? items : items.children;
         if (!list) return [];
-        const range = (root.isVertical ? flick.contentHeight - flick.height
-                                       : flick.contentWidth - flick.width);
-        if (range <= 0) return [];
+        // Against the whole CONTENT, not the scrollable range. Against the
+        // range, every landmark past the first screenful exceeds 1 and clamps
+        // to the end of the track — which is all of them piled at the bottom.
+        const span = root.isVertical ? flick.contentHeight : flick.contentWidth;
+        if (span <= 0) return [];
         const out = [];
         for (let i = 0; i < list.length; ++i) {
             const c = list[i];
@@ -98,7 +100,7 @@ ScrollBar {
             const name = label ? label(c) : "";
             if (!name) continue;
             out.push({
-                at: Math.max(0, Math.min(1, (root.isVertical ? c.y : c.x) / range)),
+                at: Math.max(0, Math.min(1, (root.isVertical ? c.y : c.x) / span)),
                 label: name,
                 major: major ? major(c) === true : true
             });
@@ -143,12 +145,15 @@ ScrollBar {
         if (root.hasFlickable) {
             const f = root.attached;
             const vert = root.isVertical;
-            const range = Math.max(0, vert ? f.contentHeight - f.height
-                                           : f.contentWidth - f.width);
+            const span = vert ? f.contentHeight : f.contentWidth;
+            const maxY = Math.max(0, span - (vert ? f.height : f.width));
             if (f.animateContentY !== undefined) f.animateContentY = false;
             snapAnim.target = f;
             snapAnim.property = vert ? "contentY" : "contentX";
-            snapAnim.to = ((vert ? f.originY : f.originX) ?? 0) + target * range;
+            // `position` is contentY/contentHeight, so `at` scales by the
+            // content; clamped, or the last landmark scrolls past the end.
+            snapAnim.to = ((vert ? f.originY : f.originX) ?? 0)
+                + Math.min(target * span, maxY);
             snapAnim.restart();
             return;
         }

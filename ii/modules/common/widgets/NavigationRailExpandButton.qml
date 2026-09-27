@@ -5,16 +5,19 @@ import qs.modules.common.widgets
 
 RippleButton {
     id: root
+    /// What it expands. Defaults to the parent, for use inside a rail.
+    property Item rail: root.parent
+
     Layout.alignment: Qt.AlignLeft
     implicitWidth: 40
     implicitHeight: 40
     Layout.leftMargin: 8
     downAction: () => {
-        parent.expanded = !parent.expanded;
+        root.rail.expanded = !root.rail.expanded;
     }
     buttonRadius: Appearance.rounding.full
 
-    rotation: root.parent.expanded ? 0 : -180
+    rotation: (root.rail?.expanded ?? false) ? 0 : -180
     Behavior on rotation {
         animation: Appearance.animation.elementMoveFast.numberAnimation.createObject(this)
     }
@@ -25,6 +28,6 @@ RippleButton {
         horizontalAlignment: Text.AlignHCenter
         iconSize: 24
         color: Appearance.colors.colOnLayer1
-        text: root.parent.expanded ? "menu_open" : "menu"
+        text: (root.rail?.expanded ?? false) ? "menu_open" : "menu"
     }
 }
