@@ -210,11 +210,21 @@ ok "base-devel, git"
 # hand exactly once, because there is no helper yet to install the helper.
 step "AUR helper"
 HELPER=""
-for h in paru yay; do command -v "$h" >/dev/null 2>&1 && { HELPER="$h"; break; }; done
+# --version, not command -v. An installed helper that cannot start still
+# satisfies "exists", and then every package after this point fails quietly.
+for h in paru yay; do "$h" --version >/dev/null 2>&1 && { HELPER="$h"; break; }; done
 if [ -n "$HELPER" ]; then
     ok "$HELPER is already installed"
 else
-    info "no AUR helper found; installing paru"
+    # Present but broken is the paru-bin/libalpm case. Clear it out first, or
+    # rebuilding paru-bin just reinstalls the same unusable binary.
+    PARU_BIN_BROKEN=0
+    if command -v paru >/dev/null 2>&1; then
+        warn "paru is installed but will not start; replacing it"
+        [ "$DRY" = 1 ] || sudo pacman -Rdd --noconfirm paru-bin paru-bin-debug >/dev/null 2>&1 || true
+        PARU_BIN_BROKEN=1
+    fi
+    info "no working AUR helper; installing paru"
     if [ "$DRY" = 1 ]; then
         printf '   would: makepkg -si paru-bin, then paru from source if it will not run\n'
         HELPER="paru"
@@ -230,8 +240,8 @@ else
         }
 
         # paru-bin first: it is a download rather than a Rust build, so it is
-        # minutes faster when it works.
-        build_aur paru-bin || true
+        # minutes faster when it works. Skipped if we just removed a broken one.
+        [ "$PARU_BIN_BROKEN" = 1 ] || build_aur paru-bin || true
 
         # Existing is not the same as working. paru-bin is linked against the
         # libalpm that was current when it was PACKAGED, so on a system whose
