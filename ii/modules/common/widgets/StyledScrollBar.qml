@@ -147,10 +147,13 @@ ScrollBar {
     }
 
     policy: (root.alwaysVisible && root.size < 1.0) ? ScrollBar.AlwaysOn : ScrollBar.AsNeeded
-    topPadding: Appearance.rounding.normal
-    bottomPadding: Appearance.rounding.normal
-    leftPadding: Appearance.rounding.normal
-    rightPadding: Appearance.rounding.normal
+    // Padding ONLY along the long axis. On a vertical bar left/right padding is
+    // cross-axis: it shrinks the thumb's container and shifts it inward, which
+    // puts the thumb on a different line from the dots.
+    topPadding:    root.isVertical ? Appearance.rounding.normal : 0
+    bottomPadding: root.isVertical ? Appearance.rounding.normal : 0
+    leftPadding:   root.isVertical ? 0 : Appearance.rounding.normal
+    rightPadding:  root.isVertical ? 0 : Appearance.rounding.normal
 
     // `active` is left to Qt: it sets it while the flickable moves, not only on hover.
     implicitWidth:  root.isVertical ? root.hitWidth : 0
