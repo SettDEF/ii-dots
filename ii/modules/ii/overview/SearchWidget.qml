@@ -3,6 +3,7 @@ pragma ComponentBehavior: Bound
 import Qt.labs.synchronizer
 import Qt5Compat.GraphicalEffects
 import QtQuick
+import QtQuick.Controls
 import QtQuick.Layouts
 import Quickshell
 
@@ -427,6 +428,61 @@ Item { // Wrapper
                 model: ScriptModel {
                     id: resultModel
                     objectProp: "key"
+                }
+
+                // A scroll bar at last — this list had none, so a long result
+                // set gave no sign that it continued past the bottom edge.
+                //
+                // The categories it already groups by (App, Action, Command,
+                // Math, Web) become the landmarks, so the bar is a map of the
+                // results and a drag snaps to the start of a category.
+                ScrollBar.vertical: StyledScrollBar {
+                    // Positions are computed rather than approximated from the
+                    // index: a section header is 24px and a row is not, so
+                    // index/count would put every landmark progressively
+                    // further from its heading the further down the list it is.
+                    markers: {
+                        const vals = resultModel.values ?? [];
+                        if (vals.length === 0) return [];
+                        if (appResults.section.property === "") return [];
+
+                        const range = appResults.contentHeight
+                            - appResults.height + appResults.topMargin;
+                        if (range <= 0) return [];
+
+                        // Rows are uniform here, so the row height falls out of
+                        // what the headers do not account for.
+                        const headerH = 24;
+                        let sections = 0;
+                        let last = null;
+                        for (const v of vals) {
+                            const t = String(v?.type ?? "");
+                            if (t !== last) { sections++; last = t; }
+                        }
+                        const rowH = (appResults.contentHeight
+                            - sections * headerH
+                            - appResults.topMargin - appResults.bottomMargin)
+                            / vals.length;
+                        if (!(rowH > 0)) return [];
+
+                        const out = [];
+                        let y = appResults.topMargin;
+                        last = null;
+                        for (const v of vals) {
+                            const t = String(v?.type ?? "");
+                            if (t !== last) {
+                                out.push({
+                                    at: Math.max(0, Math.min(1, y / range)),
+                                    label: t,
+                                    major: true
+                                });
+                                y += headerH;
+                                last = t;
+                            }
+                            y += rowH;
+                        }
+                        return out;
+                    }
                 }
 
                 delegate: SearchItem {

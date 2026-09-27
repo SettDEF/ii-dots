@@ -138,7 +138,11 @@ Scope {
     PanelWindow {
         id: win
         visible: root.hintVisible || hintCard.opacity > 0
-        exclusionMode: ExclusionMode.Ignore
+        // Normal, not Ignore. Ignore spans the whole output regardless of what
+        // anything else has reserved, which is how a hint about the shell ended
+        // up drawn across the shell's own bar. exclusiveZone stays 0, so this
+        // respects other surfaces without reserving anything itself.
+        exclusionMode: ExclusionMode.Normal
         exclusiveZone: 0
         color: "transparent"
         WlrLayershell.namespace: "quickshell:keybindsHint"
@@ -146,10 +150,26 @@ Scope {
         anchors.bottom: true
         anchors.left: true
         anchors.right: true
+
+        // Belt and braces, because a bar only reserves a zone when it is
+        // configured to. Whichever edge the bar is on, the card keeps off it:
+        // vertical bars sit left, or right when `bottom` is set, and a
+        // horizontal bar with `bottom` is on the very edge this card wants.
+        readonly property bool barVertical: Config.options.bar.vertical
+        readonly property bool barFarSide: Config.options.bar.bottom
+        readonly property real barGutter: win.barVertical
+            ? Appearance.sizes.verticalBarWidth : Appearance.sizes.barHeight
+
+        margins.left: (win.barVertical && !win.barFarSide)
+            ? win.barGutter + Appearance.sizes.hyprlandGapsOut : 0
+        margins.right: (win.barVertical && win.barFarSide)
+            ? win.barGutter + Appearance.sizes.hyprlandGapsOut : 0
         // Clear of the screen's rounded corner, not just of its edge: at the
         // gap size the card's own corner sat inside the screen's and the two
         // curves read as a misalignment.
-        margins.bottom: Appearance.rounding.screenRounding
+        margins.bottom: (!win.barVertical && win.barFarSide)
+            ? win.barGutter + Appearance.sizes.hyprlandGapsOut
+            : Appearance.rounding.screenRounding
         implicitHeight: hintCard.implicitHeight
 
         mask: Region { item: hintCard }
