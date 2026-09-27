@@ -63,8 +63,7 @@ ScrollBar {
         snapAnim.restart();
     }
 
-    /// Where the thumb sat when the press began. Used to undo Qt's instant
-    /// page-step on a groove click, and to tell a drag from a tap.
+    /// Where the thumb sat when the press began, to tell a drag from a tap.
     property real _pressAnchor: 0
 
     onPressedChanged: {
@@ -108,16 +107,41 @@ ScrollBar {
     background: Item {
         implicitWidth: root.hitWidth
 
-        // Click the track to glide there, rather than jumping a page at a
-        // time. DragThreshold, so dragging the bar still belongs to Qt; the
-        // position is rewound first because Qt has already stepped by then.
-        TapHandler {
-            gesturePolicy: TapHandler.DragThreshold
-            onTapped: eventPoint => {
+        // Click the groove to glide there instead of stepping a page.
+        //
+        // The press has to be INTERCEPTED, not undone: Qt steps on press, and
+        // putting the position back afterwards shows as a flick. A press on
+        // the thumb is declined so it falls through to Qt, which owns dragging.
+        MouseArea {
+            anchors.fill: parent
+            preventStealing: false
+            onPressed: mouse => {
                 const track = root.height - root.topPadding - root.bottomPadding;
-                if (track <= 0) return;
-                root.position = root._pressAnchor;
-                root.scrollToFraction((eventPoint.position.y - root.topPadding) / track);
+                if (track <= 0) { mouse.accepted = false; return; }
+                const thumbTop = root.topPadding + track * root.position;
+                const thumbEnd = thumbTop + track * root.size;
+                if (mouse.y >= thumbTop && mouse.y <= thumbEnd) {
+                    mouse.accepted = false;   // the thumb: Qt drags it
+                    return;
+                }
+                const frac = (mouse.y - root.topPadding) / track;
+
+                // A click within reach of a landmark is a click ON it, so the
+                // dots need no handler of their own to race this one for the
+                // same press.
+                if (root.hasMap) {
+                    let best = -1, bestPx = 11;
+                    for (let i = 0; i < root.markers.length; ++i) {
+                        const px = Math.abs(((root.markers[i].at ?? 0) - frac) * track);
+                        if (px < bestPx) { bestPx = px; best = i; }
+                    }
+                    if (best >= 0) {
+                        root.snapAnimTo(root.markers[best].at ?? 0);
+                        root.markerActivated(best);
+                        return;
+                    }
+                }
+                root.scrollToFraction(frac);
             }
         }
 
@@ -297,17 +321,6 @@ ScrollBar {
                     function onSnapCaught(i) { if (i === index) catchAnim.restart() }
                 }
 
-                // 9px margin: a 3px circle is not clickable. DragThreshold, so
-                // dragging the bar from a dot still works.
-                TapHandler {
-                    gesturePolicy: TapHandler.DragThreshold
-                    margin: 9
-                    onTapped: {
-                        root.position = root._pressAnchor;
-                        root.snapAnimTo(modelData.at ?? 0);
-                        root.markerActivated(index);
-                    }
-                }
                 HoverHandler {
                     margin: 9
                     // Clearing unconditionally clobbers the neighbour just entered.
