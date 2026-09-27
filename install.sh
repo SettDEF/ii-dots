@@ -106,6 +106,8 @@ case "$PROFILE" in
 esac
 
 CONF_HOME="${XDG_CONFIG_HOME:-$HOME/.config}"
+DATA_HOME="${XDG_DATA_HOME:-$HOME/.local/share}"
+SOURCE_MARKER="$DATA_HOME/ii-dots/install-source"
 [ -n "$DEST" ] || DEST="$CONF_HOME/quickshell/$NAME"
 
 # ── Uninstall ───────────────────────────────────────────────────────────────
@@ -211,6 +213,17 @@ install_config() {
     # shell.qml at the top of it.
     run cp -r "$SRC/ii" "$DEST"
     run touch "$DEST/.installed-by-quickshell-config"
+
+    # Where this came from, so the shell can update itself later. The install is
+    # a copy, not a checkout, so the git repo it was copied FROM is the only
+    # thing that knows about upstream.
+    if [ "$DRY" != 1 ]; then
+        mkdir -p "$(dirname "$SOURCE_MARKER")"
+        printf 'source=%s\nname=%s\ndest=%s\nprofile=%s\nlowend=%s\n' \
+            "$SRC" "$NAME" "$DEST" "$PROFILE" "$DO_LOWEND" > "$SOURCE_MARKER"
+    else
+        printf '   would: record the install source in %s\n' "$SOURCE_MARKER"
+    fi
     info "installed"
 }
 

@@ -14,7 +14,12 @@ import Quickshell.Io
 Singleton {
     id: root
 
-    readonly property string dir: `${Quickshell.env("HOME")}/.config/quickshell`
+    /// The git checkout the install was COPIED FROM. install.sh copies rather
+    /// than checking out, so the installed config knows nothing about upstream;
+    /// the marker it leaves behind is what points back at the source.
+    property string dir: ""
+    /// install.sh from that source, re-run to copy an update into place.
+    property string installArgs: ""
     readonly property var opts: Config.options?.updates?.shell
 
     /// A git checkout with an upstream branch — otherwise there is nothing to check.
@@ -49,9 +54,35 @@ Singleton {
         applyProc.running = true;
     }
 
+    /// Finds the source checkout, then hands off to the version and upstream
+    /// probes. Falls back to the config directory itself, which is the case
+    /// when the config IS the repo (a developer, not an install).
+    Process {
+        id: locateProc
+        running: true
+        command: ["bash", "-c",
+            `marker="\${XDG_DATA_HOME:-$HOME/.local/share}/ii-dots/install-source"
+             if [ -r "$marker" ]; then
+                 . "$marker"
+                 printf '%s\\n%s\\n' "$source" "-n \${name:-ii} -p \${profile:-recommended}"
+             else
+                 printf '%s\\n\\n' "$HOME/.config/quickshell"
+             fi`]
+        stdout: StdioCollector {
+            onStreamFinished: {
+                const lines = String(text).split("\n");
+                root.dir = (lines[0] ?? "").trim();
+                root.installArgs = (lines[1] ?? "").trim();
+                if (root.dir.length > 0) {
+                    versionProc.running = true;
+                    probeProc.running = true;
+                }
+            }
+        }
+    }
+
     Process {
         id: versionProc
-        running: true
         command: ["bash", "-c",
             `cd '${root.dir}' 2>/dev/null || exit 0
              printf '%s · %s · %s' "$(git rev-list --count HEAD)" \
@@ -61,7 +92,6 @@ Singleton {
 
     Process {
         id: probeProc
-        running: true
         command: ["git", "-C", root.dir, "rev-parse", "--abbrev-ref", "@{upstream}"]
         onExited: exitCode => {
             root.available = (exitCode === 0);
@@ -101,7 +131,13 @@ Singleton {
 
     Process {
         id: applyProc
-        command: ["bash", "-c", `cd '${root.dir}' && git pull --ff-only --quiet`]
+        // Pull, then re-run install.sh: the running config is a copy of this
+        // checkout, so a pull alone updates nothing the shell actually loads.
+        // Skipped when the config IS the checkout, where the pull is enough.
+        command: ["bash", "-c",
+            `cd '${root.dir}' && git pull --ff-only --quiet || exit 1
+             [ -n '${root.installArgs}' ] || exit 0
+             ./install.sh --yes --no-deps ${root.installArgs}`]
         onExited: exitCode => {
             root.applying = false;
             if (exitCode === 0) {
