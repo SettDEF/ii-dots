@@ -280,10 +280,12 @@ ScrollBar {
                 readonly property bool current: root.currentMarker === index
                 readonly property bool pulled: root.nearestMarker === index
                 readonly property bool hovered: root.hoveredMarker === index
-                /// Minor landmarks stay small whatever the bar does — they sit
-                /// INSIDE it and are read by contrast, not by size. Only a
-                /// section start thickens the line.
-                readonly property real baseSize: major ? root.thickness + 2 : 3
+                /// Where you are is the one thing the map must never hide, so it
+                /// is drawn proud of the bar. Section starts sit a little proud;
+                /// minor landmarks stay small inside the line, read by contrast.
+                readonly property real baseSize: current ? 9
+                    : major ? Math.max(6, root.thickness + 2)
+                    : 3
                 readonly property real at: modelData.at ?? 0
 
                 // Inside the span the thumb is showing: this is what makes the
@@ -315,17 +317,21 @@ ScrollBar {
                 height: width
                 radius: width / 2
 
-                // Inverted against whatever is behind it: dark where it sits on
-                // the thumb, light where it sits on the empty track. Matching
-                // the thumb's own colour made every marker under it disappear.
-                color: dot.underThumb
-                    ? Appearance.m3colors.m3surface
-                    : (dot.current || dot.pulled) ? Appearance.colors.colPrimary
-                                                  : Appearance.colors.colOnSurfaceVariant
+                // Inverted against what is behind it: dark on the thumb, light
+                // on the empty track, since matching the thumb's own colour hid
+                // every marker it covered.
+                //
+                // Except the current one. It is wider than the bar, so most of
+                // it is against the track whatever the thumb is doing, and
+                // inverting it made where-you-are the least visible thing here.
+                color: dot.current ? Appearance.colors.colPrimary
+                    : dot.underThumb ? Appearance.m3colors.m3surface
+                    : dot.pulled ? Appearance.colors.colPrimary
+                    : Appearance.colors.colOnSurfaceVariant
                 // Never invisible: a map you cannot see is not a map.
                 opacity: root.size >= 1.0 ? 0
-                    : underThumb ? 0.95
                     : (current || pulled) ? 1
+                    : underThumb ? 0.95
                     : Math.min(1, (major ? 0.5 : 0.34)
                         + dot.nearness * 0.3
                         + (root.engaged ? 0.25 : 0))
