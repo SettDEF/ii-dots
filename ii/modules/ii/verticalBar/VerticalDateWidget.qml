@@ -17,8 +17,10 @@ Item { // Full hitbox
     Item { // Boundaries for date numbers
         id: content
         anchors.centerIn: parent
-        implicitWidth: 24
-        implicitHeight: 30
+        // 26x32, not 24x30: at 13px the two numbers were touching the
+        // diagonal they are meant to sit either side of.
+        implicitWidth: 26
+        implicitHeight: 32
 
         Shape {
             id: diagonalLine
@@ -46,6 +48,8 @@ Item { // Full hitbox
                 left: parent.left
             }
             font.pixelSize: 13
+            font.family: Appearance.font.family.numbers
+            font.features: ({ "tnum": 1 })
             color: Appearance.colors.colOnLayer1
             text: dayOfMonth
         }
@@ -57,6 +61,8 @@ Item { // Full hitbox
                 right: parent.right
             }
             font.pixelSize: 13
+            font.family: Appearance.font.family.numbers
+            font.features: ({ "tnum": 1 })
             color: Appearance.colors.colOnLayer1
             text: monthOfYear
         }
