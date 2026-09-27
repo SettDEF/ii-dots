@@ -345,8 +345,6 @@ ScrollBar {
                 /// Where you are is the one thing the map must never hide, so it
                 /// is drawn proud of the bar. Minor landmarks never change size
                 /// at all: they sit inside the line and are read by contrast.
-                // All proud of the bar. A dot narrower than the line it sits on
-                // is invisible once the thumb covers it, whatever its colour.
                 readonly property real baseSize: {
                     if (dot.current) return root.thickness + 6;
                     if (dot.isEnd) return root.thickness
@@ -385,24 +383,17 @@ ScrollBar {
                 height: width
                 radius: width / 2
 
-                // Inverted against what is behind it: dark on the thumb, light
-                // on the empty track, since matching the thumb's own colour hid
-                // every marker it covered.
-                //
-                // Except the current one. It is wider than the bar, so most of
-                // it is against the track whatever the thumb is doing, and
-                // inverting it made where-you-are the least visible thing here.
-                color: dot.current ? Appearance.colors.colPrimary
-                    : dot.underThumb ? Appearance.m3colors.m3surface
-                    : dot.pulled ? Appearance.colors.colPrimary
-                    : Appearance.colors.colOnSurfaceVariant
-                // Never invisible: a map you cannot see is not a map.
+                color: (dot.current || dot.pulled) ? Appearance.colors.colPrimary
+                                                   : Appearance.colors.colOnSurfaceVariant
+                // Only what is OFF screen is marked. A landmark inside the
+                // thumb is a section you can already see, and drawing those
+                // turned the bar into a perforated strip.
                 opacity: root.size >= 1.0 ? 0
-                    : (current || pulled) ? 1
-                    : underThumb ? 0.95
-                    : Math.min(1, (major ? 0.5 : 0.34)
-                        + dot.nearness * 0.3
-                        + (root.engaged ? 0.25 : 0))
+                    : dot.current ? 1
+                    : dot.underThumb ? 0
+                    : Math.min(1, (major ? 0.55 : 0.4)
+                        + dot.nearness * 0.25
+                        + (root.engaged ? 0.2 : 0))
 
                 // The three steps have to be visibly stepped, not a slide
                 // between them, or they read as one continuous grow.
@@ -433,8 +424,7 @@ ScrollBar {
                     radius: width / 2
                     color: "transparent"
                     border.width: 1.5
-                    border.color: dot.underThumb ? Appearance.m3colors.m3surface
-                                                 : Appearance.colors.colPrimary
+                    border.color: Appearance.colors.colPrimary
                     opacity: 0
                     visible: opacity > 0
 
