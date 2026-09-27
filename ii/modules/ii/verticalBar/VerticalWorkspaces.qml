@@ -29,7 +29,6 @@ Item {
     readonly property int slotSize: 26
     readonly property int slotSpacing: 3
     readonly property bool alwaysShowNumbers: Config.options.bar.workspaces.alwaysShowNumbers ?? false
-    readonly property bool romanNumerals: Config.options.bar.workspaces.romanNumerals ?? false
 
     // Hovering reveals every slot; at rest only the ones that exist plus the
     // one you are on, so the bar does not carry eight empty boxes.
