@@ -146,7 +146,10 @@ Scope {
         anchors.bottom: true
         anchors.left: true
         anchors.right: true
-        margins.bottom: Appearance.sizes.hyprlandGapsOut
+        // Clear of the screen's rounded corner, not just of its edge: at the
+        // gap size the card's own corner sat inside the screen's and the two
+        // curves read as a misalignment.
+        margins.bottom: Appearance.rounding.screenRounding
         implicitHeight: hintCard.implicitHeight
 
         mask: Region { item: hintCard }
@@ -279,13 +282,21 @@ Scope {
 
                             Repeater {
                                 model: modelData.keys
-                                // The same key widget the cheatsheet draws, so
-                                // the two places that show keybinds agree about
-                                // what a key looks like.
+                                // The cheatsheet's key widget, dressed down.
+                                // Its defaults draw a bright full-bleed border
+                                // and a raised bottom edge, which works on the
+                                // cheatsheet's own large surface and reads as a
+                                // row of white boxes on a small dark card.
                                 delegate: KeyboardKey {
                                     required property string modelData
                                     key: modelData
                                     pixelSize: Appearance.font.pixelSize.smallest
+                                    borderColor: Appearance.colors.colOutlineVariant
+                                    keyColor: Appearance.colors.colLayer2
+                                    extraBottomBorderWidth: 0
+                                    borderRadius: 6
+                                    horizontalPadding: 5
+                                    verticalPadding: 2
                                 }
                             }
                         }
