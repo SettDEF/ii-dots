@@ -223,14 +223,20 @@ HYPR_DIR="$HOME/.config/hypr"
 if [ "$DO_HYPR" != 1 ]; then
     info "skipping (--no-hypr). Add this to your own config:"
     info "  exec-once = qs -c $NAME"
-elif [ -e "$HYPR_DIR/hyprland.conf" ]; then
-    warn "$HYPR_DIR/hyprland.conf already exists — left untouched."
+elif [ -e "$HYPR_DIR/hyprland.conf" ] || [ -e "$HYPR_DIR/hyprland.lua" ]; then
+    warn "$HYPR_DIR already has a Hyprland config — left untouched."
     warn "To use this shell from it, add:  exec-once = qs -c $NAME"
+    warn "and see $SRC/hypr/ for what else the shell expects."
 elif [ -d "$SRC/hypr" ]; then
     info "installing the starter config to $HYPR_DIR"
     run mkdir -p "$HYPR_DIR"
     run cp -r "$SRC/hypr/." "$HYPR_DIR/"
-    [ "$DRY" = 1 ] || sed -i "s/@SHELL_NAME@/$NAME/g" "$HYPR_DIR/hyprland.conf"
+    # @SHELL_NAME@ appears in the Lua binds and in the cheatsheet's conf, so
+    # substitute across the tree rather than in one named file.
+    if [ "$DRY" != 1 ]; then
+        grep -rl '@SHELL_NAME@' "$HYPR_DIR" 2>/dev/null \
+            | while IFS= read -r f; do sed -i "s/@SHELL_NAME@/$NAME/g" "$f"; done
+    fi
     ok "written"
 else
     warn "no hypr/ directory in $SRC, so no compositor config was written."
