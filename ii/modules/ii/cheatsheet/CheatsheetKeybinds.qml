@@ -12,6 +12,90 @@ Item {
     property real spacing: 20
     property real titleSpacing: 7
     property real padding: 4
+    /// Widest a single label may be before it elides. Without a cap, one bind
+    /// whose comment is a full command line sets the width of its whole column.
+    property real maxCommentWidth: 300
+
+    /// Height the columns have to fit in, set by the page that hosts this.
+    /// 0 means "unknown", and the data's own grouping is used unchanged.
+    property real heightBudget: 0
+
+    // ── Column packing ──────────────────────────────────────────────────
+    // The number of columns used to come from the DATA: whatever the keybind
+    // source called a top-level group became a column. With three groups you
+    // got three columns however tall they were, so the page scrolled while a
+    // third of the width sat empty.
+    //
+    // Instead, flatten every section out of the source and repack them into as
+    // many columns as it takes to fit the height available. Sections stay
+    // whole; only their arrangement changes.
+    // Measured, not estimated. The first cut guessed 30px a row; the rendered
+    // rows are about 41, so the packer thought everything fitted in three
+    // columns and the page went on scrolling. These two are hidden instances of
+    // the very things being measured, so the arithmetic cannot drift from the
+    // fonts.
+    readonly property real rowHeight: rowMeasure.implicitHeight + 4   // + GridLayout.rowSpacing
+    readonly property real sectionTitleHeight: titleMeasure.implicitHeight + root.titleSpacing
+
+    KeyboardKey {
+        id: rowMeasure
+        visible: false
+        key: "M"
+        pixelSize: Config.options.cheatsheet.fontSize.key
+    }
+    StyledText {
+        id: titleMeasure
+        visible: false
+        text: "M"
+        font {
+            family: Appearance.font.family.title
+            pixelSize: Appearance.font.pixelSize.title
+            variableAxes: Appearance.font.variableAxes.title
+        }
+    }
+
+    function _flatten(node, out) {
+        if (!node) return out;
+        if ((node.keybinds?.length ?? 0) > 0) out.push(node);
+        for (const c of (node.children ?? [])) root._flatten(c, out);
+        return out;
+    }
+
+    readonly property var flatSections: root._flatten({ children: root.keybinds?.children ?? [] }, [])
+
+    readonly property var packedColumns: {
+        const secs = root.flatSections;
+        if (secs.length === 0) return [];
+        // No budget yet (first layout pass): one column per section rather than
+        // one giant column, so the first frame is not visibly wrong.
+        if (root.heightBudget <= 100)
+            return secs.map(s => ({ name: "", keybinds: [], children: [s] }));
+
+        const height = s => root.sectionTitleHeight + s.keybinds.length * root.rowHeight;
+        const total = secs.reduce((n, s) => n + height(s) + root.spacing, 0);
+        // Ceil, so the last column is the short one rather than everything
+        // overflowing by a row.
+        const columns = Math.max(1, Math.ceil(total / root.heightBudget));
+        const target = total / columns;
+
+        const out = [];
+        let current = null;
+        let used = 0;
+        for (const s of secs) {
+            if (current === null) {
+                current = { name: "", keybinds: [], children: [] };
+                out.push(current);
+                used = 0;
+            }
+            current.children.push(s);
+            used += height(s) + root.spacing;
+            // Break AFTER filling, and never leave a column empty — a section
+            // taller than the target would otherwise start a column and
+            // immediately push the next one into another.
+            if (used >= target && out.length < columns) current = null;
+        }
+        return out;
+    }
     implicitWidth: contentCol.implicitWidth + padding * 2
     implicitHeight: contentCol.implicitHeight + padding * 2
     // Excellent symbol explaination and source :
@@ -94,6 +178,11 @@ Item {
         Rectangle {
             id: layoutChip
             readonly property bool switchable: KeyboardLayout.availableLayouts.length > 1
+            // With one layout configured there is nothing to switch to, so the
+            // chip was an inert "US" sitting above the first section with
+            // nothing to say it was a control at all. The layout is still shown
+            // in Settings -> System -> Keyboard, where someone is looking for it.
+            visible: layoutChip.switchable
             readonly property int layoutIndex: KeyboardLayout.availableLayouts.indexOf(KeyboardLayout.effectiveLayout)
             readonly property string variantSuffix: (layoutIndex >= 0
                 && KeyboardLayout.availableVariants[layoutIndex])
@@ -143,6 +232,12 @@ Item {
                 cursorShape: layoutChip.switchable ? Qt.PointingHandCursor : Qt.ArrowCursor
                 onClicked: KeyboardLayout.cycleLayout()
             }
+
+            StyledToolTip {
+                extraVisibleCondition: false
+                alternativeVisibleCondition: chipArea.containsMouse
+                text: Translation.tr("Which keyboard layout these keys are shown for. Binds written as a key CODE resolve differently per layout, so this is what makes them read correctly.\nClick to switch.")
+            }
         }
 
         Row { // Keybind columns
@@ -150,7 +245,7 @@ Item {
             spacing: root.spacing
 
             Repeater {
-                model: root.keybinds.children
+                model: root.packedColumns
 
                 delegate: Column { // Keybind sections
                     spacing: root.spacing
@@ -266,14 +361,35 @@ Item {
                                                 id: commentComponent
                                                 Item {
                                                     id: commentItem
-                                                    implicitWidth: commentText.implicitWidth + 8 * 2
+                                                    // A GridLayout column is as wide as its widest
+                                                    // cell, and these used to centre inside that —
+                                                    // so in a section with one long label every
+                                                    // short one floated in the middle of its own
+                                                    // gap and no two lines started at the same x.
+                                                    // Left-aligned, the column reads as a list.
+                                                    implicitWidth: Math.min(commentText.implicitWidth, root.maxCommentWidth) + 8
                                                     implicitHeight: commentText.implicitHeight
 
                                                     StyledText {
                                                         id: commentText
-                                                        anchors.centerIn: parent
+                                                        anchors.left: parent.left
+                                                        anchors.leftMargin: 8
+                                                        anchors.verticalCenter: parent.verticalCenter
+                                                        // Capped and elided: a bind whose label is
+                                                        // a whole command line ran off the right of
+                                                        // the window, taking its section with it.
+                                                        width: Math.min(implicitWidth, root.maxCommentWidth)
+                                                        elide: Text.ElideRight
                                                         font.pixelSize: Config.options.cheatsheet.fontSize.comment || Appearance.font.pixelSize.smaller
                                                         text: modelData.comment
+
+                                                        StyledToolTip {
+                                                            extraVisibleCondition: false
+                                                            alternativeVisibleCondition: commentHover.hovered
+                                                                && commentText.implicitWidth > root.maxCommentWidth
+                                                            text: modelData.comment
+                                                        }
+                                                        HoverHandler { id: commentHover }
                                                     }
                                                 }
                                             }

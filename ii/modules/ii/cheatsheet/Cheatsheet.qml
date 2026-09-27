@@ -6,7 +6,6 @@ import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
 import Qt.labs.synchronizer
-import Qt5Compat.GraphicalEffects
 import Quickshell.Io
 import Quickshell
 import Quickshell.Wayland
@@ -271,12 +270,26 @@ Scope { // Scope
                             cheatsheetBackground.height - cheatsheetBackground.padding * 2 - 80)
 
                         clip: true
-                        layer.enabled: true
-                        layer.effect: OpacityMask {
-                            maskSource: Rectangle {
-                                width: swipeView.width
-                                height: swipeView.height
-                                radius: Appearance.rounding.small
+                        // No layer.effect here. It used to render the WHOLE
+                        // SwipeView — four pages wide, the full size of the
+                        // card — into an offscreen buffer and mask it, every
+                        // frame, purely to round the corners by 12px. `clip`
+                        // already bounds it, and the card behind supplies the
+                        // rounding that is actually visible; the buffer was
+                        // being rebuilt throughout every tab slide for a
+                        // detail sitting behind another rounded surface.
+
+                        // Match the slide to the rest of the shell instead of
+                        // Qt's default linear-ish snap.
+                        Component.onCompleted: {
+                            if (contentItem) {
+                                // 350, not the 500 of the default spatial
+                                // curve: that is tuned for something crossing
+                                // the screen, and a tab slide this size at
+                                // 500ms reads as lag rather than as motion.
+                                contentItem.highlightMoveDuration =
+                                    Appearance.animationCurves.expressiveFastSpatialDuration;
+                                contentItem.highlightMoveVelocity = -1;
                             }
                         }
 
@@ -294,7 +307,7 @@ Scope { // Scope
                         ScrollView {
                             ScrollBar.horizontal.policy: ScrollBar.AlwaysOff
                             clip: true
-                            CheatsheetKeybinds {}
+                            CheatsheetKeybinds { heightBudget: swipeView.height }
                         }
                     }
                     Component { id: elementsComp

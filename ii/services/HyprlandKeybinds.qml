@@ -155,40 +155,12 @@ Singleton {
                     });
                 }
 
-                // The cheatsheet renders TWO levels: each top-level child is
-                // a COLUMN, and that column's children are the sections that
-                // actually hold binds. A flat list of sections renders as
-                // nothing at all, silently — the outer Repeater finds them and
-                // the inner one finds no children.
-                //
-                // So pack the sections into columns, greedily, keeping them
-                // near equal in height rather than letting one column carry
-                // everything.
-                const built = order.map(n => sections[n]);
-                const targetColumns = Math.max(1, Math.min(3, built.length));
-                const perColumn = Math.max(1, Math.ceil(
-                    built.reduce((n, s) => n + s.keybinds.length + 2, 0) / targetColumns));
-
-                // Break AFTER a section fills the column, not before adding
-                // one. Testing first means a section larger than the target
-                // takes a column of its own AND pushes the next one into a
-                // fresh column, which turned five sections into four ragged
-                // columns instead of three even ones.
-                const columns = [];
-                let current = null;
-                let used = 0;
-                for (const sec of built) {
-                    if (current === null) {
-                        current = { name: "", keybinds: [], children: [] };
-                        columns.push(current);
-                        used = 0;
-                    }
-                    current.children.push(sec);
-                    used += sec.keybinds.length + 2;    // +2 for the heading
-                    if (used >= perColumn) current = null;
-                }
-
-                root.liveKeybinds = { children: columns };
+                // A flat list of sections. The cheatsheet flattens whatever
+                // it is given and repacks it into however many columns fit the
+                // height available, so arranging them here would only be work
+                // thrown away — and two places deciding the layout is how they
+                // come to disagree.
+                root.liveKeybinds = { children: order.map(n => sections[n]) };
             }
         }
     }
