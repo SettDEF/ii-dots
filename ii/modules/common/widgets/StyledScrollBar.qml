@@ -390,16 +390,12 @@ ScrollBar {
                 // legible whichever it lands on.
                 readonly property color tint: modelData.color ?? ""
 
-                color: dot.tint.a > 0
-                    ? (dot.underThumb ? Qt.lighter(dot.tint, 1.5) : dot.tint)
-                    : dot.current ? Appearance.colors.colPrimary
-                    : dot.underThumb ? Appearance.m3colors.m3surface
-                    : dot.pulled ? Appearance.colors.colPrimary
+                color: dot.tint.a > 0 ? dot.tint
+                    : (dot.current || dot.pulled) ? Appearance.colors.colPrimary
                     : Appearance.colors.colOnSurfaceVariant
                 opacity: root.size >= 1.0 ? 0
                     : dot.tint.a > 0 ? 0.95
                     : (dot.current || dot.pulled) ? 1
-                    : dot.underThumb ? 0.6
                     : Math.min(1, (major ? 0.55 : 0.4)
                         + dot.nearness * 0.25
                         + (root.engaged ? 0.2 : 0))
@@ -532,9 +528,13 @@ ScrollBar {
             color: root.pressed ? Appearance.colors.colPrimary
                                 : Appearance.colors.colOnSurfaceVariant
 
+            // With a map it is a wash marking the viewport, not a slab: at
+            // full strength every landmark it covers reads as a hole punched
+            // in it, whatever colour or size the landmark is.
             opacity: root.policy === ScrollBar.AlwaysOn
                 || root.engaged || (root.active && root.size < 1.0)
-                ? (root.pressed ? 0.9 : root.engaged ? 0.75 : 0.5)
+                ? (root.hasMap ? (root.pressed ? 0.42 : root.engaged ? 0.34 : 0.22)
+                               : (root.pressed ? 0.9 : root.engaged ? 0.75 : 0.5))
                 : 0
 
             Behavior on opacity {
