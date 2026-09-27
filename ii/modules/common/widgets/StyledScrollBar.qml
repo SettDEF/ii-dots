@@ -101,7 +101,12 @@ ScrollBar {
             const name = label ? label(c) : "";
             if (!name) continue;
             out.push({
-                at: Math.max(0, Math.min(1, (root.isVertical ? c.y : c.x) / span)),
+                // The item's CENTRE, not its top: keyed to the top, a dot sits
+                // half a row above its entry and the last one never reaches
+                // the end of the track.
+                at: Math.max(0, Math.min(1, (root.isVertical
+                        ? c.y + c.height / 2
+                        : c.x + c.width / 2) / span)),
                 label: name,
                 major: major ? major(c) === true : true
             });
@@ -381,10 +386,15 @@ ScrollBar {
                     : root.laneOffset(parent.height, root.thickness) + (root.thickness - height) / 2
                 // Hover grows only what is already big enough to notice; a minor
                 // landmark keeps its size whatever the pointer does.
-                width: baseSize + ((dot.major || dot.current || dot.isEnd)
-                    && dot.hovered ? 2 : 0)
-                height: width
-                radius: width / 2
+                // The ends are drawn as a stripe rather than a dot: a cap on
+                // the run, so the first and last read as limits and not as two
+                // more stops along it.
+                readonly property bool stripe: dot.isEnd && !dot.current
+                width: dot.stripe
+                    ? root.thickness + 6
+                    : baseSize + ((dot.major || dot.current) && dot.hovered ? 2 : 0)
+                height: dot.stripe ? 2 : width
+                radius: height / 2
 
                 // Inverted where the thumb is behind it, so a landmark stays
                 // legible whichever it lands on.
