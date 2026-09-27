@@ -120,201 +120,6 @@ Rectangle {
         }
     }
 
-        GroupHeading { text: qsTr("Recent") }
-        // ── History row ─────────────────────────────────────────────────
-        // Newest output first. Each chip shows a visual preview of the tuned
-        // wallpaper with overlaid primary/secondary/tertiary colors.
-        ColumnLayout {
-            Layout.fillWidth: true
-            spacing: 4
-            visible: root.history.length > 0
-
-            RowLayout {
-                Layout.fillWidth: true; spacing: 4
-                StyledText {
-                    Layout.fillWidth: true
-                    text: qsTr("Recent Themes")
-                    font.pixelSize: Appearance.font.pixelSize.smaller - 1
-                    font.weight: Font.Medium
-                    color: Appearance.colors.colOnLayer0; opacity: 0.5
-                }
-                StyledText {
-                    text: root.history.length + ""
-                    font.pixelSize: Appearance.font.pixelSize.smaller - 2
-                    color: Appearance.colors.colOnLayer0; opacity: 0.35
-                }
-            }
-
-            Item {
-                Layout.fillWidth: true
-                implicitHeight: 48
-                clip: true
-                ListView {
-                    id: walltuneHistList
-                    anchors.fill: parent
-                    orientation: ListView.Horizontal
-                    spacing: 5
-                    boundsBehavior: Flickable.StopAtBounds
-                    model: root.history
-
-                    delegate: Rectangle {
-                        id: histChip
-                        required property var modelData
-                        required property int index
-                        implicitWidth: 64
-                        height: ListView.view.height
-                        radius: 8
-                        color: histChipHov.hovered
-                            ? Appearance.colors.colLayer2
-                            : Appearance.colors.colLayer1
-                        
-                        readonly property bool isCurrent: {
-                            const cw = modelData.wallpaper
-                            if (!cw || cw === "" || cw !== root.sourceWall) return false
-                            const s = modelData.state
-                            if (!s) return false
-                            
-                            // Compare core slider states with float tolerance
-                            if (Math.abs((s.slVibrance !== undefined ? s.slVibrance : 50) - root.slVibrance) > 0.01) return false
-                            if (Math.abs((s.slContrast !== undefined ? s.slContrast : 50) - root.slContrast) > 0.01) return false
-                            if (Math.abs((s.slTemperature !== undefined ? s.slTemperature : 50) - root.slTemperature) > 0.01) return false
-                            if (Math.abs((s.slBrightness !== undefined ? s.slBrightness : 50) - root.slBrightness) > 0.01) return false
-                            if (Math.abs((s.slSaturation !== undefined ? s.slSaturation : 50) - root.slSaturation) > 0.01) return false
-                            if (Math.abs((s.slHueShift !== undefined ? s.slHueShift : 50) - root.slHueShift) > 0.01) return false
-                            if (Math.abs((s.slHighlight !== undefined ? s.slHighlight : 50) - root.slHighlight) > 0.01) return false
-                            if (Math.abs((s.slShadow !== undefined ? s.slShadow : 50) - root.slShadow) > 0.01) return false
-                            if (Math.abs((s.slGrain !== undefined ? s.slGrain : 0) - root.slGrain) > 0.01) return false
-                            if (Math.abs((s.slSharpness !== undefined ? s.slSharpness : 50) - root.slSharpness) > 0.01) return false
-                            
-                            // Compare mode and options
-                            if ((s.selectedMode !== undefined ? s.selectedMode : "") !== root.selectedMode) return false
-                            if ((s.selectedTheory !== undefined ? s.selectedTheory : "") !== root.selectedTheory) return false
-                            if ((s.selectedStyle !== undefined ? s.selectedStyle : "") !== root.selectedStyle) return false
-                            if ((s.selectedPractical !== undefined ? s.selectedPractical : "") !== root.selectedPractical) return false
-                            if ((s.remapPalette !== undefined ? s.remapPalette : "") !== root.remapPalette) return false
-                            if ((s.remapColors !== undefined ? s.remapColors : 32) !== root.remapColors) return false
-                            if ((s.remapDither !== undefined ? s.remapDither : "FloydSteinberg2x2") !== root.remapDither) return false
-                            if ((s.darkMode !== undefined ? s.darkMode : true) !== root.darkMode) return false
-                            if ((s.applyMode !== undefined ? s.applyMode : "both") !== root.applyMode) return false
-                            
-                            // Compare tone curve points
-                            if (s.curvePoints && Array.isArray(s.curvePoints)) {
-                                if (s.curvePoints.length !== root.curvePoints.length) return false
-                                for (let i = 0; i < s.curvePoints.length; i++) {
-                                    const p1 = s.curvePoints[i]
-                                    const p2 = root.curvePoints[i]
-                                    if (!p2 || Math.abs(p1[0] - p2[0]) > 0.001 || Math.abs(p1[1] - p2[1]) > 0.001) return false
-                                }
-                            } else if (!root.curveIsIdentity()) {
-                                return false
-                            }
-                            
-                            return true
-                        }
-                        
-                        border.width: isCurrent ? 2 : 1
-                        border.color: isCurrent ? Appearance.colors.colPrimary : Appearance.colors.colLayer0Border
-                        Behavior on color { ColorAnimation { duration: 100 } }
-                        
-                        // Content container for clipping
-                        Rectangle {
-                            id: innerClipContainer
-                            anchors.fill: parent
-                            anchors.margins: parent.border.width
-                            radius: histChip.radius - parent.border.width
-                            color: "transparent"
-                            clip: true
-                            
-                            layer.enabled: true
-                            layer.effect: OpacityMask {
-                                maskSource: Rectangle {
-                                    width: innerClipContainer.width; height: innerClipContainer.height
-                                    radius: innerClipContainer.radius
-                                }
-                            }
-                            
-                            // Visual wallpaper thumbnail
-                            Image {
-                                id: thumbImg
-                                anchors.fill: parent
-                                source: {
-                                    if (modelData.thumbnail && modelData.thumbnail !== "") {
-                                        return "file://" + modelData.thumbnail
-                                    }
-                                    if (modelData.wallpaper && modelData.wallpaper !== "" && !/processed(-[ab])?\.png$/.test(modelData.wallpaper)) {
-                                        return "file://" + modelData.wallpaper
-                                    }
-                                    return ""
-                                }
-                                fillMode: Image.PreserveAspectCrop
-                                smooth: true
-                                asynchronous: true
-                                visible: source != ""
-                            }
-                            
-                            // Fallback stripes if no visual thumbnail is available
-                            Row {
-                                anchors.fill: parent
-                                anchors.margins: 4
-                                spacing: 2
-                                visible: thumbImg.source == ""
-                                
-                                Rectangle {
-                                    width: (parent.width - 4) / 3; height: parent.height
-                                    radius: 4
-                                    color: modelData.primary || "#444"
-                                }
-                                Rectangle {
-                                    width: (parent.width - 4) / 3; height: parent.height
-                                    radius: 4
-                                    color: modelData.secondary || "#444"
-                                }
-                                Rectangle {
-                                    width: (parent.width - 4) / 3; height: parent.height
-                                    radius: 4
-                                    color: modelData.tertiary || "#444"
-                                }
-                            }
-                            
-                            // Subtle bottom overlay for dots on visual thumbnail
-                            Rectangle {
-                                anchors { left: parent.left; right: parent.right; bottom: parent.bottom }
-                                height: 18
-                                color: Qt.rgba(0, 0, 0, 0.6)
-                                visible: thumbImg.source != ""
-                                
-                                Row {
-                                    anchors.centerIn: parent
-                                    spacing: 5
-                                    Rectangle {
-                                        width: 10; height: 10; radius: 5
-                                        color: modelData.primary || "transparent"
-                                        border.width: modelData.primary ? 1 : 0
-                                        border.color: "#ffffff"
-                                    }
-                                    Rectangle {
-                                        width: 10; height: 10; radius: 5
-                                        color: modelData.secondary || "transparent"
-                                        border.width: modelData.secondary ? 1 : 0
-                                        border.color: "#ffffff"
-                                    }
-                                    Rectangle {
-                                        width: 10; height: 10; radius: 5
-                                        color: modelData.tertiary || "transparent"
-                                        border.width: modelData.tertiary ? 1 : 0
-                                        border.color: "#ffffff"
-                                    }
-                                }
-                            }
-                        }
-
-                        HoverHandler { margin: Appearance.sizes.touchSlop; id: histChipHov }
-                        TapHandler { margin: Appearance.sizes.touchSlop; onTapped: root.applyHistoryEntry(modelData) }
-                    }
-                }
-            }
-        }
-
     // ── Active mix summary ─────────────────────────────────────────────────
     // Surfaces every non-default section choice as a dismissable chip so the
     // user can see (and undo) the full stack at a glance, even when every
@@ -1384,6 +1189,201 @@ Rectangle {
             }
         }
 
+        GroupHeading { text: qsTr("Recent") }
+        // ── History row ─────────────────────────────────────────────────
+        // Newest output first. Each chip shows a visual preview of the tuned
+        // wallpaper with overlaid primary/secondary/tertiary colors.
+        ColumnLayout {
+            Layout.fillWidth: true
+            spacing: 4
+            visible: root.history.length > 0
+
+            RowLayout {
+                Layout.fillWidth: true; spacing: 4
+                StyledText {
+                    Layout.fillWidth: true
+                    text: qsTr("Recent Themes")
+                    font.pixelSize: Appearance.font.pixelSize.smaller - 1
+                    font.weight: Font.Medium
+                    color: Appearance.colors.colOnLayer0; opacity: 0.5
+                }
+                StyledText {
+                    text: root.history.length + ""
+                    font.pixelSize: Appearance.font.pixelSize.smaller - 2
+                    color: Appearance.colors.colOnLayer0; opacity: 0.35
+                }
+            }
+
+            Item {
+                Layout.fillWidth: true
+                implicitHeight: 48
+                clip: true
+                ListView {
+                    id: walltuneHistList
+                    anchors.fill: parent
+                    orientation: ListView.Horizontal
+                    spacing: 5
+                    boundsBehavior: Flickable.StopAtBounds
+                    model: root.history
+
+                    delegate: Rectangle {
+                        id: histChip
+                        required property var modelData
+                        required property int index
+                        implicitWidth: 64
+                        height: ListView.view.height
+                        radius: 8
+                        color: histChipHov.hovered
+                            ? Appearance.colors.colLayer2
+                            : Appearance.colors.colLayer1
+                        
+                        readonly property bool isCurrent: {
+                            const cw = modelData.wallpaper
+                            if (!cw || cw === "" || cw !== root.sourceWall) return false
+                            const s = modelData.state
+                            if (!s) return false
+                            
+                            // Compare core slider states with float tolerance
+                            if (Math.abs((s.slVibrance !== undefined ? s.slVibrance : 50) - root.slVibrance) > 0.01) return false
+                            if (Math.abs((s.slContrast !== undefined ? s.slContrast : 50) - root.slContrast) > 0.01) return false
+                            if (Math.abs((s.slTemperature !== undefined ? s.slTemperature : 50) - root.slTemperature) > 0.01) return false
+                            if (Math.abs((s.slBrightness !== undefined ? s.slBrightness : 50) - root.slBrightness) > 0.01) return false
+                            if (Math.abs((s.slSaturation !== undefined ? s.slSaturation : 50) - root.slSaturation) > 0.01) return false
+                            if (Math.abs((s.slHueShift !== undefined ? s.slHueShift : 50) - root.slHueShift) > 0.01) return false
+                            if (Math.abs((s.slHighlight !== undefined ? s.slHighlight : 50) - root.slHighlight) > 0.01) return false
+                            if (Math.abs((s.slShadow !== undefined ? s.slShadow : 50) - root.slShadow) > 0.01) return false
+                            if (Math.abs((s.slGrain !== undefined ? s.slGrain : 0) - root.slGrain) > 0.01) return false
+                            if (Math.abs((s.slSharpness !== undefined ? s.slSharpness : 50) - root.slSharpness) > 0.01) return false
+                            
+                            // Compare mode and options
+                            if ((s.selectedMode !== undefined ? s.selectedMode : "") !== root.selectedMode) return false
+                            if ((s.selectedTheory !== undefined ? s.selectedTheory : "") !== root.selectedTheory) return false
+                            if ((s.selectedStyle !== undefined ? s.selectedStyle : "") !== root.selectedStyle) return false
+                            if ((s.selectedPractical !== undefined ? s.selectedPractical : "") !== root.selectedPractical) return false
+                            if ((s.remapPalette !== undefined ? s.remapPalette : "") !== root.remapPalette) return false
+                            if ((s.remapColors !== undefined ? s.remapColors : 32) !== root.remapColors) return false
+                            if ((s.remapDither !== undefined ? s.remapDither : "FloydSteinberg2x2") !== root.remapDither) return false
+                            if ((s.darkMode !== undefined ? s.darkMode : true) !== root.darkMode) return false
+                            if ((s.applyMode !== undefined ? s.applyMode : "both") !== root.applyMode) return false
+                            
+                            // Compare tone curve points
+                            if (s.curvePoints && Array.isArray(s.curvePoints)) {
+                                if (s.curvePoints.length !== root.curvePoints.length) return false
+                                for (let i = 0; i < s.curvePoints.length; i++) {
+                                    const p1 = s.curvePoints[i]
+                                    const p2 = root.curvePoints[i]
+                                    if (!p2 || Math.abs(p1[0] - p2[0]) > 0.001 || Math.abs(p1[1] - p2[1]) > 0.001) return false
+                                }
+                            } else if (!root.curveIsIdentity()) {
+                                return false
+                            }
+                            
+                            return true
+                        }
+                        
+                        border.width: isCurrent ? 2 : 1
+                        border.color: isCurrent ? Appearance.colors.colPrimary : Appearance.colors.colLayer0Border
+                        Behavior on color { ColorAnimation { duration: 100 } }
+                        
+                        // Content container for clipping
+                        Rectangle {
+                            id: innerClipContainer
+                            anchors.fill: parent
+                            anchors.margins: parent.border.width
+                            radius: histChip.radius - parent.border.width
+                            color: "transparent"
+                            clip: true
+                            
+                            layer.enabled: true
+                            layer.effect: OpacityMask {
+                                maskSource: Rectangle {
+                                    width: innerClipContainer.width; height: innerClipContainer.height
+                                    radius: innerClipContainer.radius
+                                }
+                            }
+                            
+                            // Visual wallpaper thumbnail
+                            Image {
+                                id: thumbImg
+                                anchors.fill: parent
+                                source: {
+                                    if (modelData.thumbnail && modelData.thumbnail !== "") {
+                                        return "file://" + modelData.thumbnail
+                                    }
+                                    if (modelData.wallpaper && modelData.wallpaper !== "" && !/processed(-[ab])?\.png$/.test(modelData.wallpaper)) {
+                                        return "file://" + modelData.wallpaper
+                                    }
+                                    return ""
+                                }
+                                fillMode: Image.PreserveAspectCrop
+                                smooth: true
+                                asynchronous: true
+                                visible: source != ""
+                            }
+                            
+                            // Fallback stripes if no visual thumbnail is available
+                            Row {
+                                anchors.fill: parent
+                                anchors.margins: 4
+                                spacing: 2
+                                visible: thumbImg.source == ""
+                                
+                                Rectangle {
+                                    width: (parent.width - 4) / 3; height: parent.height
+                                    radius: 4
+                                    color: modelData.primary || "#444"
+                                }
+                                Rectangle {
+                                    width: (parent.width - 4) / 3; height: parent.height
+                                    radius: 4
+                                    color: modelData.secondary || "#444"
+                                }
+                                Rectangle {
+                                    width: (parent.width - 4) / 3; height: parent.height
+                                    radius: 4
+                                    color: modelData.tertiary || "#444"
+                                }
+                            }
+                            
+                            // Subtle bottom overlay for dots on visual thumbnail
+                            Rectangle {
+                                anchors { left: parent.left; right: parent.right; bottom: parent.bottom }
+                                height: 18
+                                color: Qt.rgba(0, 0, 0, 0.6)
+                                visible: thumbImg.source != ""
+                                
+                                Row {
+                                    anchors.centerIn: parent
+                                    spacing: 5
+                                    Rectangle {
+                                        width: 10; height: 10; radius: 5
+                                        color: modelData.primary || "transparent"
+                                        border.width: modelData.primary ? 1 : 0
+                                        border.color: "#ffffff"
+                                    }
+                                    Rectangle {
+                                        width: 10; height: 10; radius: 5
+                                        color: modelData.secondary || "transparent"
+                                        border.width: modelData.secondary ? 1 : 0
+                                        border.color: "#ffffff"
+                                    }
+                                    Rectangle {
+                                        width: 10; height: 10; radius: 5
+                                        color: modelData.tertiary || "transparent"
+                                        border.width: modelData.tertiary ? 1 : 0
+                                        border.color: "#ffffff"
+                                    }
+                                }
+                            }
+                        }
+
+                        HoverHandler { margin: Appearance.sizes.touchSlop; id: histChipHov }
+                        TapHandler { margin: Appearance.sizes.touchSlop; onTapped: root.applyHistoryEntry(modelData) }
+                    }
+                }
+            }
+        }
+
         // ── Active mix summary ─────────────────────────────────────────────
         // Surfaces every currently-stacked section choice (Mode / Theory /
         // Style / Practical / Remap / Curve) as a chip row. Click the chip
@@ -1620,11 +1620,51 @@ Rectangle {
         // 1.30 = punchy. Off = disable entirely.
         // Parallax is two settings that are set once and left alone, so it
         // does not earn a permanent card in the main column.
-        PanelActionButton {
+        RippleButton {
+            id: parallaxRow
+            readonly property bool on: Config.options.background.parallax.enableWorkspace
+
             Layout.fillWidth: true
-            iconName: "swap_horiz"
-            buttonLabel: qsTr("Workspace parallax")
+            implicitHeight: 44
+            buttonRadius: Appearance.rounding.small
+            colBackground: Appearance.colors.colLayer1
+            colBackgroundHover: Appearance.colors.colLayer1Hover
             onClicked: root.parallaxOpen = true
+
+            contentItem: RowLayout {
+                anchors.fill: parent
+                anchors.leftMargin: 12
+                anchors.rightMargin: 8
+                spacing: 10
+
+                MaterialSymbol {
+                    text: "swap_horiz"
+                    iconSize: Appearance.font.pixelSize.larger
+                    color: parallaxRow.on ? Appearance.colors.colPrimary
+                                          : Appearance.colors.colSubtext
+                }
+                StyledText {
+                    Layout.fillWidth: true
+                    text: qsTr("Workspace parallax")
+                    font.pixelSize: Appearance.font.pixelSize.smaller
+                    color: Appearance.colors.colOnLayer1
+                }
+                // The state, so the row answers without being opened.
+                StyledText {
+                    text: parallaxRow.on
+                        ? qsTr("On · %1%").arg(Math.round(
+                            Config.options.background.parallax.workspaceZoom * 100))
+                        : qsTr("Off")
+                    font.pixelSize: Appearance.font.pixelSize.smallest
+                    color: parallaxRow.on ? Appearance.colors.colPrimary
+                                          : Appearance.colors.colSubtext
+                }
+                MaterialSymbol {
+                    text: "chevron_right"
+                    iconSize: Appearance.font.pixelSize.large
+                    color: Appearance.colors.colSubtext
+                }
+            }
         }
 
         // ── Wallpaper effect ────────────────────────────────────────────
@@ -1800,24 +1840,63 @@ Rectangle {
 
         // Extraction mode
         SectionLabel { text: qsTr("Extraction mode") }
-        Flow { Layout.fillWidth: true; spacing: 4
+        // M3 filter chips: outlined at rest, secondaryContainer with a check
+        // when chosen — the same thing "selected" means everywhere else here.
+        // They used to fill with each mode's own colour, so the selection was a
+        // different hue every time and read as a warning rather than a choice.
+        // The colour survives as the identity dot.
+        Flow {
+            Layout.fillWidth: true
+            spacing: 5
+
             Repeater {
                 model: root.extractModes
+
                 delegate: Rectangle {
+                    id: modeChip
                     required property var modelData
                     readonly property bool active: root.selectedMode === modelData.id
-                    implicitWidth: mRow.implicitWidth + 14; implicitHeight: 28; radius: 14
-                    color: active ? modelData.color : (mHov.hovered ? Appearance.colors.colLayer2 : Appearance.colors.colLayer1)
-                    Behavior on color { ColorAnimation { duration: 100 } }
+
+                    implicitWidth: mRow.implicitWidth + 20
+                    implicitHeight: 32
+                    radius: Appearance.rounding.full
+                    color: modeChip.active ? Appearance.colors.colSecondaryContainer
+                        : mHov.hovered ? Appearance.colors.colLayer1Hover
+                        : "transparent"
+                    border.width: modeChip.active ? 0 : 1
+                    border.color: Appearance.colors.colLayer0Border
+                    Behavior on color { ColorAnimation { duration: 120 } }
+
                     HoverHandler { id: mHov }
                     TapHandler { onTapped: root.selectedMode = modelData.id }
-                    Row { id: mRow; anchors.centerIn: parent; spacing: 5
-                        Rectangle { anchors.verticalCenter: parent.verticalCenter; visible: !active; width: 6; height: 6; radius: 3; color: modelData.color; opacity: 0.9 }
+
+                    Row {
+                        id: mRow
+                        anchors.centerIn: parent
+                        spacing: 6
+
+                        MaterialSymbol {
+                            anchors.verticalCenter: parent.verticalCenter
+                            visible: modeChip.active
+                            text: "check"
+                            iconSize: Appearance.font.pixelSize.small
+                            color: Appearance.m3colors.m3onSecondaryContainer
+                        }
+                        Rectangle {
+                            anchors.verticalCenter: parent.verticalCenter
+                            visible: !modeChip.active
+                            width: 7; height: 7; radius: 3.5
+                            color: modeChip.modelData.color
+                        }
                         StyledText {
-                            anchors.verticalCenter: parent.verticalCenter; text: modelData.label
-                            font.pixelSize: Appearance.font.pixelSize.smaller - 2
-                            color: active ? "white" : Appearance.colors.colOnLayer0; opacity: active ? 1 : 0.7
-                            Behavior on color { ColorAnimation { duration: 100 } }
+                            anchors.verticalCenter: parent.verticalCenter
+                            text: modeChip.modelData.label
+                            font.pixelSize: Appearance.font.pixelSize.smaller
+                            font.weight: modeChip.active ? Font.Medium : Font.Normal
+                            color: modeChip.active ? Appearance.m3colors.m3onSecondaryContainer
+                                                   : Appearance.colors.colOnLayer1
+                            opacity: modeChip.active ? 1 : 0.8
+                            Behavior on color { ColorAnimation { duration: 120 } }
                         }
                     }
                 }
