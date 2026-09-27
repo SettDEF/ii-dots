@@ -2,6 +2,7 @@ pragma ComponentBehavior: Bound
 import qs
 import qs.services
 import qs.modules.common
+import qs.modules.common.functions
 import qs.modules.common.widgets
 import QtQuick
 import QtQuick.Layouts
@@ -111,7 +112,7 @@ Rectangle {
 
             Rectangle {
                 implicitWidth: 26; implicitHeight: 26; radius: 13
-                color: root.isPlaying ? Appearance.colors.colPrimary : (playHov.hovered ? Appearance.colors.colLayer2 : "transparent")
+                color: root.isPlaying ? Appearance.colors.colPrimary : (playHov.hovered ? Appearance.colors.colLayer2 : ColorUtils.transparentize(Appearance.colors.colLayer2))
                 Behavior on color { animation: Appearance.animation.elementMoveFast.colorAnimation.createObject(this) }
                 HoverHandler { margin: Appearance.sizes.touchSlop; id: playHov }
                 TapHandler { margin: Appearance.sizes.touchSlop; onTapped: ShelfPlayer.toggle(root.filePath) }

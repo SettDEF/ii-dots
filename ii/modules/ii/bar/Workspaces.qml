@@ -837,7 +837,7 @@ Item {
                     radius: 9
                     color: btnHov.hovered
                         ? Qt.alpha(root.playerAccent, 0.22)
-                        : "transparent"
+                        : ColorUtils.transparentize(Qt.alpha(root.playerAccent, 0.22))
                     Behavior on color { ColorAnimation { duration: 120 } }
                     visible: modelData.show()
                     HoverHandler { id: btnHov }

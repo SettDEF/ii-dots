@@ -2,6 +2,7 @@ pragma ComponentBehavior: Bound
 import qs
 import qs.services
 import qs.modules.common
+import qs.modules.common.functions
 import qs.modules.common.widgets
 import QtQuick
 import QtQuick.Controls
@@ -175,7 +176,7 @@ Item {
                 signal pressed()
                 width: 36; height: 36; radius: 18
                 color: active ? Appearance.colors.colPrimary
-                     : (sbHov.hovered ? Appearance.m3colors.m3surfaceContainerHighest : "transparent")
+                     : (sbHov.hovered ? Appearance.m3colors.m3surfaceContainerHighest : ColorUtils.transparentize(Appearance.m3colors.m3surfaceContainerHighest))
                 Behavior on color { ColorAnimation { duration: 100 } }
                 MaterialSymbol {
                     anchors.centerIn: parent

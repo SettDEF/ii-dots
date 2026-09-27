@@ -3,6 +3,7 @@ import QtQuick.Controls
 import QtQuick.Layouts
 import qs
 import qs.modules.common
+import qs.modules.common.functions
 import qs.modules.common.widgets
 
 Item {
@@ -120,7 +121,7 @@ Item {
             radius: 12
             color: dragMa.pressed
                 ? Appearance.colors.colPrimary
-                : (dragMa.containsMouse ? Appearance.colors.colLayer2Hover : "transparent")
+                : (dragMa.containsMouse ? Appearance.colors.colLayer2Hover : ColorUtils.transparentize(Appearance.colors.colLayer2Hover))
             Behavior on color { ColorAnimation { duration: 150 } }
 
             Rectangle {

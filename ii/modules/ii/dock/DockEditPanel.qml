@@ -7,6 +7,7 @@ pragma ComponentBehavior: Bound
 import qs
 import qs.services
 import qs.modules.common
+import qs.modules.common.functions
 import qs.modules.common.widgets
 import QtQuick
 import QtQuick.Layouts
@@ -325,7 +326,7 @@ PopupWindow {
                     radius: Appearance.rounding.normal
                     // An enabled widget carries its settings, so it gets a
                     // surface; a disabled one is just a row in a list.
-                    color: widgetBlock.on ? Appearance.colors.colLayer1 : "transparent"
+                    color: widgetBlock.on ? Appearance.colors.colLayer1 : ColorUtils.transparentize(Appearance.colors.colLayer1)
                     Behavior on color { ColorAnimation { duration: 160 } }
 
                     ColumnLayout {

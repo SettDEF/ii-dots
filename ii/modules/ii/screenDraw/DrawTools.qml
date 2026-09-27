@@ -14,6 +14,7 @@
 import QtQuick
 import QtQuick.Shapes
 import qs.modules.common
+import qs.modules.common.functions
 import qs.modules.common.widgets
 
 Rectangle {
@@ -196,7 +197,7 @@ Rectangle {
               : restRadius
         Behavior on radius { NumberAnimation { duration: 220; easing.type: Easing.OutBack } }
         color: active ? Appearance.colors.colPrimary
-             : (btnHov.hovered ? Appearance.m3colors.m3surfaceContainerHighest : "transparent")
+             : (btnHov.hovered ? Appearance.m3colors.m3surfaceContainerHighest : ColorUtils.transparentize(Appearance.m3colors.m3surfaceContainerHighest))
         Behavior on color { ColorAnimation { duration: 140 } }
         scale: tap.pressed ? 0.92 : 1
         Behavior on scale  { NumberAnimation { duration: 160; easing.type: Easing.OutCubic } }

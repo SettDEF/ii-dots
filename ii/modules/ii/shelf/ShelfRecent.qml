@@ -2,6 +2,7 @@ pragma ComponentBehavior: Bound
 import qs
 import qs.services
 import qs.modules.common
+import qs.modules.common.functions
 import qs.modules.common.widgets
 import QtQuick
 import QtQuick.Layouts
@@ -94,7 +95,7 @@ Item {
 
             Rectangle {
                 implicitWidth: 26; implicitHeight: 26; radius: 13
-                color: refreshHov.hovered ? Appearance.colors.colLayer2 : "transparent"
+                color: refreshHov.hovered ? Appearance.colors.colLayer2 : ColorUtils.transparentize(Appearance.colors.colLayer2)
                 Behavior on color { animation: Appearance.animation.elementMoveFast.colorAnimation.createObject(this) }
                 HoverHandler { margin: Appearance.sizes.touchSlop; id: refreshHov }
                 TapHandler { margin: Appearance.sizes.touchSlop; onTapped: root.scan() }
@@ -148,7 +149,7 @@ Item {
                     radius: Appearance.rounding.small
                     color: isPlaying
                         ? Qt.alpha(Appearance.colors.colPrimary, 0.12)
-                        : (rHov.hovered ? Appearance.colors.colLayer2 : "transparent")
+                        : (rHov.hovered ? Appearance.colors.colLayer2 : ColorUtils.transparentize(Appearance.colors.colLayer2))
                     Behavior on color { animation: Appearance.animation.elementMoveFast.colorAnimation.createObject(this) }
                     HoverHandler { id: rHov }
                     TapHandler {

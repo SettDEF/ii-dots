@@ -352,7 +352,7 @@ Item {
                         implicitHeight: 32
                         radius: Appearance.rounding.verysmall
                         color: sel ? Appearance.colors.colPrimaryContainer
-                            : (bankHov.hovered ? Appearance.colors.colLayer2Hover : "transparent")
+                            : (bankHov.hovered ? Appearance.colors.colLayer2Hover : ColorUtils.transparentize(Appearance.colors.colLayer2Hover))
                         Behavior on color { ColorAnimation { duration: 120 } }
                         HoverHandler { id: bankHov; cursorShape: Qt.PointingHandCursor }
                         TapHandler { onTapped: root.selectedBank = modelData.name }

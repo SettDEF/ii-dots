@@ -167,7 +167,7 @@ Item {
                 Layout.fillWidth: true
                 Layout.preferredHeight: root.rowHeight
                 radius: Appearance.rounding.small
-                color: rowHov.hovered ? Appearance.colors.colLayer2Hover : "transparent"
+                color: rowHov.hovered ? Appearance.colors.colLayer2Hover : ColorUtils.transparentize(Appearance.colors.colLayer2Hover)
                 Behavior on color { ColorAnimation { duration: 140 } }
 
                 HoverHandler { id: rowHov }

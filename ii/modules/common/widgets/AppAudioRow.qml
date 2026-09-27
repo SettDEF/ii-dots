@@ -2,6 +2,7 @@ pragma ComponentBehavior: Bound
 import qs
 import qs.services
 import qs.modules.common
+import qs.modules.common.functions
 import qs.modules.common.widgets
 import QtQuick
 import QtQuick.Layouts
@@ -39,7 +40,7 @@ Rectangle {
 
     implicitHeight: 54
     radius: Appearance.rounding.small
-    color: rowHov.hovered ? Qt.alpha(Appearance.colors.colOnLayer0, 0.06) : "transparent"
+    color: rowHov.hovered ? Qt.alpha(Appearance.colors.colOnLayer0, 0.06) : ColorUtils.transparentize(Qt.alpha(Appearance.colors.colOnLayer0, 0.06))
     Behavior on color { ColorAnimation { duration: 120 } }
     // Apps with no stream are listed, just visibly quieter.
     opacity: rowRoot.live ? 1 : 0.55
@@ -134,7 +135,7 @@ Rectangle {
                     implicitWidth: chipRow.implicitWidth + 12
                     radius: height / 2
                     color: rowRoot.mode === 0
-                        ? (chipHov.hovered ? Qt.alpha(Appearance.colors.colOnLayer0, 0.10) : "transparent")
+                        ? (chipHov.hovered ? Qt.alpha(Appearance.colors.colOnLayer0, 0.10) : ColorUtils.transparentize(Qt.alpha(Appearance.colors.colOnLayer0, 0.10)))
                         : Appearance.colors.colSecondaryContainer
                     border.width: rowRoot.mode === 0 ? 1 : 0
                     border.color: Qt.alpha(Appearance.colors.colOnLayer0, 0.20)
@@ -200,7 +201,7 @@ Rectangle {
             implicitWidth: 28
             implicitHeight: 28
             radius: height / 2
-            color: muteHov.hovered ? Qt.alpha(Appearance.colors.colOnLayer0, 0.08) : "transparent"
+            color: muteHov.hovered ? Qt.alpha(Appearance.colors.colOnLayer0, 0.08) : ColorUtils.transparentize(Qt.alpha(Appearance.colors.colOnLayer0, 0.08))
             Behavior on color { ColorAnimation { duration: 120 } }
             HoverHandler { id: muteHov }
             TapHandler {

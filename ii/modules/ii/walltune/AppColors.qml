@@ -2,6 +2,7 @@ pragma ComponentBehavior: Bound
 import qs
 import qs.services
 import qs.modules.common
+import qs.modules.common.functions
 import qs.modules.common.widgets
 import QtQuick
 import QtQuick.Layouts
@@ -311,7 +312,7 @@ Scope {
                         Rectangle {
                             implicitWidth: 26; implicitHeight: 26
                             radius: 13
-                            color: closeHov.hovered ? Appearance.colors.colLayer1Hover : "transparent"
+                            color: closeHov.hovered ? Appearance.colors.colLayer1Hover : ColorUtils.transparentize(Appearance.colors.colLayer1Hover)
                             Behavior on color { ColorAnimation { duration: 140 } }
                             HoverHandler { id: closeHov; margin: Appearance.sizes.touchSlop; cursorShape: Qt.PointingHandCursor }
                             TapHandler {

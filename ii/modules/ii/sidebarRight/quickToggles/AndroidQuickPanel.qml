@@ -1,5 +1,6 @@
 import qs.services
 import qs.modules.common
+import qs.modules.common.functions
 import qs.modules.common.widgets
 import QtQuick
 import QtQuick.Controls
@@ -397,7 +398,7 @@ AbstractQuickPanel {
                 visible: root.toggles.some(t => t && t.type === "rowBreak")
                 color: undoHov.hovered
                     ? Qt.alpha(Appearance.m3colors.m3error, 0.20)
-                    : "transparent"
+                    : ColorUtils.transparentize(Qt.alpha(Appearance.m3colors.m3error, 0.20))
                 Behavior on color { ColorAnimation { duration: 120 } }
                 HoverHandler { margin: Appearance.sizes.touchSlop; id: undoHov }
                 TapHandler {

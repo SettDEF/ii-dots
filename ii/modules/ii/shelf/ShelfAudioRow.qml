@@ -2,6 +2,7 @@ pragma ComponentBehavior: Bound
 import qs
 import qs.services
 import qs.modules.common
+import qs.modules.common.functions
 import qs.modules.common.widgets
 import QtQuick
 import QtQuick.Layouts
@@ -20,7 +21,7 @@ Rectangle {
         ? Appearance.colors.colPrimaryContainer
         : (playHov.hovered || dragHov.hovered)
             ? Appearance.colors.colLayer2
-            : "transparent"
+            : ColorUtils.transparentize(Appearance.colors.colLayer2)
     Behavior on color { animation: Appearance.animation.elementMoveFast.colorAnimation.createObject(this) }
 
     // ── Drag ─────────────────────────────────────────────────────────────

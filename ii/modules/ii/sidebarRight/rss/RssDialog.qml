@@ -4,6 +4,7 @@
 import qs
 import qs.services
 import qs.modules.common
+import qs.modules.common.functions
 import qs.modules.common.widgets
 import QtQuick
 import QtQuick.Controls
@@ -111,7 +112,7 @@ WindowDialog {
                     ? Qt.alpha(Appearance.colors.colOnLayer0, 0.06)
                     : (modelData.unread
                         ? Qt.alpha(Appearance.colors.colPrimary, 0.06)
-                        : "transparent")
+                        : ColorUtils.transparentize(Qt.alpha(Appearance.colors.colPrimary, 0.06)))
                 Behavior on color { ColorAnimation { duration: 120 } }
                 implicitHeight: rowCol.implicitHeight + 14
                 HoverHandler { id: rowHov }

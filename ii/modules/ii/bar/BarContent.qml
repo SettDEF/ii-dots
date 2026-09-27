@@ -547,7 +547,7 @@ Item { // Bar content region
                         radius: Appearance.rounding.full
                         color: active
                             ? Appearance.colors.colSecondaryContainer
-                            : (subHov.hovered ? Appearance.colors.colLayer1Hover : "transparent")
+                            : (subHov.hovered ? Appearance.colors.colLayer1Hover : ColorUtils.transparentize(Appearance.colors.colLayer1Hover))
                         Behavior on color { animation: Appearance.animation.elementMoveFast.colorAnimation.createObject(this) }
 
                         HoverHandler { id: subHov }
@@ -647,7 +647,7 @@ Item { // Bar content region
                         radius: Appearance.rounding.full
                         color: active
                             ? Appearance.colors.colSecondaryContainer
-                            : (tHov.hovered ? Appearance.colors.colLayer1Hover : "transparent")
+                            : (tHov.hovered ? Appearance.colors.colLayer1Hover : ColorUtils.transparentize(Appearance.colors.colLayer1Hover))
                         Behavior on color { animation: Appearance.animation.elementMoveFast.colorAnimation.createObject(this) }
 
                         HoverHandler { id: tHov }

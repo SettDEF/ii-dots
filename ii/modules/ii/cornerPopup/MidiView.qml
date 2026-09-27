@@ -138,7 +138,7 @@ Rectangle {
                                 anchors.fill: parent; radius: parent.radius
                                 color: devHov.hovered
                                     ? (devItem.active ? Appearance.colors.colPrimaryHover : Appearance.colors.colLayer2Hover)
-                                    : "transparent"
+                                    : ColorUtils.transparentize((devItem.active ? Appearance.colors.colPrimaryHover : Appearance.colors.colLayer2Hover))
                                 Behavior on color { animation: Appearance.animation.elementMoveFast.colorAnimation.createObject(this) }
                             }
 

@@ -218,7 +218,7 @@ ColumnLayout {
         implicitWidth: 28
         implicitHeight: 28
         radius: height / 2
-        color: btnHov.hovered ? Appearance.colors.colLayer1Hover : "transparent"
+        color: btnHov.hovered ? Appearance.colors.colLayer1Hover : ColorUtils.transparentize(Appearance.colors.colLayer1Hover)
         Behavior on color { ColorAnimation { duration: 120 } }
         HoverHandler { id: btnHov }
         TapHandler { onTapped: btn.activated() }
@@ -314,7 +314,7 @@ ColumnLayout {
                 anchors.margins: 3
                 radius: Appearance.rounding.small
                 color: tileHov.hovered
-                    ? Qt.alpha(Appearance.colors.colOnLayer0, 0.08) : "transparent"
+                    ? Qt.alpha(Appearance.colors.colOnLayer0, 0.08) : ColorUtils.transparentize(Qt.alpha(Appearance.colors.colOnLayer0, 0.08))
                 Behavior on color { ColorAnimation { duration: 120 } }
             }
 

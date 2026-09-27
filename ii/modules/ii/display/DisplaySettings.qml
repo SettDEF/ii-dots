@@ -2,6 +2,7 @@ pragma ComponentBehavior: Bound
 import qs
 import qs.services
 import qs.modules.common
+import qs.modules.common.functions
 import qs.modules.common.widgets
 import QtQuick
 import QtQuick.Layouts
@@ -590,7 +591,7 @@ Scope {
                         }
                         Rectangle {
                             width: 26; height: 26; radius: 13
-                            color: closeHov.hovered ? Appearance.colors.colLayer1Hover : "transparent"
+                            color: closeHov.hovered ? Appearance.colors.colLayer1Hover : ColorUtils.transparentize(Appearance.colors.colLayer1Hover)
                             Behavior on color { ColorAnimation { duration: 160 } }
                             HoverHandler { margin: Appearance.sizes.touchSlop; id: closeHov }
                             TapHandler { margin: Appearance.sizes.touchSlop; onTapped: GlobalStates.displayOpen = false }
@@ -1032,7 +1033,7 @@ Scope {
                                 }
                                 Rectangle {
                                     width: 26; height: 26; radius: 13
-                                    color: mpcHov.hovered ? Appearance.colors.colLayer1Hover : "transparent"
+                                    color: mpcHov.hovered ? Appearance.colors.colLayer1Hover : ColorUtils.transparentize(Appearance.colors.colLayer1Hover)
                                     Behavior on color { ColorAnimation { duration: 150 } }
                                     HoverHandler { margin: Appearance.sizes.touchSlop; id: mpcHov }
                                     TapHandler { margin: Appearance.sizes.touchSlop; onTapped: root.monitorPopupOpen = false }
@@ -1287,7 +1288,7 @@ Scope {
                                     implicitHeight: 38
                                     radius: Appearance.rounding.small
                                     color: hHov.hovered ? Appearance.colors.colLayer1Hover
-                                        : (index === 0 ? Qt.alpha(Appearance.colors.colPrimary, 0.10) : "transparent")
+                                        : (index === 0 ? Qt.alpha(Appearance.colors.colPrimary, 0.10) : ColorUtils.transparentize(Qt.alpha(Appearance.colors.colPrimary, 0.10)))
                                     Behavior on color { ColorAnimation { duration: 130 } }
                                     HoverHandler { id: hHov }
                                     TapHandler { onTapped: root.restoreState(modelData.state) }
@@ -1397,7 +1398,7 @@ Scope {
                                     }
                                     Rectangle {
                                         width: 26; height: 26; radius: 13
-                                        color: alcHov.hovered ? Appearance.colors.colLayer1Hover : "transparent"
+                                        color: alcHov.hovered ? Appearance.colors.colLayer1Hover : ColorUtils.transparentize(Appearance.colors.colLayer1Hover)
                                         Behavior on color { ColorAnimation { duration: 150 } }
                                         HoverHandler { margin: Appearance.sizes.touchSlop; id: alcHov; cursorShape: Qt.PointingHandCursor }
                                         TapHandler { margin: Appearance.sizes.touchSlop; onTapped: root.appListOpen = false }
@@ -1576,7 +1577,7 @@ Scope {
                                     }
                                     Rectangle {
                                         width: 26; height: 26; radius: 13
-                                        color: fxcHov.hovered ? Appearance.colors.colLayer1Hover : "transparent"
+                                        color: fxcHov.hovered ? Appearance.colors.colLayer1Hover : ColorUtils.transparentize(Appearance.colors.colLayer1Hover)
                                         Behavior on color { ColorAnimation { duration: 150 } }
                                         HoverHandler { margin: Appearance.sizes.touchSlop; id: fxcHov; cursorShape: Qt.PointingHandCursor }
                                         TapHandler { margin: Appearance.sizes.touchSlop; onTapped: root.effectTarget = "" }
@@ -1622,7 +1623,7 @@ Scope {
                                     readonly property bool sel: root.effectTarget.length > 0
                                         && AppDisplay.get(root.effectTarget).effect === ""
                                     color: sel ? Appearance.colors.colSecondaryContainer
-                                        : (noneHov.hovered ? Appearance.colors.colLayer1Hover : "transparent")
+                                        : (noneHov.hovered ? Appearance.colors.colLayer1Hover : ColorUtils.transparentize(Appearance.colors.colLayer1Hover))
                                     Behavior on color { ColorAnimation { duration: 130 } }
                                     HoverHandler { id: noneHov; cursorShape: Qt.PointingHandCursor }
                                     TapHandler {
@@ -1693,7 +1694,7 @@ Scope {
                                                 }
                                                 radius: Appearance.rounding.small
                                                 color: fxRow.sel ? Appearance.colors.colSecondaryContainer
-                                                    : (fxHov.hovered ? Appearance.colors.colLayer1Hover : "transparent")
+                                                    : (fxHov.hovered ? Appearance.colors.colLayer1Hover : ColorUtils.transparentize(Appearance.colors.colLayer1Hover))
                                                 Behavior on color { ColorAnimation { duration: 130 } }
                                                 HoverHandler { id: fxHov; cursorShape: Qt.PointingHandCursor }
                                                 TapHandler {
@@ -1910,7 +1911,7 @@ Scope {
                                     }
                                     Rectangle {
                                         width: 26; height: 26; radius: 13
-                                        color: apcHov.hovered ? Appearance.colors.colLayer1Hover : "transparent"
+                                        color: apcHov.hovered ? Appearance.colors.colLayer1Hover : ColorUtils.transparentize(Appearance.colors.colLayer1Hover)
                                         Behavior on color { ColorAnimation { duration: 150 } }
                                         HoverHandler { margin: Appearance.sizes.touchSlop; id: apcHov; cursorShape: Qt.PointingHandCursor }
                                         TapHandler { margin: Appearance.sizes.touchSlop; onTapped: root.appPopupId = "" }
@@ -2234,7 +2235,7 @@ Scope {
                                 }
                                 Rectangle {
                                     width: 26; height: 26; radius: 13
-                                    color: bcHov.hovered ? Appearance.colors.colLayer1Hover : "transparent"
+                                    color: bcHov.hovered ? Appearance.colors.colLayer1Hover : ColorUtils.transparentize(Appearance.colors.colLayer1Hover)
                                     Behavior on color { ColorAnimation { duration: 150 } }
                                     HoverHandler { margin: Appearance.sizes.touchSlop; id: bcHov }
                                     TapHandler { margin: Appearance.sizes.touchSlop; onTapped: root.shaderBrowserOpen = false }
@@ -2254,7 +2255,7 @@ Scope {
                                 radius: Appearance.rounding.small
                                 readonly property bool sel: root.browserSelection === ""
                                 color: sel ? Appearance.colors.colSecondaryContainer
-                                    : (noneShHov.hovered ? Appearance.colors.colLayer1Hover : "transparent")
+                                    : (noneShHov.hovered ? Appearance.colors.colLayer1Hover : ColorUtils.transparentize(Appearance.colors.colLayer1Hover))
                                 Behavior on color { ColorAnimation { duration: 130 } }
                                 HoverHandler { id: noneShHov; cursorShape: Qt.PointingHandCursor }
                                 TapHandler { onTapped: root.browserPick("") }
@@ -2314,7 +2315,7 @@ Scope {
                                             implicitHeight: 40
                                             radius: Appearance.rounding.small
                                             color: shRow.sel ? Appearance.colors.colSecondaryContainer
-                                                : (itemHov.hovered ? Appearance.colors.colLayer1Hover : "transparent")
+                                                : (itemHov.hovered ? Appearance.colors.colLayer1Hover : ColorUtils.transparentize(Appearance.colors.colLayer1Hover))
                                             Behavior on color { ColorAnimation { duration: 130 } }
                                             HoverHandler { id: itemHov; cursorShape: Qt.PointingHandCursor }
                                             TapHandler { onTapped: root.browserPick(shRow.modelData) }
@@ -2417,7 +2418,7 @@ Scope {
                                             opacity: pkGroup.usable ? 1.0 : 0.45
                                             color: pkRow.sel ? Appearance.colors.colSecondaryContainer
                                                 : (pkHov.hovered && pkGroup.usable
-                                                    ? Appearance.colors.colLayer1Hover : "transparent")
+                                                    ? Appearance.colors.colLayer1Hover : ColorUtils.transparentize(Appearance.colors.colLayer1Hover))
                                             Behavior on color { ColorAnimation { duration: 130 } }
                                             HoverHandler {
                                                 id: pkHov
@@ -2625,7 +2626,7 @@ Scope {
             Layout.fillWidth: true
             implicitHeight: 34
             radius: Appearance.rounding.small
-            color: expHov.hovered ? Qt.alpha(Appearance.colors.colOnLayer0, 0.06) : "transparent"
+            color: expHov.hovered ? Qt.alpha(Appearance.colors.colOnLayer0, 0.06) : ColorUtils.transparentize(Qt.alpha(Appearance.colors.colOnLayer0, 0.06))
             Behavior on color { ColorAnimation { duration: 140 } }
             HoverHandler { id: expHov }
             TapHandler { onTapped: exp.expanded = !exp.expanded }
@@ -2943,7 +2944,7 @@ Scope {
                 color: readoutField.activeFocus
                     ? Qt.alpha(Appearance.colors.colPrimary, 0.14)
                     : (readoutHov.hovered ? Qt.alpha(Appearance.colors.colOnLayer0, 0.08)
-                                          : "transparent")
+                                          : ColorUtils.transparentize(Qt.alpha(Appearance.colors.colOnLayer0, 0.08)))
                 Behavior on color { ColorAnimation { duration: 120 } }
 
                 HoverHandler { id: readoutHov; cursorShape: Qt.IBeamCursor }

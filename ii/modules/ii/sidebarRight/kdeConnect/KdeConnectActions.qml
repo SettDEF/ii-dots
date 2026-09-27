@@ -1,6 +1,7 @@
 import qs
 import qs.services
 import qs.modules.common
+import qs.modules.common.functions
 import qs.modules.common.widgets
 import QtQuick
 import QtQuick.Layouts
@@ -98,7 +99,7 @@ ColumnLayout {
                         Layout.preferredHeight: 28
                         Layout.alignment: Qt.AlignVCenter
                         radius: height / 2
-                        color: hov.hovered ? Appearance.colors.colLayer2Hover : "transparent"
+                        color: hov.hovered ? Appearance.colors.colLayer2Hover : ColorUtils.transparentize(Appearance.colors.colLayer2Hover)
                         Behavior on color { ColorAnimation { duration: 120 } }
                         HoverHandler { id: hov }
                         TapHandler { onTapped: parent.onTap() }

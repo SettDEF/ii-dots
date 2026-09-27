@@ -68,7 +68,7 @@ AndroidQuickToggleButton {
                         Layout.preferredWidth: 24
                         Layout.preferredHeight: 24
                         radius: 12
-                        color: hbHov.hovered ? Appearance.colors.colLayer2Hover : "transparent"
+                        color: hbHov.hovered ? Appearance.colors.colLayer2Hover : ColorUtils.transparentize(Appearance.colors.colLayer2Hover)
                         Behavior on color { ColorAnimation { duration: 120 } }
                         HoverHandler { id: hbHov }
                         TapHandler { onTapped: modelData.fn() }
@@ -101,7 +101,7 @@ AndroidQuickToggleButton {
                         radius: Appearance.rounding.normal
                         color: rowHov.hovered || isExpanded
                             ? Qt.alpha(Appearance.colors.colOnLayer0, 0.05)
-                            : "transparent"
+                            : ColorUtils.transparentize(Qt.alpha(Appearance.colors.colOnLayer0, 0.05))
                         Behavior on color { ColorAnimation { duration: 120 } }
                         implicitHeight: rowCol.implicitHeight + 6
                         clip: true
@@ -164,7 +164,7 @@ AndroidQuickToggleButton {
                                     radius: 14
                                     color: infoHov.hovered
                                         ? Appearance.colors.colLayer2Hover
-                                        : "transparent"
+                                        : ColorUtils.transparentize(Appearance.colors.colLayer2Hover)
                                     Behavior on color { ColorAnimation { duration: 120 } }
                                     HoverHandler { id: infoHov }
                                     TapHandler {
@@ -193,7 +193,7 @@ AndroidQuickToggleButton {
                                     radius: 14
                                     color: row.modelData.mounted
                                         ? Appearance.colors.colSecondaryContainer
-                                        : (mtHov.hovered ? Appearance.colors.colLayer2Hover : "transparent")
+                                        : (mtHov.hovered ? Appearance.colors.colLayer2Hover : ColorUtils.transparentize(Appearance.colors.colLayer2Hover))
                                     Behavior on color { ColorAnimation { duration: 120 } }
                                     HoverHandler { id: mtHov }
                                     TapHandler {

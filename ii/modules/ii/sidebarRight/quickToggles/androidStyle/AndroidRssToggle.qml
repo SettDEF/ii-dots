@@ -51,7 +51,7 @@ AndroidQuickToggleButton {
                 Rectangle {
                     Layout.preferredWidth: 24; Layout.preferredHeight: 24
                     radius: 12
-                    color: relHov.hovered ? Appearance.colors.colLayer2Hover : "transparent"
+                    color: relHov.hovered ? Appearance.colors.colLayer2Hover : ColorUtils.transparentize(Appearance.colors.colLayer2Hover)
                     Behavior on color { ColorAnimation { duration: 120 } }
                     HoverHandler { id: relHov }
                     TapHandler { onTapped: Rss.reload() }
@@ -98,7 +98,7 @@ AndroidQuickToggleButton {
                             ? Qt.alpha(Appearance.colors.colOnLayer0, 0.06)
                             : (modelData.unread
                                 ? Qt.alpha(Appearance.colors.colPrimary, 0.06)
-                                : "transparent")
+                                : ColorUtils.transparentize(Qt.alpha(Appearance.colors.colPrimary, 0.06)))
                         Behavior on color { ColorAnimation { duration: 120 } }
                         implicitHeight: rowCol.implicitHeight + 8
                         HoverHandler { id: rowHov }

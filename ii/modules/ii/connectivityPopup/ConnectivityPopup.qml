@@ -7,6 +7,7 @@
 import qs
 import qs.services
 import qs.modules.common
+import qs.modules.common.functions
 import qs.modules.common.widgets
 import qs.modules.ii.hud
 import QtQuick
@@ -206,7 +207,7 @@ Scope {
                     anchors.top: parent.top
                     anchors.right: parent.right
                     anchors.margins: 10
-                    color: closeHov.hovered ? Appearance.colors.colLayer1Hover : "transparent"
+                    color: closeHov.hovered ? Appearance.colors.colLayer1Hover : ColorUtils.transparentize(Appearance.colors.colLayer1Hover)
                     z: 10
                     Behavior on color { ColorAnimation { duration: 160 } }
                     HoverHandler { margin: Appearance.sizes.touchSlop; id: closeHov }

@@ -1,5 +1,6 @@
 import qs.services
 import qs.modules.common
+import qs.modules.common.functions
 import qs.modules.common.widgets
 import QtQuick
 import QtQuick.Layouts
@@ -95,7 +96,7 @@ Item {
                 width: ListView.view.width
                 implicitHeight: 44
                 radius: Appearance.rounding.small
-                color: rowHov.hovered ? Appearance.colors.colLayer2 : "transparent"
+                color: rowHov.hovered ? Appearance.colors.colLayer2 : ColorUtils.transparentize(Appearance.colors.colLayer2)
                 Behavior on color { ColorAnimation { duration: 140 } }
                 HoverHandler { id: rowHov }
 

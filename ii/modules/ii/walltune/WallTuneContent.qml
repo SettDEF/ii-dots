@@ -1237,7 +1237,7 @@ Rectangle {
             readonly property bool hovered: actHov.hovered
 
             implicitWidth: 38; implicitHeight: 38; radius: 19
-            color: actHov.hovered ? Appearance.colors.colLayer2 : "transparent"
+            color: actHov.hovered ? Appearance.colors.colLayer2 : ColorUtils.transparentize(Appearance.colors.colLayer2)
             Behavior on color { ColorAnimation { duration: 100 } }
             HoverHandler { margin: Appearance.sizes.touchSlop; id: actHov }
             TapHandler { margin: Appearance.sizes.touchSlop; onTapped: action() }
@@ -1962,7 +1962,7 @@ Rectangle {
             // below read as ONE container rather than two stacked pills.
             bottomLeftRadius:  root.theoryOpen ? 0 : 20
             bottomRightRadius: root.theoryOpen ? 0 : 20
-            color: (thHeadHov.hovered || thBodyHov.hovered) ? Appearance.colors.colLayer2 : "transparent"
+            color: (thHeadHov.hovered || thBodyHov.hovered) ? Appearance.colors.colLayer2 : ColorUtils.transparentize(Appearance.colors.colLayer2)
             Behavior on color { ColorAnimation { duration: 100 } }
             HoverHandler { id: thHeadHov }
             TapHandler { onTapped: root.theoryOpen = !root.theoryOpen }
@@ -2012,7 +2012,7 @@ Rectangle {
             Rectangle {
                 anchors.fill: parent
                 z: -1
-                color: (thHeadHov.hovered || thBodyHov.hovered) ? Appearance.colors.colLayer2 : "transparent"
+                color: (thHeadHov.hovered || thBodyHov.hovered) ? Appearance.colors.colLayer2 : ColorUtils.transparentize(Appearance.colors.colLayer2)
                 topLeftRadius: 0
                 topRightRadius: 0
                 bottomLeftRadius: 20
@@ -2057,7 +2057,7 @@ Rectangle {
             // below read as ONE container rather than two stacked pills.
             bottomLeftRadius:  root.styleOpen ? 0 : 20
             bottomRightRadius: root.styleOpen ? 0 : 20
-            color: (stHeadHov.hovered || stBodyHov.hovered) ? Appearance.colors.colLayer2 : "transparent"
+            color: (stHeadHov.hovered || stBodyHov.hovered) ? Appearance.colors.colLayer2 : ColorUtils.transparentize(Appearance.colors.colLayer2)
             Behavior on color { ColorAnimation { duration: 100 } }
             HoverHandler { id: stHeadHov }
             TapHandler { onTapped: root.styleOpen = !root.styleOpen }
@@ -2102,7 +2102,7 @@ Rectangle {
             Rectangle {
                 anchors.fill: parent
                 z: -1
-                color: (stHeadHov.hovered || stBodyHov.hovered) ? Appearance.colors.colLayer2 : "transparent"
+                color: (stHeadHov.hovered || stBodyHov.hovered) ? Appearance.colors.colLayer2 : ColorUtils.transparentize(Appearance.colors.colLayer2)
                 topLeftRadius: 0
                 topRightRadius: 0
                 bottomLeftRadius: 20
@@ -2147,7 +2147,7 @@ Rectangle {
             // below read as ONE container rather than two stacked pills.
             bottomLeftRadius:  root.practicalOpen ? 0 : 20
             bottomRightRadius: root.practicalOpen ? 0 : 20
-            color: (prHeadHov.hovered || prBodyHov.hovered) ? Appearance.colors.colLayer2 : "transparent"
+            color: (prHeadHov.hovered || prBodyHov.hovered) ? Appearance.colors.colLayer2 : ColorUtils.transparentize(Appearance.colors.colLayer2)
             Behavior on color { ColorAnimation { duration: 100 } }
             HoverHandler { id: prHeadHov }
             TapHandler { onTapped: root.practicalOpen = !root.practicalOpen }
@@ -2192,7 +2192,7 @@ Rectangle {
             Rectangle {
                 anchors.fill: parent
                 z: -1
-                color: (prHeadHov.hovered || prBodyHov.hovered) ? Appearance.colors.colLayer2 : "transparent"
+                color: (prHeadHov.hovered || prBodyHov.hovered) ? Appearance.colors.colLayer2 : ColorUtils.transparentize(Appearance.colors.colLayer2)
                 topLeftRadius: 0
                 topRightRadius: 0
                 bottomLeftRadius: 20
@@ -2237,7 +2237,7 @@ Rectangle {
             // below read as ONE container rather than two stacked pills.
             bottomLeftRadius:  root.curveOpen ? 0 : 20
             bottomRightRadius: root.curveOpen ? 0 : 20
-            color: (cvHeadHov.hovered || cvBodyHov.hovered) ? Appearance.colors.colLayer2 : "transparent"
+            color: (cvHeadHov.hovered || cvBodyHov.hovered) ? Appearance.colors.colLayer2 : ColorUtils.transparentize(Appearance.colors.colLayer2)
             Behavior on color { ColorAnimation { duration: 100 } }
             HoverHandler { id: cvHeadHov }
             TapHandler { onTapped: root.curveOpen = !root.curveOpen }
@@ -2279,7 +2279,7 @@ Rectangle {
             Rectangle {
                 anchors.fill: parent
                 z: -1
-                color: (cvHeadHov.hovered || cvBodyHov.hovered) ? Appearance.colors.colLayer2 : "transparent"
+                color: (cvHeadHov.hovered || cvBodyHov.hovered) ? Appearance.colors.colLayer2 : ColorUtils.transparentize(Appearance.colors.colLayer2)
                 topLeftRadius: 0
                 topRightRadius: 0
                 bottomLeftRadius: 20
@@ -2509,7 +2509,7 @@ Rectangle {
                     }
                     Rectangle {
                         implicitHeight: 22; implicitWidth: cvResetRow.implicitWidth + 12; radius: 11
-                        color: cvResetHov.hovered ? Appearance.colors.colLayer2 : "transparent"
+                        color: cvResetHov.hovered ? Appearance.colors.colLayer2 : ColorUtils.transparentize(Appearance.colors.colLayer2)
                         border.width: 1; border.color: Appearance.colors.colLayer0Border
                         Behavior on color { ColorAnimation { duration: 100 } }
                         HoverHandler { id: cvResetHov }
@@ -2542,7 +2542,7 @@ Rectangle {
             // below read as ONE container rather than two stacked pills.
             bottomLeftRadius:  root.remapOpen ? 0 : 20
             bottomRightRadius: root.remapOpen ? 0 : 20
-            color: (rmHeadHov.hovered || rmBodyHov.hovered) ? Appearance.colors.colLayer2 : "transparent"
+            color: (rmHeadHov.hovered || rmBodyHov.hovered) ? Appearance.colors.colLayer2 : ColorUtils.transparentize(Appearance.colors.colLayer2)
             Behavior on color { ColorAnimation { duration: 100 } }
             HoverHandler { id: rmHeadHov }
             TapHandler { onTapped: root.remapOpen = !root.remapOpen }
@@ -2587,7 +2587,7 @@ Rectangle {
             Rectangle {
                 anchors.fill: parent
                 z: -1
-                color: (rmHeadHov.hovered || rmBodyHov.hovered) ? Appearance.colors.colLayer2 : "transparent"
+                color: (rmHeadHov.hovered || rmBodyHov.hovered) ? Appearance.colors.colLayer2 : ColorUtils.transparentize(Appearance.colors.colLayer2)
                 topLeftRadius: 0
                 topRightRadius: 0
                 bottomLeftRadius: 20
@@ -2713,7 +2713,7 @@ Rectangle {
             // below read as ONE container rather than two stacked pills.
             bottomLeftRadius:  root.adjustOpen ? 0 : 20
             bottomRightRadius: root.adjustOpen ? 0 : 20
-            color: (adjHeadHov.hovered || adjBodyHov.hovered) ? Appearance.colors.colLayer2 : "transparent"
+            color: (adjHeadHov.hovered || adjBodyHov.hovered) ? Appearance.colors.colLayer2 : ColorUtils.transparentize(Appearance.colors.colLayer2)
             Behavior on color { ColorAnimation { duration: 100 } }
             HoverHandler { id: adjHeadHov }
             TapHandler { onTapped: root.adjustOpen = !root.adjustOpen }
@@ -2760,7 +2760,7 @@ Rectangle {
             Rectangle {
                 anchors.fill: parent
                 z: -1
-                color: (adjHeadHov.hovered || adjBodyHov.hovered) ? Appearance.colors.colLayer2 : "transparent"
+                color: (adjHeadHov.hovered || adjBodyHov.hovered) ? Appearance.colors.colLayer2 : ColorUtils.transparentize(Appearance.colors.colLayer2)
                 topLeftRadius: 0
                 topRightRadius: 0
                 bottomLeftRadius: 20
@@ -3326,7 +3326,7 @@ Rectangle {
                         radius: Appearance.rounding.full
                         color: modeChip.active ? Appearance.colors.colSecondaryContainer
                             : mHov.hovered ? Appearance.colors.colLayer1Hover
-                            : "transparent"
+                            : ColorUtils.transparentize(Appearance.colors.colLayer1Hover)
                         border.width: modeChip.active ? 0 : 1
                         border.color: Appearance.colors.colLayer0Border
                         Behavior on color { ColorAnimation { duration: 120 } }

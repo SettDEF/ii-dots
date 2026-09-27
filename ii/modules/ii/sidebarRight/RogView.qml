@@ -37,7 +37,7 @@ Rectangle {
         TapHandler   { onTapped: wb.tap() }
         Rectangle {
             anchors.fill: parent; radius: parent.radius
-            color: wbHov.hovered ? Appearance.colors.colLayer2Hover : "transparent"
+            color: wbHov.hovered ? Appearance.colors.colLayer2Hover : ColorUtils.transparentize(Appearance.colors.colLayer2Hover)
             Behavior on color { animation: Appearance.animation.elementMoveFast.colorAnimation.createObject(this) }
         }
 
@@ -110,7 +110,7 @@ Rectangle {
         TapHandler   { onTapped: st.tap() }
         Rectangle {
             anchors.fill: parent; radius: parent.radius
-            color: stHov.hovered ? Appearance.colors.colLayer2Hover : "transparent"
+            color: stHov.hovered ? Appearance.colors.colLayer2Hover : ColorUtils.transparentize(Appearance.colors.colLayer2Hover)
             Behavior on color { animation: Appearance.animation.elementMoveFast.colorAnimation.createObject(this) }
         }
 
@@ -150,7 +150,7 @@ Rectangle {
             anchors.fill: parent; radius: parent.radius
             color: chipHov.hovered
                 ? (chip.isSelected ? Appearance.colors.colPrimaryHover : Appearance.colors.colLayer1Hover)
-                : "transparent"
+                : ColorUtils.transparentize((chip.isSelected ? Appearance.colors.colPrimaryHover : Appearance.colors.colLayer1Hover))
             Behavior on color { animation: Appearance.animation.elementMoveFast.colorAnimation.createObject(this) }
         }
         StyledText {
@@ -440,7 +440,9 @@ Rectangle {
                         anchors.fill: parent; radius: parent.radius
                         color: thumbHov.hovered && !dragHandler.active
                             ? (profileTrack.isPerf ? Appearance.colors.colPrimaryHover : Appearance.colors.colLayer2Hover)
-                            : "transparent"
+                            : ColorUtils.transparentize(profileTrack.isPerf
+                                ? Appearance.colors.colPrimaryHover
+                                : Appearance.colors.colLayer2Hover)
                         Behavior on color { animation: Appearance.animation.elementMoveFast.colorAnimation.createObject(this) }
                     }
 

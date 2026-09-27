@@ -6,6 +6,7 @@
 pragma ComponentBehavior: Bound
 import qs.services
 import qs.modules.common
+import qs.modules.common.functions
 import qs.modules.common.widgets
 import QtQuick
 import QtQuick.Controls
@@ -491,7 +492,8 @@ Rectangle {
         color: hov.hovered
             ? (danger ? Qt.alpha(Appearance.m3colors.m3error, 0.16)
                       : Appearance.colors.colLayer3)
-            : "transparent"
+            : ColorUtils.transparentize(danger ? Appearance.m3colors.m3error
+                                               : Appearance.colors.colLayer3)
         Behavior on color { ColorAnimation { duration: Appearance.animDur(120) } }
         HoverHandler { margin: Appearance.sizes.touchSlop; id: hov }
         TapHandler   { onTapped: parent.activated() }

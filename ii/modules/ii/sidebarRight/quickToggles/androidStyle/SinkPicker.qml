@@ -5,6 +5,7 @@
 // "route the volume control to this device".
 import qs.services
 import qs.modules.common
+import qs.modules.common.functions
 import qs.modules.common.widgets
 import QtQuick
 import QtQuick.Layouts
@@ -110,7 +111,7 @@ PopupWindow {
                     radius: 8
                     color: rowMa.containsMouse
                         ? Appearance.colors.colLayer2
-                        : (isCurrent ? Qt.alpha(Appearance.colors.colPrimary, 0.08) : "transparent")
+                        : (isCurrent ? Qt.alpha(Appearance.colors.colPrimary, 0.08) : ColorUtils.transparentize(Qt.alpha(Appearance.colors.colPrimary, 0.08)))
                     Behavior on color { ColorAnimation { duration: 140 } }
 
                     ColumnLayout {

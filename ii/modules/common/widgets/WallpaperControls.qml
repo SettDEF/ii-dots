@@ -50,7 +50,7 @@ RowLayout {
                     readonly property bool active: WallpaperHub.source === modelData.id
                     width: root.cellSize; height: root.cellSize; radius: width / 2
                     color: srcCell.active ? Appearance.colors.colPrimary
-                        : (srcHov.hovered ? Appearance.colors.colSurfaceContainerHighest : "transparent")
+                        : (srcHov.hovered ? Appearance.colors.colSurfaceContainerHighest : ColorUtils.transparentize(Appearance.colors.colSurfaceContainerHighest))
                     Behavior on color { animation: Appearance.animation.elementMoveFast.colorAnimation.createObject(this) }
                     MaterialSymbol {
                         anchors.centerIn: parent
@@ -88,7 +88,7 @@ RowLayout {
                     height: root.cellSize
                     radius: height / 2
                     color: mtCell.active ? Appearance.colors.colPrimary
-                        : (mtHov.hovered ? Appearance.colors.colSurfaceContainerHighest : "transparent")
+                        : (mtHov.hovered ? Appearance.colors.colSurfaceContainerHighest : ColorUtils.transparentize(Appearance.colors.colSurfaceContainerHighest))
                     Behavior on color { animation: Appearance.animation.elementMoveFast.colorAnimation.createObject(this) }
                     StyledText {
                         id: mtText

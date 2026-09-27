@@ -771,7 +771,7 @@ Item {
                 radius: 10
                 color: tile.selected
                     ? Qt.alpha(Appearance.m3colors.m3primary, 0.22)
-                    : (hov.hovered ? Qt.alpha("white", 0.07) : "transparent")
+                    : (hov.hovered ? Qt.alpha("white", 0.07) : ColorUtils.transparentize(Qt.alpha("white", 0.07)))
                 border.width: tile.selected ? 1 : 0
                 border.color: Appearance.m3colors.m3primary
                 Behavior on color { ColorAnimation { duration: 110 } }

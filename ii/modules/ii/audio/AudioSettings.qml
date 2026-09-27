@@ -1154,7 +1154,7 @@ Scope {
                     implicitHeight: sublabel.length > 0 ? 46 : 40
                     radius: Appearance.rounding.verysmall
                     color: chosen ? Appearance.colors.colPrimaryContainer
-                         : (optHov.hovered ? Appearance.colors.colLayer2Hover : "transparent")
+                         : (optHov.hovered ? Appearance.colors.colLayer2Hover : ColorUtils.transparentize(Appearance.colors.colLayer2Hover))
                     Behavior on color {
                         animation: Appearance.animation.elementMoveFast.colorAnimation.createObject(this)
                     }

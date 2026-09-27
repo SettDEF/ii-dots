@@ -4,6 +4,7 @@
 import qs
 import qs.services
 import qs.modules.common
+import qs.modules.common.functions
 import qs.modules.common.widgets
 import qs.modules.ii.sidebarRight.kdeConnect
 import QtQuick
@@ -96,7 +97,7 @@ Item {
                 radius: 18
                 color: openHov.hovered
                     ? Qt.alpha(Appearance.colors.colPrimary, 0.18)
-                    : "transparent"
+                    : ColorUtils.transparentize(Qt.alpha(Appearance.colors.colPrimary, 0.18))
                 Behavior on color { ColorAnimation { duration: 120 } }
                 HoverHandler { id: openHov }
                 TapHandler   { onTapped: card.openDialog() }

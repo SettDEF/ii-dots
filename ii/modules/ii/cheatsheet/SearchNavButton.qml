@@ -1,5 +1,6 @@
 // Small circular prev/next button for the cheatsheet search bar.
 import qs.modules.common
+import qs.modules.common.functions
 import qs.modules.common.widgets
 import QtQuick
 
@@ -11,7 +12,7 @@ Rectangle {
     implicitWidth: 26
     implicitHeight: 26
     radius: width / 2
-    color: ma.containsMouse ? Appearance.colors.colLayer2Hover : "transparent"
+    color: ma.containsMouse ? Appearance.colors.colLayer2Hover : ColorUtils.transparentize(Appearance.colors.colLayer2Hover)
     Behavior on color { ColorAnimation { duration: 120 } }
 
     MaterialSymbol {

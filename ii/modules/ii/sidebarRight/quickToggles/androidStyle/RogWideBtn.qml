@@ -29,7 +29,7 @@ Rectangle {
     TapHandler   { onTapped: wb.tap() }
     Rectangle {
         anchors.fill: parent; radius: parent.radius
-        color: wbHov.hovered ? Qt.alpha(Appearance.colors.colOnLayer1, 0.06) : "transparent"
+        color: wbHov.hovered ? Qt.alpha(Appearance.colors.colOnLayer1, 0.06) : ColorUtils.transparentize(Qt.alpha(Appearance.colors.colOnLayer1, 0.06))
         Behavior on color { animation: Appearance.animation.elementMoveFast.colorAnimation.createObject(this) }
     }
 

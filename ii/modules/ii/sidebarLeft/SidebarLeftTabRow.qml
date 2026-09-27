@@ -1,4 +1,5 @@
 import qs.modules.common
+import qs.modules.common.functions
 import qs.modules.common.widgets
 import QtQuick
 
@@ -30,7 +31,7 @@ Flow {
             // width / 2: rounding.full did not clamp here, it rendered square.
             radius: width / 2
             color: pill.active ? Appearance.colors.colPrimary
-                 : (pillHov.hovered ? Appearance.colors.colLayer1Hover : "transparent")
+                 : (pillHov.hovered ? Appearance.colors.colLayer1Hover : ColorUtils.transparentize(Appearance.colors.colLayer1Hover))
             Behavior on color { ColorAnimation { duration: 160 } }
 
             HoverHandler { id: pillHov }

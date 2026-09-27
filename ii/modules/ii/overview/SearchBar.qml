@@ -410,7 +410,7 @@ RowLayout {
                             implicitHeight: 26
                             radius: 13
                             color: active ? Appearance.colors.colPrimary
-                                : (chipHov.hovered ? Appearance.colors.colSurfaceContainerHighest : "transparent")
+                                : (chipHov.hovered ? Appearance.colors.colSurfaceContainerHighest : ColorUtils.transparentize(Appearance.colors.colSurfaceContainerHighest))
                             Behavior on color { animation: Appearance.animation.elementMoveFast.colorAnimation.createObject(this) }
                             HoverHandler { id: chipHov }
                             TapHandler {

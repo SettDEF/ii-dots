@@ -196,7 +196,7 @@ WindowDialog {
                         // toggles with no sliding indicator to be confused with.
                         color: toggle.on ? Appearance.colors.colPrimary
                              : tHover.hovered ? Qt.alpha(Appearance.colors.colPrimary, 0.18)
-                             : "transparent"
+                             : ColorUtils.transparentize(Qt.alpha(Appearance.colors.colPrimary, 0.18))
                         Behavior on color {
                             animation: Appearance.animation.elementMoveFast.colorAnimation.createObject(this)
                         }

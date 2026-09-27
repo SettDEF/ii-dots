@@ -2,6 +2,7 @@ import QtQuick
 import QtQuick.Layouts
 import qs.services
 import qs.modules.common
+import qs.modules.common.functions
 import qs.modules.common.widgets
 
 Item {
@@ -23,7 +24,7 @@ Item {
         anchors.centerIn: parent
         width: 24; height: 24
         radius: width / 2
-        color: hov.hovered ? Appearance.colors.colLayer2Base : "transparent"
+        color: hov.hovered ? Appearance.colors.colLayer2Base : ColorUtils.transparentize(Appearance.colors.colLayer2Base)
         Behavior on color { animation: Appearance.animation.elementMoveFast.colorAnimation.createObject(this) }
 
         HoverHandler { margin: Appearance.sizes.touchSlop; id: hov }

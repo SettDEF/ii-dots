@@ -2,6 +2,7 @@ pragma ComponentBehavior: Bound
 import qs
 import qs.services
 import qs.modules.common
+import qs.modules.common.functions
 import qs.modules.common.widgets
 import QtQuick
 import QtQuick.Controls
@@ -236,7 +237,7 @@ Scope {
                             radius: Appearance.rounding.small
                             color: hov.hovered ? Appearance.colors.colLayer1
                                 : (row.active ? Qt.alpha(Appearance.colors.colPrimary, 0.12)
-                                              : "transparent")
+                                              : ColorUtils.transparentize(Qt.alpha(Appearance.colors.colPrimary, 0.12)))
                             Behavior on color { ColorAnimation { duration: 100 } }
 
                             RowLayout {

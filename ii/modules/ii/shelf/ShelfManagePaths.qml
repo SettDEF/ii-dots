@@ -2,6 +2,7 @@ pragma ComponentBehavior: Bound
 import qs
 import qs.services
 import qs.modules.common
+import qs.modules.common.functions
 import qs.modules.common.widgets
 import QtQuick
 import QtQuick.Layouts
@@ -89,14 +90,14 @@ Item {
                         StyledText { text: modelData.mode ?? ""; font.pixelSize: Appearance.font.pixelSize.smaller; color: Appearance.colors.colPrimary; opacity: 0.7 }
 
                         Rectangle {
-                            implicitWidth: 28; implicitHeight: 28; radius: 14; color: eHov.hovered ? Appearance.colors.colLayer2 : "transparent"
+                            implicitWidth: 28; implicitHeight: 28; radius: 14; color: eHov.hovered ? Appearance.colors.colLayer2 : ColorUtils.transparentize(Appearance.colors.colLayer2)
                             Behavior on color { animation: Appearance.animation.elementMoveFast.colorAnimation.createObject(this) }
                             HoverHandler { margin: Appearance.sizes.touchSlop; id: eHov }
                             TapHandler { margin: Appearance.sizes.touchSlop; onTapped: root._startEdit(index, modelData) }
                             MaterialSymbol { anchors.centerIn: parent; text: "edit"; iconSize: Appearance.font.pixelSize.small; color: Appearance.colors.colOnLayer0; opacity: 0.5 }
                         }
                         Rectangle {
-                            implicitWidth: 28; implicitHeight: 28; radius: 14; color: dHov.hovered ? Appearance.colors.colLayer2 : "transparent"
+                            implicitWidth: 28; implicitHeight: 28; radius: 14; color: dHov.hovered ? Appearance.colors.colLayer2 : ColorUtils.transparentize(Appearance.colors.colLayer2)
                             Behavior on color { animation: Appearance.animation.elementMoveFast.colorAnimation.createObject(this) }
                             HoverHandler { margin: Appearance.sizes.touchSlop; id: dHov }
                             TapHandler { margin: Appearance.sizes.touchSlop; onTapped: ShelfPaths.remove(index) }

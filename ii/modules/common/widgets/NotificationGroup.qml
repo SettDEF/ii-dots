@@ -230,7 +230,7 @@ MouseArea { // Notification group area
                         anchors.right: expandButton.left
                         anchors.rightMargin: 2
                         anchors.verticalCenter: parent.verticalCenter
-                        color: muteMa.containsMouse ? Appearance.colors.colLayer2Hover : "transparent"
+                        color: muteMa.containsMouse ? Appearance.colors.colLayer2Hover : ColorUtils.transparentize(Appearance.colors.colLayer2Hover)
                         Behavior on color { ColorAnimation { duration: 100 } }
                         // MouseArea (not TapHandler): it sits on top of the
                         // group's DragManager MouseArea and actually grabs the

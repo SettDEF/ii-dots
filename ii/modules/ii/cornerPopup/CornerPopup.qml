@@ -356,7 +356,7 @@ Scope {
                                     radius: height / 2
                                     color: ibHov.hovered
                                         ? Qt.alpha(Appearance.colors.colOnLayer0, 0.08)
-                                        : "transparent"
+                                        : ColorUtils.transparentize(Qt.alpha(Appearance.colors.colOnLayer0, 0.08))
                                     Behavior on color { ColorAnimation { duration: 120 } }
                                     HoverHandler { id: ibHov }
                                     TapHandler { onTapped: parent.onTap() }

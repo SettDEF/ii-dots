@@ -18,6 +18,7 @@
 // Signal:
 //   triggered() — fires on tap
 import qs.modules.common
+import qs.modules.common.functions
 import qs.modules.common.widgets
 import QtQuick
 
@@ -41,7 +42,7 @@ Rectangle {
     radius: Appearance.rounding.small
     color: _highlight
         ? Qt.alpha(Appearance.colors.colSecondaryContainer, active ? 0.85 : 0.55)
-        : "transparent"
+        : ColorUtils.transparentize(Qt.alpha(Appearance.colors.colSecondaryContainer, active ? 0.85 : 0.55))
     Behavior on color { ColorAnimation { duration: 160; easing.type: Easing.OutCubic } }
 
     HoverHandler { id: hov }

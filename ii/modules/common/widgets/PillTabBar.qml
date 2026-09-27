@@ -12,6 +12,7 @@
 //       onTabSelected: id => GlobalStates.shelfTab = id
 //   }
 import qs.modules.common
+import qs.modules.common.functions
 import qs.modules.common.widgets
 import QtQuick
 
@@ -161,7 +162,7 @@ Item {
                     anchors.fill: parent
                     anchors.margins: 2
                     radius: height / 2
-                    color: pillHov.hovered && !parent.active ? root.hoverBackground : "transparent"
+                    color: pillHov.hovered && !parent.active ? root.hoverBackground : ColorUtils.transparentize(root.hoverBackground)
                     Behavior on color { ColorAnimation { duration: 160 } }
                 }
 

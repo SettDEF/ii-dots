@@ -2,6 +2,7 @@ pragma ComponentBehavior: Bound
 import qs
 import qs.services
 import qs.modules.common
+import qs.modules.common.functions
 import qs.modules.common.widgets
 import qs.modules.ii.sidebarRight
 import qs.modules.ii.sidebarRight.notifications
@@ -1035,7 +1036,7 @@ Item {
                                         Layout.fillWidth: true; implicitHeight: nameLbl.implicitHeight + 8
                                         Rectangle {
                                             anchors.fill: parent; radius: Appearance.rounding.small
-                                            color: parent.parent.parent.isEditing ? Appearance.colors.colLayer2 : "transparent"
+                                            color: parent.parent.parent.isEditing ? Appearance.colors.colLayer2 : ColorUtils.transparentize(Appearance.colors.colLayer2)
                                             border.width: parent.parent.parent.isEditing ? 1 : 0
                                             border.color: Appearance.colors.colPrimary
                                             Behavior on color { animation: Appearance.animation.elementMoveFast.colorAnimation.createObject(this) }

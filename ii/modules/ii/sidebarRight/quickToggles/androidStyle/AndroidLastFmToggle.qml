@@ -94,7 +94,7 @@ AndroidQuickToggleButton {
                         Layout.preferredHeight: 26
                         Layout.alignment: Qt.AlignVCenter
                         radius: Appearance.rounding.full
-                        color: hov.hovered ? Appearance.colors.colLayer2Hover : "transparent"
+                        color: hov.hovered ? Appearance.colors.colLayer2Hover : ColorUtils.transparentize(Appearance.colors.colLayer2Hover)
                         Behavior on color { ColorAnimation { duration: 120 } }
                         HoverHandler { id: hov }
                         TapHandler { onTapped: parent.onTap() }
