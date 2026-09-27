@@ -458,8 +458,8 @@ ApplicationWindow {
                     // Scrollable: eleven pages plus four headings is ~840px
                     // against a ~690px content area.
                     // A sibling, not an attached bar: attached lives inside the
-                    // flickable and pushes the entries right. Out here it uses
-                    // the margin that was already empty.
+                    // flickable and pushes the entries aside. Out here it sits
+                    // in the gap that was already there.
                     StyledScrollBar {
                         id: railScroll
 
@@ -470,17 +470,10 @@ ApplicationWindow {
                         orientation: Qt.Vertical
                         hitWidth: 14
 
-                        // Centred in the margin between the window edge and the
-                        // rail, so it clears the entries without leaving it.
-                        // Measured, with a fallback: mapToItem can hand back
-                        // nothing before the first layout, and the NaN that
-                        // follows collapses x to 0 — on top of the entries.
-                        readonly property real leftRoom: {
-                            const p = navRailWrapper.mapToItem(null, 0, 0);
-                            const v = p ? p.x : NaN;
-                            return (v > 0 && v === v) ? v : root.contentPadding + 5;
-                        }
-                        x: -(leftRoom + hitWidth) / 2
+                        // Centred in the gap between the rail and the content
+                        // pane: the wrapper's own margin plus the row spacing.
+                        readonly property real gutter: 5 + root.contentPadding
+                        x: navRailWrapper.width + (gutter - hitWidth) / 2
                         y: navRail.y + railFlick.y
                         height: railFlick.height
 
