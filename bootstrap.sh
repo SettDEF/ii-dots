@@ -113,6 +113,15 @@ while [ $# -gt 0 ]; do
     esac
 done
 
+# Before anything downloads or builds. install.sh validates this too, but by
+# then the packages are already installed and a typo has cost the whole run.
+case "$PROFILE" in
+    minimal|core|recommended|full|rog|low-end) ;;
+    low|lowend) die "unknown profile: $PROFILE — did you mean low-end?" ;;
+    *) die "unknown profile: $PROFILE
+       one of: minimal core recommended full rog low-end" ;;
+esac
+
 banner
 
 # ── 1. Is this the machine we think it is? ──────────────────────────────────

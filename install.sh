@@ -113,7 +113,11 @@ case "$PROFILE" in
     # RAM. See low_end_tuning() for what those are and why.
     low-end) DO_LOWEND=1; PROFILE="recommended" ;;
     minimal|core|recommended|full|rog) ;;
-    *) die "unknown profile: $PROFILE (try --help)" ;;
+    # "low" is the obvious thing to type and it is not a profile, so say what
+    # the profiles are rather than making someone go and read --help.
+    low|lowend) die "unknown profile: $PROFILE — did you mean low-end?" ;;
+    *) die "unknown profile: $PROFILE
+       one of: minimal core recommended full rog low-end" ;;
 esac
 
 CONF_HOME="${XDG_CONFIG_HOME:-$HOME/.config}"
