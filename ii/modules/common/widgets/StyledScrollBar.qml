@@ -138,28 +138,26 @@ ScrollBar {
         snapAnim.stop();
         snapAnim.duration = Math.round(140 + dist * 340);
 
-        // Animate the FLICKABLE, not `position`. On an attached bar Qt derives
-        // position from contentY every frame, so animating position is a tug of
-        // war with the value it is derived from — which is why this still
-        // arrived as a jump.
+        // ASSIGN contentY; do not animate it. StyledFlickable already carries
+        // `Behavior on contentY`, so an animation here sets the value every
+        // frame and retriggers that Behavior on each one — two animators on one
+        // property, which is what kept arriving as a jump. One assignment lets
+        // the Behavior do the easing.
         if (root.hasFlickable) {
             const f = root.attached;
             if (root.isVertical) {
                 const range = Math.max(0, f.contentHeight - f.height);
-                snapAnim.target = f;
-                snapAnim.property = "contentY";
-                snapAnim.to = (f.originY ?? 0) + target * range;
+                f.contentY = (f.originY ?? 0) + target * range;
             } else {
                 const range = Math.max(0, f.contentWidth - f.width);
-                snapAnim.target = f;
-                snapAnim.property = "contentX";
-                snapAnim.to = (f.originX ?? 0) + target * range;
+                f.contentX = (f.originX ?? 0) + target * range;
             }
-        } else {
-            snapAnim.target = root;
-            snapAnim.property = "position";
-            snapAnim.to = target;
+            return;
         }
+        // No flickable to ease it: animate the bar itself.
+        snapAnim.target = root;
+        snapAnim.property = "position";
+        snapAnim.to = target;
         snapAnim.restart();
     }
 

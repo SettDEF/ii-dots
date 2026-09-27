@@ -386,7 +386,11 @@ ApplicationWindow {
                     width: 330
                     implicitHeight: Math.min(340, resultsCol.implicitHeight + 12)
                     radius: Appearance.rounding.normal
-                    color: Appearance.colors.colLayer1
+                    // m3surfaceContainer, not colLayer1: colLayer1 carries the
+                    // transparency solved against the shell's backdrop, and a
+                    // popup floating over the page needs to be opaque or the
+                    // content reads straight through the results.
+                    color: Appearance.m3colors.m3surfaceContainer
                     border.width: 1
                     border.color: Appearance.colors.colLayer0Border
                     z: 500
