@@ -165,6 +165,11 @@ TabButton {
 
         StyledText {
             id: itemText
+            // Collapsed, the rail is one button wide and the label has to fit
+            // it; unconstrained it overflowed and was clipped at both ends.
+            width: root.expanded ? implicitWidth : root.baseSize - 4
+            horizontalAlignment: root.expanded ? Text.AlignLeft : Text.AlignHCenter
+            elide: Text.ElideRight
             anchors {
                 top: itemIconBackground.bottom
                 topMargin: 2
