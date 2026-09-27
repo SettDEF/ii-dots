@@ -44,7 +44,18 @@ ROOTPART=""; BOOTPART=""; HOMEPART=""; FORMAT_HOME=0
 DESKTOP="ii"; ASSUME_YES=0; DRY=0
 TIMEZONE=""; LOCALE="en_US.UTF-8"; KEYMAP=""
 
+B=$'\033[1m'; DIM=$'\033[2m'; R=$'\033[0m'
+CYN=$'\033[36m'; GRN=$'\033[32m'; YEL=$'\033[33m'; RED=$'\033[31m'
+
 c()    { printf '\033[%sm%s\033[0m\n' "$1" "$2"; }
+
+banner() {
+    local text="Arch Linux — install" w=52 pad
+    pad=$(( w - ${#text} - 3 ))
+    printf '\n%s╭%s╮%s\n' "$CYN" "$(printf '─%.0s' $(seq 1 $w))" "$R"
+    printf '%s│%s  %s%s%s%*s%s│%s\n' "$CYN" "$R" "$B" "$text" "$R" "$pad" "" "$CYN" "$R"
+    printf '%s╰%s╯%s\n' "$CYN" "$(printf '─%.0s' $(seq 1 $w))" "$R"
+}
 die()  { c '31' "error: $*" >&2; exit 1; }
 info() { c '36' ":: $*"; }
 warn() { c '33' "warn: $*" >&2; }
@@ -53,11 +64,14 @@ run()  { if [ "$DRY" = 1 ]; then printf '   would: %s\n' "$*"; else "$@"; fi; }
 # Same, but the command is a shell string run inside the new system.
 inchroot() { if [ "$DRY" = 1 ]; then printf '   would (chroot): %s\n' "$*"; else arch-chroot /mnt bash -c "$*"; fi; }
 
+# A /dev/tty that exists but cannot be opened still passes -r, so open it.
+have_tty() { { : >/dev/tty; } 2>/dev/null; }
+
 # Prompts read the terminal, not stdin: curl | bash makes stdin the script.
 ask() {
     local prompt="$1" default="${2:-}" reply=""
     [ "$ASSUME_YES" = 1 ] && { printf '%s\n' "$default"; return; }
-    if [ -r /dev/tty ]; then
+    if have_tty; then
         printf '\033[36m?\033[0m %s%s: ' "$prompt" "${default:+ [$default]}" > /dev/tty
         read -r reply < /dev/tty || true
     fi
@@ -67,7 +81,7 @@ ask_secret() {
     local prompt="$1" a="" b="" tries=0
     # Never a flag: an argv is readable by every process on the machine.
     [ -n "${QS_PASSWORD:-}" ] && { printf '%s\n' "$QS_PASSWORD"; return; }
-    [ -r /dev/tty ] || die "no terminal to ask for a password on.
+    have_tty || die "no terminal to ask for a password on.
        Pipe it in as QS_PASSWORD=... instead."
     while :; do
         tries=$((tries + 1))
@@ -125,33 +139,25 @@ ok "$( [ "$UEFI" = 1 ] && echo 'UEFI' || echo 'BIOS' ) boot, network up"
 
 USE_EXISTING=0
 [ -n "$ROOTPART" ] && USE_EXISTING=1
+PASSWORD=""
 
-if [ "$USE_EXISTING" = 1 ]; then
-    [ -b "$ROOTPART" ] || [ "$DRY" = 1 ] || die "not a block device: $ROOTPART"
-    [ "$UEFI" = 0 ] || [ -n "$BOOTPART" ] || die "--root-part on a UEFI machine needs --esp-part too."
-elif [ -z "$DISK" ]; then
+pick_disk() {
     echo; info "disks on this machine:"
-    lsblk -po NAME,SIZE,FSTYPE,MOUNTPOINTS,LABEL | grep -vE "loop|/dev/sr" | sed 's/^/   /'
-    echo; info "to keep another OS on the disk, quit and pass --root-part instead"
-    echo
-    DISK=$(ask "  Install to which disk" "")
-fi
-[ "$USE_EXISTING" = 1 ] || [ -b "$DISK" ] || [ "$DRY" = 1 ] || die "not a block device: $DISK"
+    lsblk -po NAME,SIZE,FSTYPE,MOUNTPOINTS,LABEL 2>/dev/null | grep -vE "loop|/dev/sr" | sed 's/^/   /'
+    echo; printf '   %sto keep another OS, give a partition here instead of a disk%s\n' "$DIM" "$R"
+    local answer; answer=$(ask "  Disk or partition" "$DISK")
+    [ -n "$answer" ] || return
+    # A partition rather than a whole disk means the table is left alone.
+    if [ -b "$answer" ] && [ "$(lsblk -dno TYPE "$answer" 2>/dev/null)" = part ]; then
+        ROOTPART="$answer"; USE_EXISTING=1; DISK=""
+        BOOTPART=$(ask "  EFI partition (kept, not formatted)" "$BOOTPART")
+    else
+        DISK="$answer"; USE_EXISTING=0; ROOTPART=""
+    fi
+}
 
-[ -n "$USERNAME" ] || USERNAME=$(ask "  Username" "$(whoami 2>/dev/null || echo user)")
-[ "$HOSTNAME_NEW" = arch ] && HOSTNAME_NEW=$(ask "  Hostname" "arch")
-# Geolocated default, and never in dry-run: no reason to call out just to
-# print a plan.
-if [ -z "$TIMEZONE" ]; then
-    guess=UTC
-    [ "$DRY" = 1 ] || guess=$(curl -fsS --max-time 4 https://ipapi.co/timezone 2>/dev/null || echo UTC)
-    TIMEZONE=$(ask "  Time zone" "$guess")
-fi
-[ -n "$KEYMAP" ]   || KEYMAP=$(ask "  Console keymap" "us")
-
-if [ "$ASSUME_YES" != 1 ]; then
-    echo; info "desktops:"
-    printf '   %-10s %s\n' \
+pick_desktop() {
+    echo; printf '   %-10s %s\n' \
         "ii"       "Hyprland + this quickshell desktop" \
         "hyprland" "Hyprland on its own, nothing else" \
         "gnome"    "GNOME" \
@@ -160,14 +166,89 @@ if [ "$ASSUME_YES" != 1 ]; then
         "none"     "no desktop, base system only"
     echo
     DESKTOP=$(ask "  Desktop" "$DESKTOP")
+}
+
+# Everything on one screen with its current value, the way archinstall does it:
+# a linear run of prompts cannot be corrected without starting again.
+menu() {
+    local choice
+    while true; do
+        banner
+        printf '\n   %-3s %-14s %s%s%s\n' \
+          "d" "Target"     "$GRN" "$( [ "$USE_EXISTING" = 1 ] && echo "$ROOTPART (keep table)" || echo "${DISK:-not set}" )" "$R"
+        printf '   %-3s %-14s %s%s%s\n' \
+          "D" "Desktop"    "$DIM" "$DESKTOP$( [ "$DESKTOP" = ii ] && echo " ($PROFILE)" )" "$R" \
+          "f" "Filesystem" "$DIM" "$FS" "$R" \
+          "e" "EFI size"   "$DIM" "$( [ "$USE_EXISTING" = 1 ] && echo "${BOOTPART:-none} (kept)" || echo "$ESP_SIZE" )" "$R" \
+          "s" "Swap"       "$DIM" "${SWAP_SIZE:-zram, half of RAM}" "$R" \
+          "H" "Home"       "$DIM" "${HOMEPART:-${HOME_SIZE:-inside root}}" "$R" \
+          "u" "User"       "$DIM" "${USERNAME:-not set}" "$R" \
+          "n" "Hostname"   "$DIM" "$HOSTNAME_NEW" "$R" \
+          "t" "Time zone"  "$DIM" "$TIMEZONE" "$R" \
+          "k" "Keymap"     "$DIM" "$KEYMAP" "$R" \
+          "p" "Password"   "$DIM" "$( [ -n "$PASSWORD" ] && echo set || echo 'not set' )" "$R"
+        printf '\n'
+        printf '   %-3s %s\n' \
+          "i" "Install" \
+          "r" "Dry run — print the plan, change nothing" \
+          "q" "Quit"
+        echo
+        # No terminal and no --yes: show the plan once, then go.
+        have_tty || { warn "no terminal for the menu; taking these settings"; return; }
+        choice=$(ask "  Choice" "")
+        case "$choice" in
+            d) pick_disk ;;
+            D) pick_desktop; [ "$DESKTOP" = ii ] && PROFILE=$(ask "  Profile" "$PROFILE") ;;
+            f) FS=$(ask "  Filesystem (ext4 or btrfs)" "$FS") ;;
+            e) ESP_SIZE=$(ask "  EFI partition size" "$ESP_SIZE") ;;
+            s) SWAP_SIZE=$(ask "  Swap size, empty for zram" "$SWAP_SIZE") ;;
+            H) HOME_SIZE=$(ask "  Separate /home size, empty for none" "$HOME_SIZE") ;;
+            u) USERNAME=$(ask "  Username" "$USERNAME") ;;
+            n) HOSTNAME_NEW=$(ask "  Hostname" "$HOSTNAME_NEW") ;;
+            t) TIMEZONE=$(ask "  Time zone" "$TIMEZONE") ;;
+            k) KEYMAP=$(ask "  Console keymap" "$KEYMAP") ;;
+            p) PASSWORD=$(ask_secret "  Password for $USERNAME and root") ;;
+            r) DRY=1; return ;;
+            i|"") return ;;
+            q) warn "nothing done"; exit 0 ;;
+            *) warn "no such choice: $choice" ;;
+        esac
+    done
+}
+
+# Defaults the menu opens with, so nothing shows as unset that need not be.
+[ -n "$TIMEZONE" ] || TIMEZONE=$( [ "$DRY" = 1 ] && echo UTC \
+    || curl -fsS --max-time 4 https://ipapi.co/timezone 2>/dev/null || echo UTC )
+[ -n "$KEYMAP" ]   || KEYMAP=$(localectl status 2>/dev/null | sed -n 's/.*VC Keymap: *//p' | head -1)
+[ -n "$KEYMAP" ]   || KEYMAP=us
+
+if [ "$ASSUME_YES" != 1 ]; then
+    menu
+else
+    [ -n "$DISK" ] || [ -n "$ROOTPART" ] || die "--yes needs --disk or --root-part."
+    [ -n "$USERNAME" ] || die "--yes needs --user."
 fi
 
 case "$DESKTOP" in
     ii|hyprland|gnome|plasma|xfce|none) ;;
     *) die "unknown desktop: $DESKTOP (ii, hyprland, gnome, plasma, xfce, none)" ;;
 esac
+[ "$FS" = ext4 ] || [ "$FS" = btrfs ] || die "unknown filesystem: $FS"
+[ -n "$USERNAME" ] || die "no username set."
 
-if [ "$DRY" = 1 ]; then PASSWORD="(not asked in dry-run)"; else PASSWORD=$(ask_secret "  Password for $USERNAME and root"); fi
+if [ "$USE_EXISTING" = 1 ]; then
+    [ -b "$ROOTPART" ] || [ "$DRY" = 1 ] || die "not a block device: $ROOTPART"
+    [ "$UEFI" = 0 ] || [ -n "$BOOTPART" ] || die "a UEFI install into an existing partition needs an EFI partition too."
+else
+    [ -n "$DISK" ] || die "no disk chosen."
+    [ -b "$DISK" ] || [ "$DRY" = 1 ] || die "not a block device: $DISK"
+fi
+
+if [ "$DRY" = 1 ]; then
+    PASSWORD="(not asked in dry-run)"
+elif [ -z "$PASSWORD" ]; then
+    PASSWORD=$(ask_secret "  Password for $USERNAME and root")
+fi
 
 echo
 if [ "$USE_EXISTING" = 1 ]; then

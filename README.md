@@ -12,6 +12,30 @@ partitions, installs Arch and this desktop, and you reboot into it:
 curl -fsSL https://github.com/SettDEF/ii-dots/raw/master/iso-install.sh | bash
 ```
 
+It opens on a menu, the way archinstall does — every setting on one screen with
+its current value, change any of them in any order, then **i** to install:
+
+```
+   d   Target         /dev/nvme0n1
+   D   Desktop        ii (recommended)
+   f   Filesystem     ext4
+   e   EFI size       1G
+   s   Swap           zram, half of RAM
+   H   Home           inside root
+   u   User           caesar
+   n   Hostname       arch
+   t   Time zone      Europe/Berlin
+   k   Keymap         us
+   p   Password       not set
+
+   i   Install
+   r   Dry run — print the plan, change nothing
+   q   Quit
+```
+
+Give the target a partition instead of a disk and it switches to the dual-boot
+path on its own, leaving the partition table alone.
+
 It **erases the disk you point it at**, and makes you type the path back before
 it does. `--dry-run` prints the whole plan and changes nothing — worth running
 first, and it works from any machine, not just the ISO. `--disk` and `--yes`
