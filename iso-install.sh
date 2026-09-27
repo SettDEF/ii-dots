@@ -468,6 +468,15 @@ BASE+=(grub os-prober)
 # resize of the root filesystem later.
 [ -n "${SWAPPART:-}" ] || BASE+=(zram-generator)
 
+# CPU microcode. Not optional on older hardware: a Haswell without it prints
+# "TSC_DEADLINE disabled due to Errata" at every boot and runs with known
+# silicon bugs unpatched. GRUB picks the image up by itself at grub-mkconfig.
+case "$(grep -m1 '^vendor_id' /proc/cpuinfo 2>/dev/null)" in
+    *GenuineIntel*) BASE+=(intel-ucode); UCODE=intel ;;
+    *AuthenticAMD*) BASE+=(amd-ucode);   UCODE=amd ;;
+    *)              UCODE="" ;;
+esac
+
 # Everything but `none` gets a greeter: a machine that boots to a bare tty
 # after a graphical install reads as a failed one.
 case "$DESKTOP" in
@@ -524,6 +533,7 @@ fi
 inchroot "grep -q GRUB_DISABLE_OS_PROBER /etc/default/grub \
     && sed -i 's/^#\?GRUB_DISABLE_OS_PROBER=.*/GRUB_DISABLE_OS_PROBER=false/' /etc/default/grub \
     || echo 'GRUB_DISABLE_OS_PROBER=false' >> /etc/default/grub"
+[ -n "${UCODE:-}" ] && ok "$UCODE microcode included"
 inchroot "grub-mkconfig -o /boot/grub/grub.cfg"
 ok "system configured"
 
