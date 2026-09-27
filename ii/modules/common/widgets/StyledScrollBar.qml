@@ -120,8 +120,31 @@ ScrollBar {
         // Duration follows the distance, or a one-dot hop takes as long as a
         // jump down the whole track.
         const dist = Math.abs(target - root.position);
-        snapAnim.duration = Math.round(120 + dist * 320);
-        snapAnim.to = target;
+        snapAnim.stop();
+        snapAnim.duration = Math.round(140 + dist * 340);
+
+        // Animate the FLICKABLE, not `position`. On an attached bar Qt derives
+        // position from contentY every frame, so animating position is a tug of
+        // war with the value it is derived from — which is why this still
+        // arrived as a jump.
+        if (root.hasFlickable) {
+            const f = root.attached;
+            if (root.isVertical) {
+                const range = Math.max(0, f.contentHeight - f.height);
+                snapAnim.target = f;
+                snapAnim.property = "contentY";
+                snapAnim.to = (f.originY ?? 0) + target * range;
+            } else {
+                const range = Math.max(0, f.contentWidth - f.width);
+                snapAnim.target = f;
+                snapAnim.property = "contentX";
+                snapAnim.to = (f.originX ?? 0) + target * range;
+            }
+        } else {
+            snapAnim.target = root;
+            snapAnim.property = "position";
+            snapAnim.to = target;
+        }
         snapAnim.restart();
     }
 
@@ -146,28 +169,17 @@ ScrollBar {
         }
     }
 
-    /// The flickable this is attached to, for telling a jump from a flick.
-    readonly property Flickable attached: (root.parent instanceof Flickable) ? root.parent : null
-
-    // Jumps glide. Drags and flicks do NOT: the flickable drives position
-    // continuously during those, and animating it would write contentY back
-    // underneath the hand and fight whatever is already moving.
-    Behavior on position {
-        enabled: !root.pressed && !snapAnim.running
-            && !(root.attached?.moving ?? false)
-            && !(root.attached?.dragging ?? false)
-        NumberAnimation {
-            duration: 170
-            easing.type: Easing.BezierSpline
-            easing.bezierCurve: Appearance.animationCurves.emphasizedDecel
-        }
-    }
+    /// The flickable this bar is attached to, if it is attached to one.
+    ///
+    /// Detected by shape, not `instanceof`: the type check does not survive the
+    /// QML/JS boundary reliably.
+    readonly property Item attached: root.parent
+    readonly property bool hasFlickable: !!root.attached
+        && root.attached.contentY !== undefined
+        && root.attached.contentHeight !== undefined
 
     NumberAnimation {
         id: snapAnim
-        target: root
-        property: "position"
-        duration: Appearance.animationCurves.expressiveFastSpatialDuration
         easing.type: Easing.BezierSpline
         easing.bezierCurve: Appearance.animationCurves.emphasizedDecel
     }
