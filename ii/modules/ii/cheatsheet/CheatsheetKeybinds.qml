@@ -12,28 +12,16 @@ Item {
     property real spacing: 20
     property real titleSpacing: 7
     property real padding: 4
-    /// Widest a single label may be before it elides. Without a cap, one bind
-    /// whose comment is a full command line sets the width of its whole column.
+    /// Cap, or one bind whose comment is a command line sets the column width.
     property real maxCommentWidth: 300
 
-    /// Height the columns have to fit in, set by the page that hosts this.
-    /// 0 means "unknown", and the data's own grouping is used unchanged.
+    /// Height to fit in, set by the host. 0 = unknown.
     property real heightBudget: 0
 
-    // ── Column packing ──────────────────────────────────────────────────
-    // The number of columns used to come from the DATA: whatever the keybind
-    // source called a top-level group became a column. With three groups you
-    // got three columns however tall they were, so the page scrolled while a
-    // third of the width sat empty.
-    //
-    // Instead, flatten every section out of the source and repack them into as
-    // many columns as it takes to fit the height available. Sections stay
-    // whole; only their arrangement changes.
-    // Measured, not estimated. The first cut guessed 30px a row; the rendered
-    // rows are about 41, so the packer thought everything fitted in three
-    // columns and the page went on scrolling. These two are hidden instances of
-    // the very things being measured, so the arithmetic cannot drift from the
-    // fonts.
+    // Sections are flattened out of the source and repacked into as many
+    // columns as the height needs, rather than taking the source's grouping.
+    // Measured, not estimated: hidden instances of the things being measured,
+    // so the arithmetic cannot drift from the fonts.
     readonly property real rowHeight: rowMeasure.implicitHeight + 4   // + GridLayout.rowSpacing
     readonly property real sectionTitleHeight: titleMeasure.implicitHeight + root.titleSpacing
 
@@ -66,8 +54,7 @@ Item {
     readonly property var packedColumns: {
         const secs = root.flatSections;
         if (secs.length === 0) return [];
-        // No budget yet (first layout pass): one column per section rather than
-        // one giant column, so the first frame is not visibly wrong.
+        // No budget yet: one column per section, so frame one is not wrong.
         if (root.heightBudget <= 100)
             return secs.map(s => ({ name: "", keybinds: [], children: [s] }));
 
@@ -89,9 +76,7 @@ Item {
             }
             current.children.push(s);
             used += height(s) + root.spacing;
-            // Break AFTER filling, and never leave a column empty — a section
-            // taller than the target would otherwise start a column and
-            // immediately push the next one into another.
+            // Break AFTER filling: testing first strands an oversized section.
             if (used >= target && out.length < columns) current = null;
         }
         return out;
@@ -178,10 +163,8 @@ Item {
         Rectangle {
             id: layoutChip
             readonly property bool switchable: KeyboardLayout.availableLayouts.length > 1
-            // With one layout configured there is nothing to switch to, so the
-            // chip was an inert "US" sitting above the first section with
-            // nothing to say it was a control at all. The layout is still shown
-            // in Settings -> System -> Keyboard, where someone is looking for it.
+            // With one layout there is nothing to switch to, so it is inert.
+            // The layout is still shown in Settings > System > Keyboard.
             visible: layoutChip.switchable
             readonly property int layoutIndex: KeyboardLayout.availableLayouts.indexOf(KeyboardLayout.effectiveLayout)
             readonly property string variantSuffix: (layoutIndex >= 0
@@ -361,12 +344,9 @@ Item {
                                                 id: commentComponent
                                                 Item {
                                                     id: commentItem
-                                                    // A GridLayout column is as wide as its widest
-                                                    // cell, and these used to centre inside that —
-                                                    // so in a section with one long label every
-                                                    // short one floated in the middle of its own
-                                                    // gap and no two lines started at the same x.
-                                                    // Left-aligned, the column reads as a list.
+                                                    // Left-aligned: a GridLayout column is as wide
+                                                    // as its widest cell, and centring in that
+                                                    // strands every short label mid-gap.
                                                     implicitWidth: Math.min(commentText.implicitWidth, root.maxCommentWidth) + 8
                                                     implicitHeight: commentText.implicitHeight
 
@@ -375,9 +355,7 @@ Item {
                                                         anchors.left: parent.left
                                                         anchors.leftMargin: 8
                                                         anchors.verticalCenter: parent.verticalCenter
-                                                        // Capped and elided: a bind whose label is
-                                                        // a whole command line ran off the right of
-                                                        // the window, taking its section with it.
+                                                        // Capped: a command-line label runs off-window.
                                                         width: Math.min(implicitWidth, root.maxCommentWidth)
                                                         elide: Text.ElideRight
                                                         font.pixelSize: Config.options.cheatsheet.fontSize.comment || Appearance.font.pixelSize.smaller

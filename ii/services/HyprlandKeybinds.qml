@@ -9,41 +9,20 @@ import Quickshell.Io
 import Quickshell.Hyprland
 
 /**
- * The keybinds behind the cheatsheet (Super+/).
+ * The keybinds behind the cheatsheet (Super+/), from `hyprctl binds -j`.
  *
- * Read from `hyprctl binds -j` — what is ACTUALLY bound at this moment —
- * rather than from a config file. The file was the original source and it was
- * the wrong one for three reasons: it had to be written a second time by hand
- * next to the real binds and drifted the moment anyone forgot; its parser is a
- * Python script with a venv shebang, so a missing $ILLOGICAL_IMPULSE_VIRTUAL_ENV
- * showed an EMPTY cheatsheet with nothing to explain it; and it does not follow
- * `source =`, so binds in any included file were invisible.
+ * On a Lua config every bind reports dispatcher "__lua" with an opaque arg, so
+ * the live data knows which KEYS are bound but not what they do. `description`
+ * is all that is left, read as "Section/Label"; no description means plumbing
+ * and is dropped, which keeps the Super-interrupt binds out without a blocklist.
  *
- * The catch, and the reason the file is still here as a fallback: on a Lua
- * config every bind reports `dispatcher: "__lua"` with an opaque callback id
- * for `arg`, so the live data knows which KEYS are bound but not what they do.
- * The `description` field is the only human-readable thing left. So:
- *
- *   hl.bind("SUPER + A", hl.dsp.global("quickshell:sidebarLeftToggle"),
- *           { description = "Shell/Left sidebar" })
- *
- * Text before the first "/" is the section, the rest is the label. No slash
- * means the bind lands in a general section; no description at all means the
- * bind is plumbing and is left out, which is exactly what keeps the ~68
- * transparent Super-interrupt binds off the cheatsheet without a blocklist.
- *
- * A config whose binds carry no descriptions would get an almost empty
- * cheatsheet, which would be a regression for anyone upgrading. So the two
- * sources are COMPARED and the richer one wins: measured on a config with
- * descriptions on only 23 of 530 binds, the live path would have replaced a
- * full file-derived list with 23 unsectioned entries. Whichever source knows
- * about more binds is the one that gets shown.
+ * The old conf-file parse stays as a fallback and the RICHER source wins —
+ * an unannotated config would otherwise lose most of its cheatsheet.
  */
 Singleton {
     id: root
 
-    /// Floor for the live path, so a config with two annotated binds does not
-    /// beat an absent file on a technicality.
+    /// Floor, so two annotated binds do not beat an absent file.
     property int minLiveBinds: 8
     /// Section for binds whose description carries no "Section/" prefix.
     property string defaultSectionName: "Keybinds"
@@ -79,8 +58,7 @@ Singleton {
         return n;
     }
 
-    // The richer source wins. An annotated config beats its own stale file;
-    // an unannotated one keeps the file it has always had.
+    // The richer source wins.
     readonly property bool usingLiveBinds: root.liveBindCount >= root.minLiveBinds
         && root.liveBindCount >= root.fileBindCount
 
@@ -109,8 +87,7 @@ Singleton {
                 let arr;
                 try { arr = JSON.parse(text || "[]"); } catch (e) { return; }
 
-                // Hyprland reports the modifier set as a bitmask. Ordered as
-                // they are conventionally written, not by bit value.
+                // Bitmask. Ordered as written, not by bit value.
                 const MODS = [[64, "Super"], [4, "Ctrl"], [8, "Alt"], [1, "Shift"]];
                 const sections = ({});
                 const order = [];
@@ -118,8 +95,7 @@ Singleton {
 
                 for (const b of arr) {
                     const desc = String(b.description ?? "").trim();
-                    // No description => plumbing. This is what keeps the
-                    // transparent Super-interrupt binds out without naming them.
+                    // No description => plumbing.
                     if (desc.length === 0) continue;
 
                     const slash = desc.indexOf("/");
@@ -130,12 +106,11 @@ Singleton {
                     const mods = [];
                     for (const [bit, name] of MODS)
                         if (b.modmask & bit) mods.push(name);
-                    // Super_L and Super_R are the same key to a reader, so
-                    // they collapse to one row rather than two identical ones.
+                    // One key to a reader.
                     let key = String(b.key || b.keycode || "?");
                     if (key === "Super_L" || key === "Super_R") key = "Super";
 
-                    // A bind repeated across several keys should appear once.
+                    // A bind on several keys appears once.
                     const dedupe = mods.join("+") + "|" + key + "|" + desc;
                     if (seen[dedupe]) continue;
                     seen[dedupe] = true;
@@ -147,26 +122,20 @@ Singleton {
                     sections[sectionName].keybinds.push({
                         mods: mods,
                         key: key,
-                        // Kept for shape compatibility with the file parser;
-                        // "__lua" is not worth showing anyone.
+                        // Shape compatibility only; "__lua" is not worth showing.
                         dispatcher: String(b.dispatcher ?? ""),
                         params: String(b.arg ?? ""),
                         comment: label
                     });
                 }
 
-                // A flat list of sections. The cheatsheet flattens whatever
-                // it is given and repacks it into however many columns fit the
-                // height available, so arranging them here would only be work
-                // thrown away — and two places deciding the layout is how they
-                // come to disagree.
+                // Flat: the cheatsheet repacks into columns itself.
                 root.liveKeybinds = { children: order.map(n => sections[n]) };
             }
         }
     }
 
-    // ── Fallback: the old file parse ────────────────────────────────────
-    // Still run, so that a config without bind descriptions keeps working.
+    // Fallback, for configs whose binds carry no descriptions.
     Process {
         id: getDefaultKeybinds
         running: true

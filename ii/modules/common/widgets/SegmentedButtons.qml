@@ -3,32 +3,21 @@ import qs.modules.common.widgets
 import QtQuick
 import QtQuick.Layouts
 
-/**
- * Material 3 segmented buttons.
- *
- * https://m3.material.io/components/segmented-buttons/overview
- *
- * One outlined container, segments divided by hairlines, the selected one
- * filled and carrying a check. This exists because WallTune had grown three
- * different controls for the same job — separate pills for the transition, a
- * recessed sliding track for the apply mode, and another style again for
- * dark/light — so three identical decisions looked like three unrelated kinds
- * of thing.
- *
- *   SegmentedButtons {
- *       model: [{ id: "fade", label: "Fade", icon: "blur_on" }, …]
- *       currentId: someState
- *       onSelected: id => someState = id
- *   }
- */
+/// Material 3 segmented buttons.
+/// https://m3.material.io/components/segmented-buttons/overview
+///
+///   SegmentedButtons {
+///       model: [{ id: "fade", label: "Fade", icon: "blur_on" }, …]
+///       currentId: state
+///       onSelected: id => state = id
+///   }
 Rectangle {
     id: root
 
     /// [{ id, label, icon? }]
     property var model: []
     property var currentId
-    /// A check on the selected segment. M3 shows one; turn it off where the
-    /// icons already say what each segment is.
+    /// M3 shows a check on the selection; off where icons already say enough.
     property bool showCheck: true
     property real segmentHeight: 36
 
@@ -62,8 +51,7 @@ Rectangle {
 
                 Rectangle {
                     anchors.fill: parent
-                    // Only the outer corners are round: the segments together
-                    // make one pill, not a row of separate ones.
+                    // Only outer corners round: one pill, not a row of them.
                     topLeftRadius: segment.first ? root.radius : 0
                     bottomLeftRadius: segment.first ? root.radius : 0
                     topRightRadius: segment.last ? root.radius : 0
@@ -82,8 +70,7 @@ Rectangle {
                     }
                 }
 
-                // Divider before every segment but the first. Hidden next to a
-                // filled segment, where it would cut across the fill.
+                // Hidden next to a filled segment, where it would cut the fill.
                 Rectangle {
                     visible: !segment.first && !segment.active
                         && !(root.currentId === (root.model[segment.index - 1]?.id))

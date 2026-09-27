@@ -648,8 +648,7 @@ ContentPage {
             ]
         }
 
-        // A live one, because the difference between these is a few pixels of
-        // opacity and nobody can pick from three words.
+        // Live: the difference is a few pixels of opacity.
         Rectangle {
             Layout.fillWidth: true
             Layout.leftMargin: 8
@@ -669,8 +668,7 @@ ContentPage {
                 clip: true
 
                 ScrollBar.vertical: StyledScrollBar {
-                    // Landmarks, so the map and magnets can be tried out here
-                    // rather than only discovered in the settings rail.
+                    // Landmarks, so the map and magnets can be tried here.
                     markers: [
                         { at: 0.0,  label: Translation.tr("Top"),    major: true },
                         { at: 0.35, label: Translation.tr("Middle") },

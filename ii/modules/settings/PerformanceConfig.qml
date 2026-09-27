@@ -4,19 +4,13 @@ import qs.services
 import qs.modules.common
 import qs.modules.common.widgets
 
-// Everything here already existed as a setting; what was missing was one place
-// that says which of them actually cost anything, and roughly how much.
-//
-// The ordering is by cost, not by category, because that is the question
-// somebody on an old laptop is asking. The numbers in the tooltips are what
-// the code does at 1366x768 — they are arithmetic, not benchmarks, and the
-// page says so rather than implying a machine was measured.
+// Ordered by cost, not category. The tooltip numbers are what the code does
+// at 1366x768 — arithmetic, not benchmarks.
 ContentPage {
     id: page
     forceWidth: true
 
-    // The same key set the installer's --low-end profile writes, so the two
-    // cannot drift into disagreeing about what "low-end" means.
+    // The same keys install.sh --low-end writes.
     function applyLowEnd() {
         Config.options.lock.blur.enable = false;
         Config.options.background.effect = "";
@@ -49,9 +43,7 @@ ContentPage {
         Config.options.resources.updateInterval = 3000;
         Config.options.resources.historyLength = 60;
         Config.options.search.nonAppResultDelay = 30;
-        // The wallpaper effect is deliberately NOT restored: it is a path to
-        // whichever pack was picked, and this page has no business guessing
-        // which one. Transparency stays off because that is its own default.
+        // The wallpaper effect is a path; this page cannot guess which.
     }
 
     ContentSection {

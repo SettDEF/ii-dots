@@ -319,9 +319,8 @@ Item {
                                     // captured continuously behind a closed
                                     // popup.
                                     captureSource: previewPopup.shouldShow ? windowButton.modelData : null
-                                    // Off, the view still attaches and grabs
-                                    // one frame, so the preview is a still
-                                    // rather than a blank box.
+                                    // Off: still attaches for one frame, so the
+                                    // preview is a still, not a blank box.
                                     live: previewPopup.show
                                         && (Config.options.dock.livePreviews ?? true)
                                     paintCursor: true

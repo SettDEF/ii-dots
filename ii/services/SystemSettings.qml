@@ -6,17 +6,11 @@ import Quickshell
 import Quickshell.Io
 
 /**
- * The handful of settings that belong to the machine rather than to the shell:
- * time zone, system locale, and the console keymap.
+ * Machine settings, not shell ones: time zone, system locale, console keymap.
+ * They live in /etc, so writes go through pkexec; reads are free.
  *
- * These live in /etc and only root may change them, so every write goes
- * through pkexec and the user gets a password prompt. Reads are free, so the
- * page can always show the truth even when it cannot change it.
- *
- * Deliberately NOT the Hyprland keyboard layout — that is KeyboardLayout.qml,
- * which applies live and needs no root. The two are easy to confuse: this one
- * is what the TTY and the display manager use, that one is what your session
- * types with.
+ * NOT the Hyprland keyboard layout — that is KeyboardLayout.qml. This one is
+ * what the TTY uses, that one is what your session types with.
  */
 Singleton {
     id: root
@@ -44,9 +38,7 @@ Singleton {
 
     function setLocale(loc) {
         if (!loc || loc === root.locale) return;
-        // set-locale only succeeds for a locale that has been generated, so a
-        // bad pick fails loudly here instead of leaving a system that boots
-        // into C. The error is surfaced rather than swallowed.
+        // Only succeeds for a generated locale; the error is surfaced.
         root._apply(["pkexec", "localectl", "set-locale", `LANG=${loc}`]);
     }
 
@@ -69,8 +61,7 @@ Singleton {
     Process {
         id: readProc
         running: true
-        // One shell for all of it: three separate Processes for three one-line
-        // reads is three process spawns every time the page opens.
+        // One shell: three Processes would be three spawns per page open.
         command: ["bash", "-c",
             "command -v pkexec >/dev/null && echo 'PKEXEC=1' || echo 'PKEXEC=0'; " +
             "timedatectl show -p Timezone --value 2>/dev/null | sed 's/^/TZ=/'; " +
@@ -111,8 +102,7 @@ Singleton {
         }
         onExited: (code) => {
             root.busy = false;
-            // 126 is pkexec's "dismissed or not authorised", which is the user
-            // changing their mind rather than a failure worth shouting about.
+            // 126/127 is pkexec dismissed, not a failure.
             if (code === 126 || code === 127) root.lastError = "";
             root.refresh();
         }

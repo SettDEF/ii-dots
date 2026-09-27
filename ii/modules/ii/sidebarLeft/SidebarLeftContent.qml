@@ -162,13 +162,8 @@ Item {
                     ? Appearance.colors.colLayer1Hover
                     : Appearance.colors.colLayer1
                 radius: height / 2
-                // Capped: the pill and the button group share colLayer1, so when
-                // the pill grew into them they read as one merged shape.
-                //
-                // The floor used to be Math.max(120, ...), which let the pill
-                // win the arithmetic and draw straight over the button group —
-                // with five tabs open the last one was cut in half by the pill's
-                // own right edge. The cap is now what is genuinely free.
+                // Capped to what is genuinely free: the pill and the button group
+                // share colLayer1, so overlap reads as one merged shape.
                 implicitWidth: Math.min(leftSidebarTitleRow.implicitWidth + 24,
                     Math.max(0, parent.width - leftSidebarButtonsRow.width - 12))
                 implicitHeight: leftSidebarTitleRow.implicitHeight + 8
@@ -190,11 +185,8 @@ Item {
                         rotation: root.toolsOpen ? 45 : 0
                         Behavior on rotation { NumberAnimation { duration: 260; easing.type: Easing.OutCubic } }
                     }
-                    // The word collapses to make room for the chips, the same
-                    // way the chips collapse to make room for it. Two clusters
-                    // wanted one row and only one of them can be widest; the
-                    // rotated grid_view icon carries the pill's identity while
-                    // the tabs are out.
+                    // Collapses to make room for the chips; the rotated
+                    // grid_view icon carries the pill's identity meanwhile.
                     Item {
                         id: toolsLabel
                         anchors.verticalCenter: parent.verticalCenter

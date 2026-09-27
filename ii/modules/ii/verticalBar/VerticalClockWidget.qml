@@ -24,25 +24,19 @@ Item {
                 readonly property bool meridiem: modelData.match(/am|pm/i) !== null
 
                 Layout.alignment: Qt.AlignHCenter
-                // The two halves of a time have to read as ONE thing stacked,
-                // not as two numbers that happen to sit above each other, which
-                // is what full line spacing made of them. The line box is
-                // tightened and the rows pulled together.
+                // Pulled together, or the two halves read as separate numbers.
                 Layout.topMargin: (index === 0 || meridiem) ? 0 : -3
 
                 font.pixelSize: meridiem
                     ? Appearance.font.pixelSize.smaller
                     : Appearance.font.pixelSize.large
-                // Same family as the workspace numerals, and tabular so the
-                // digits do not shuffle sideways every minute.
+                // Tabular, or the digits shuffle sideways every minute.
                 font.family: Appearance.font.family.numbers
                 font.features: ({ "tnum": 1 })
                 lineHeightMode: Text.ProportionalHeight
                 lineHeight: 0.82
 
-                // Minutes a shade quieter than the hour, so the pair has a
-                // reading order in a column where left-to-right cannot give it
-                // one.
+                // Quieter minutes give the pair a reading order a column cannot.
                 color: Appearance.colors.colOnLayer1
                 opacity: (index === 0 || meridiem) ? 1 : 0.72
                 text: modelData.padStart(2, "0")

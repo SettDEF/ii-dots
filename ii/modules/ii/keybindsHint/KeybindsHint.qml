@@ -138,10 +138,7 @@ Scope {
     PanelWindow {
         id: win
         visible: root.hintVisible || hintCard.opacity > 0
-        // Normal, not Ignore. Ignore spans the whole output regardless of what
-        // anything else has reserved, which is how a hint about the shell ended
-        // up drawn across the shell's own bar. exclusiveZone stays 0, so this
-        // respects other surfaces without reserving anything itself.
+        // Normal, not Ignore: Ignore spans the output and draws over the bar.
         exclusionMode: ExclusionMode.Normal
         exclusiveZone: 0
         color: "transparent"
@@ -151,10 +148,8 @@ Scope {
         anchors.left: true
         anchors.right: true
 
-        // Belt and braces, because a bar only reserves a zone when it is
-        // configured to. Whichever edge the bar is on, the card keeps off it:
-        // vertical bars sit left, or right when `bottom` is set, and a
-        // horizontal bar with `bottom` is on the very edge this card wants.
+        // A bar only reserves a zone when configured to, so keep a gutter off
+        // whichever edge it is on.
         readonly property bool barVertical: Config.options.bar.vertical
         readonly property bool barFarSide: Config.options.bar.bottom
         readonly property real barGutter: win.barVertical
@@ -164,9 +159,7 @@ Scope {
             ? win.barGutter + Appearance.sizes.hyprlandGapsOut : 0
         margins.right: (win.barVertical && win.barFarSide)
             ? win.barGutter + Appearance.sizes.hyprlandGapsOut : 0
-        // Clear of the screen's rounded corner, not just of its edge: at the
-        // gap size the card's own corner sat inside the screen's and the two
-        // curves read as a misalignment.
+        // Clear of the screen's rounded corner, not just its edge.
         margins.bottom: (!win.barVertical && win.barFarSide)
             ? win.barGutter + Appearance.sizes.hyprlandGapsOut
             : Appearance.rounding.screenRounding
@@ -188,10 +181,7 @@ Scope {
             x: root.snapRight
                 ? parent.width - width - Appearance.sizes.hyprlandGapsOut
                 : Appearance.sizes.hyprlandGapsOut
-            // One duration and one curve for everything this card does. It
-            // used to fade at 220ms, rise at 260 and slide at 320, all on
-            // OutCubic — three clocks for one gesture, which is what made it
-            // look busy rather than quick.
+            // One duration and curve for the whole gesture.
             readonly property int animDuration: Appearance.animation.elementMoveFast.duration
 
             Behavior on x {
@@ -234,14 +224,12 @@ Scope {
                 anchors.centerIn: parent
                 spacing: 7
 
-                /// Width of the key column, i.e. the widest key group here.
+                /// Widest key group, which sets the column for all rows.
                 property real keyColumnWidth: 0
                 function noteKeyWidth(w) {
                     if (w > cardCol.keyColumnWidth) cardCol.keyColumnWidth = w;
                 }
-                // Reset on a context change, or the column keeps the widest
-                // value some earlier context happened to need and every later
-                // card is padded out to it.
+                // Reset per context, or one wide card pads out every later one.
                 Connections {
                     target: root
                     function onActiveContextChanged() { cardCol.keyColumnWidth = 0 }
@@ -279,12 +267,7 @@ Scope {
                     opacity: 0.5
                 }
 
-                // Keybind rows.
-                //
-                // Every row used to size its own key area, so "Super" and
-                // "Super Tab" pushed their labels to different places and no
-                // two lines started at the same x. The widest key group now
-                // sets the column for all of them.
+                // The widest key group sets the column, so labels align.
                 Repeater {
                     model: root.currentKeybinds
                     delegate: RowLayout {
@@ -294,19 +277,14 @@ Scope {
                         Row {
                             id: keyRow
                             spacing: 3
-                            // Row's implicitWidth comes from its children, so
-                            // widening the cell cannot feed back into it.
+                            // Row's implicitWidth is content-driven, so no loop.
                             Layout.preferredWidth: Math.max(cardCol.keyColumnWidth, implicitWidth)
                             onImplicitWidthChanged: cardCol.noteKeyWidth(implicitWidth)
                             Component.onCompleted: cardCol.noteKeyWidth(implicitWidth)
 
                             Repeater {
                                 model: modelData.keys
-                                // The cheatsheet's key widget, dressed down.
-                                // Its defaults draw a bright full-bleed border
-                                // and a raised bottom edge, which works on the
-                                // cheatsheet's own large surface and reads as a
-                                // row of white boxes on a small dark card.
+                                // Dressed down: the defaults read as white boxes here.
                                 delegate: KeyboardKey {
                                     required property string modelData
                                     key: modelData

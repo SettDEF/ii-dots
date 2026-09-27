@@ -17,8 +17,7 @@ Item { // Full hitbox
     Item { // Boundaries for date numbers
         id: content
         anchors.centerIn: parent
-        // 26x32, not 24x30: at 13px the two numbers were touching the
-        // diagonal they are meant to sit either side of.
+        // 26x32: at 13px the numbers touched the diagonal.
         implicitWidth: 26
         implicitHeight: 32
 

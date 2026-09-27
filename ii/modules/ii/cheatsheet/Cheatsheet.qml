@@ -270,23 +270,12 @@ Scope { // Scope
                             cheatsheetBackground.height - cheatsheetBackground.padding * 2 - 80)
 
                         clip: true
-                        // No layer.effect here. It used to render the WHOLE
-                        // SwipeView — four pages wide, the full size of the
-                        // card — into an offscreen buffer and mask it, every
-                        // frame, purely to round the corners by 12px. `clip`
-                        // already bounds it, and the card behind supplies the
-                        // rounding that is actually visible; the buffer was
-                        // being rebuilt throughout every tab slide for a
-                        // detail sitting behind another rounded surface.
-
-                        // Match the slide to the rest of the shell instead of
-                        // Qt's default linear-ish snap.
+                        // No layer.effect: clip already bounds this, and masking
+                        // rebuilt a full-size buffer every frame of every slide.
                         Component.onCompleted: {
                             if (contentItem) {
-                                // 350, not the 500 of the default spatial
-                                // curve: that is tuned for something crossing
-                                // the screen, and a tab slide this size at
-                                // 500ms reads as lag rather than as motion.
+                                // 350: the 500 spatial curve is tuned for
+                                // crossing the screen and reads as lag here.
                                 contentItem.highlightMoveDuration =
                                     Appearance.animationCurves.expressiveFastSpatialDuration;
                                 contentItem.highlightMoveVelocity = -1;

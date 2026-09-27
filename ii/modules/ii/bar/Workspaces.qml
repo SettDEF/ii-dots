@@ -15,15 +15,8 @@ import Qt5Compat.GraphicalEffects
 
 Item {
     id: root
-    // Lay the slots out in a column instead of a row, for the vertical bar.
-    //
-    // This used to be declared and never read, so passing it produced a
-    // full-width widget spilling out of a 40px strip. Everything that has a
-    // long axis below now asks this which axis that is.
-    //
-    // The context slot — media marquee, window title, spectrum — stays hidden
-    // when vertical. There is nowhere for a marquee to run in 40px, and it is
-    // the one part of this widget that genuinely cannot be turned on its side.
+    /// Slots in a column instead of a row. The context slot is hidden when set —
+    /// a marquee has nowhere to run in 40px.
     property bool vertical: false
     property bool borderless: Config.options.bar.borderless
     property int widgetPadding: 0 // kept for BarContent.qml compatibility
@@ -277,10 +270,7 @@ Item {
         || TimerService.pomodoroSecondsLeft !== TimerService.pomodoroLapDuration
 
     property string contextMode: {
-        // Nothing to show it in. A 40px strip has no room for a marquee, a
-        // window title or a spectrum, and every width below is measured along
-        // an axis the vertical bar does not have to spare.
-        if (root.vertical) return "none"
+        if (root.vertical) return "none"   // no room for a marquee in 40px
         if (Notifications.popupList.length > 0 && !Notifications.popupInhibited) return "notification"
         // Hovering still gets you the media controls, so music is never more
         // than a pointer away even mid-session.
@@ -397,7 +387,7 @@ Item {
     // padH * 2 supplies one padH on each side of the island. ctx hugs
     // the slots with a 2 px gap; no extra trailing padding beyond the
     // base padH on the right.
-    // The long axis carries the slots; the short one is the bar's thickness.
+    // Long axis carries the slots; short one is the bar's thickness.
     readonly property real slotsExtent: slotsWidth + padH * 2 + recordingExtra
         + (root.vertical ? 0 : (ctxTotalW > 0 ? ctxTotalW + 2 : 0))
 
@@ -410,9 +400,7 @@ Item {
         // the island background, producing the "rectangle wobble".
         NumberAnimation { duration: 300; easing.type: Easing.OutCubic }
     }
-    // The same, for the axis the vertical bar grows along. Without it the
-    // island simply jumped to its new size while the slots inside animated.
-    Behavior on implicitHeight {
+    Behavior on implicitHeight {   // the axis the vertical bar grows along
         NumberAnimation { duration: 300; easing.type: Easing.OutCubic }
     }
 
@@ -979,8 +967,7 @@ Item {
         id: activeIndicator
         color: Appearance.colors.colPrimary
 
-        // Distance along the slot axis to the active slot. Identical in both
-        // orientations — only which coordinate it becomes changes.
+        // Distance along the slot axis; only which coordinate it becomes changes.
         property real computedOffset: {
             let d = root.recordingExtra
             d += root.padH   // matches slotsRow's margin
@@ -991,7 +978,7 @@ Item {
             return d + root.indMargin
         }
 
-        // Square blob sized to the slot; centred on the island's short axis.
+        // Square blob sized to the slot, centred on the island's short axis.
         implicitSize: root.btnW - root.indMargin * 2
         readonly property real centreOffset: (root.btnW - root.indMargin * 2 - implicitSize) / 2
 
@@ -1017,10 +1004,8 @@ Item {
     }
 
     // ── Workspace slots ───────────────────────────────────────────────────────
-    // A Grid rather than a Row, because QML has no orientation on Row and this
-    // has to be able to be either. flow + an explicit rows/columns pair, not a
-    // 0 sentinel: Grid's columns defaults to 4, and leaving it to be inferred
-    // wraps the slots into a block the moment there are more than four.
+    // Grid, since Row has no orientation. rows/columns are explicit: Grid's
+    // columns defaults to 4, so inferring it wraps past four slots.
     Grid {
         id: slotsRow
         flow: root.vertical ? Grid.TopToBottom : Grid.LeftToRight
@@ -1069,9 +1054,7 @@ Item {
 
                 // islandBg fills root, so its pointer x shares root's x axis;
                 // the slot's own left edge in that space is slotsRow.x + x.
-                // Measured along the slot axis, so this finds the right slot
-                // in either orientation. Keyed off hoverX it always resolved
-                // against a row that, vertically, does not exist.
+                // Along the slot axis, so it finds the right slot either way.
                 readonly property real slotStart: root.vertical
                     ? slotsRow.y + y : slotsRow.x + x
                 readonly property real slotExtent: root.vertical ? height : width
@@ -1102,7 +1085,7 @@ Item {
                         || iconGuess === "application-x-executable"
                         || Quickshell.iconPath(iconGuess, true) === "")
 
-                // Collapsing happens along whichever axis the slots run on.
+                // Collapses along whichever axis the slots run on.
                 implicitWidth:  root.vertical ? root.btnW : (slotVis ? root.btnW : 0)
                 implicitHeight: root.vertical ? (slotVis ? root.btnW : 0) : root.btnW
                 clip: true
@@ -1115,16 +1098,13 @@ Item {
                 // shows up between elements while the row expands. Tying
                 // opacity to how open the slot is turns that into a fade, so
                 // there is never a crisp partial edge on screen.
-                // Fade in step with whichever dimension is collapsing.
+                // Fades with whichever dimension collapses.
                 opacity: Math.min(1, (root.vertical ? implicitHeight : implicitWidth) / root.btnW)
 
                 Behavior on implicitWidth {
                     NumberAnimation { duration: 300; easing.type: Easing.OutCubic }
                 }
-                // Vertically it is the HEIGHT that animates from 0, and a
-                // Behavior on width cannot animate it — which is why the slots
-                // appeared instantly instead of expanding.
-                Behavior on implicitHeight {
+                Behavior on implicitHeight {   // vertically it is height that grows from 0
                     NumberAnimation { duration: 300; easing.type: Easing.OutCubic }
                 }
 

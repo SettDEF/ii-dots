@@ -96,12 +96,8 @@ TabButton {
         radius: Appearance?.rounding.normal
         implicitHeight: 42
         color: (root.hovered ? root.colBackgroundHover : root.colBackground)
-        // Only while the ripple is actually on screen. The mask exists to keep
-        // the ripple's RadialGradient inside the rounded corners, and the
-        // Rectangle is already rounded by itself — so leaving the layer on
-        // permanently bought nothing and cost an offscreen render pass per tab
-        // button, every frame, forever. RippleButton.qml:167 gates it the same
-        // way; this widget just never did.
+        // Only while the ripple is on screen: the mask exists to clip the
+        // RadialGradient, and the Rectangle is already rounded.
         layer.enabled: ripple.visible && ripple.opacity > 0
         layer.effect: OpacityMask {
             maskSource: Rectangle {

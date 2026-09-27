@@ -12,10 +12,8 @@ import Quickshell.Services.UPower
 Item {
     id: root
     property bool borderless: Config.options.bar.borderless
-    /// Stack instead of row, for the vertical bar. Same trick SysTray uses —
-    /// a GridLayout switching between one column and one row — because QML has
-    /// no orientation on RowLayout, and these buttons were simply absent from
-    /// the vertical bar for want of it.
+    /// Stack instead of row, for the vertical bar. GridLayout, since RowLayout
+    /// has no orientation — the same switch SysTray uses.
     property bool vertical: false
 
     implicitWidth: rowLayout.implicitWidth + (root.vertical ? 0 : rowLayout.columnSpacing * 2)

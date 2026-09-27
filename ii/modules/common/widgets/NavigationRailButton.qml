@@ -23,13 +23,9 @@ TabButton {
     property real baseHighlightHeight: 32
     property real highlightCollapsedTopMargin: 6
 
-    // Optional heading drawn above this button, marking the start of a group
-    // in the rail. Carried by the button rather than inserted as a separate
-    // item in the column because NavigationRailTabArray finds its buttons by
-    // `baseSize !== undefined` and indexes the highlight off that list — a
-    // bare Item between them would slip into the wrong position.
-    //
-    // Collapsed, there is no room for a word, so the group becomes a rule.
+    /// Heading above this button, marking a group. Carried by the button because
+    /// NavigationRailTabArray indexes its highlight off `baseSize !== undefined`,
+    /// so a bare Item between buttons shifts it. Collapsed, it becomes a rule.
     property string groupLabel: ""
     readonly property bool hasGroupLabel: root.groupLabel.length > 0
     readonly property real groupLabelHeight: !root.hasGroupLabel ? 0

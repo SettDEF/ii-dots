@@ -22,14 +22,8 @@ ApplicationWindow {
     property string firstRunFileContent: "This file is just here to confirm you've been greeted :>"
     property real contentPadding: 8
     property bool showNextTime: false
-    // Grouped, and ordered by how often somebody actually needs them rather
-    // than alphabetically. `group` is the heading the rail draws ABOVE a page,
-    // so only the first page of each group carries one — see
-    // NavigationRailButton.groupLabel.
-    //
-    // The grouping is the point: a flat list is why Interface grew to a
-    // thousand lines with twenty sections in it. New settings now have an
-    // obvious page to land on instead of the nearest one that already exists.
+    // `group` is the heading drawn ABOVE a page, so only the first page of each
+    // group carries one. Ordered by how often each is needed.
     property var pages: [
         {
             group: Translation.tr("Setup"),
@@ -446,12 +440,8 @@ ApplicationWindow {
                         }
                     }
 
-                    // Scrollable, because the rail can be taller than the
-                    // window: eleven pages at 56px plus four group headings
-                    // comes to about 840px, and the content area of a
-                    // default-sized window is around 690. It used to fit, and
-                    // then it quietly did not — the last entries simply had
-                    // nowhere to draw and the window has a 500px minimum.
+                    // Scrollable: eleven pages plus four headings is ~840px
+                    // against a ~690px content area.
                     StyledFlickable {
                             id: railFlick
                             Layout.fillHeight: true
@@ -480,45 +470,19 @@ ApplicationWindow {
                             ScrollBar.vertical: StyledScrollBar {
                                 id: railScroll
 
-                                // On the OUTER edge of the window, not the
-                                // inner one. On the right the bar sat exactly
-                                // on the seam between the rail and the content
-                                // pane: its click strip landed where you reach
-                                // for the content, and the label pill opened
-                                // into the rail's own buttons. Out here it has
-                                // nothing to collide with, and the dots read as
-                                // a spine for the rail rather than as a divider
-                                // between two panes.
-                                //
-                                // LayoutMirroring rather than a hand-set x:
-                                // an attached ScrollBar is positioned by Qt's
-                                // own layout pass, which would overwrite the
-                                // binding.
+                                // Outer edge: on the seam it collides with the
+                                // content pane. LayoutMirroring, not a hand-set
+                                // x — Qt's layout pass overwrites that.
                                 LayoutMirroring.enabled: true
                                 LayoutMirroring.childrenInherit: false
 
                                 policy: railFlick.contentHeight > railFlick.height + 2
                                     ? ScrollBar.AlwaysOn : ScrollBar.AsNeeded
 
-                                // A map of the rail: one dot per page, a
-                                // bigger one where a group starts, filled at
-                                // the page you are on. A drag landing near any
-                                // of them is pulled onto it.
-                                //
-                                // Positions come from the BUTTONS, not from the
-                                // page list, because only the buttons know what
-                                // they measured — a group heading adds height,
-                                // and how much depends on whether the rail is
-                                // expanded.
-                                //
-                                // Computed on demand rather than as a live
-                                // binding. As a binding it depended on every
-                                // button's y, so each time the rail's highlight
-                                // animated, a NEW array arrived and the Repeater
-                                // destroyed and rebuilt every dot — which is
-                                // what made hovering feel like it was lagging:
-                                // the thing under the pointer kept being
-                                // replaced by a fresh copy of itself.
+                                // Positions come from the BUTTONS: only they know
+                                // what a group heading measured. Computed on demand —
+                                // as a binding on every button's y, each highlight
+                                // animation rebuilt every dot under the pointer.
                                 currentMarker: root.currentPage
 
                                 function rebuildMap() {
@@ -538,10 +502,7 @@ ApplicationWindow {
                                     railScroll.markers = out;
                                 }
 
-                                // Coalesced: expanding the rail moves every
-                                // button, and rebuilding once per button per
-                                // frame would be exactly the churn this is
-                                // here to avoid.
+                                // Coalesced: expanding moves every button at once.
                                 Timer {
                                     id: mapRebuild
                                     interval: 80
@@ -565,11 +526,8 @@ ApplicationWindow {
 
                             NavigationRailTabArray {
                                 id: railTabs
-                                // A gutter for the scroll map, so the bar sits
-                                // beside the buttons instead of under them. The
-                                // rail's pills fill the full width, so with the
-                                // bar at x=0 the map was drawing straight
-                                // through the active pill.
+                                // Gutter for the map: the pills fill the full
+                                // width, so at x=0 the dots draw through them.
                                 x: railScroll.width + 2
                                 width: parent.width - x
                                 currentIndex: root.currentPage

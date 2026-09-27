@@ -114,9 +114,7 @@ Singleton {
             property JsonObject appearance: JsonObject {
                 property bool extraBackgroundTint: true
 
-                // How every scroll bar in the shell is drawn. One place,
-                // because they are the one widget that appears in nearly every
-                // panel and looked accidental for exactly that reason.
+                // How every scroll bar in the shell is drawn.
                 property JsonObject scrollbar: JsonObject {
                     // "minimal" — thumb only, track on hover
                     // "rail"    — track always drawn behind the thumb
@@ -124,15 +122,10 @@ Singleton {
                     property string style: "minimal"
                     property int width: 4
                     property int activeWidth: 9
-                    // Visible whenever the content overflows, rather than only
-                    // while scrolling or hovering.
-                    property bool alwaysVisible: false
-                    // The landmark dots, where a panel supplies them.
-                    property bool showMap: true
-                    // Drag release snaps to the nearest landmark.
-                    property bool magnets: true
-                    // Name the landmark under the pointer.
-                    property bool labels: true
+                    property bool alwaysVisible: false  // not just while engaged
+                    property bool showMap: true         // landmark dots, where supplied
+                    property bool magnets: true         // release snaps to nearest
+                    property bool labels: true          // name the one under the pointer
                 }
                 property int fakeScreenRounding: 2 // 0: None | 1: Always | 2: When not fullscreen
                 property JsonObject fonts: JsonObject {
@@ -546,11 +539,8 @@ Singleton {
                 property bool showAppsButton: true
                 property bool showMedia: true
                 property bool monochromeIcons: true
-                // Window previews redraw every frame while the popup is up —
-                // one GPU copy per previewed window per frame, and the most
-                // expensive thing in the config. Off, a preview is a single
-                // frame grabbed when the hover starts: it stops moving, and
-                // integrated graphics get the rest of the frame back.
+                // Off, a preview is one frame grabbed on hover instead of a
+                // GPU copy per window per frame.
                 property bool livePreviews: true
                 property real height: 60
                 property real hoverRegionHeight: 2

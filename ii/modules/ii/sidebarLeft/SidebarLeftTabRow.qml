@@ -5,17 +5,14 @@ import QtQuick
 // The sidebar's top-level tab strip: icons only, so it stays one compact row
 // and leaves the width for sub-categories underneath. Names live in tooltips.
 //
-// Sized and coloured to match the QuickToggleButton group at the other end of
-// the same row — they are the only two control clusters in the header, and two
-// different toggle languages side by side read as two unrelated widgets.
+// Sized and coloured to match the QuickToggleButton group at the other end.
 Flow {
     id: root
     required property var tabs
     required property int currentIndex
     signal picked(int index)
 
-    // 4px: circles need a little more air than a stadium did, or the active
-    // one looks wedged between its neighbours.
+    // 4px: circles need more air than a stadium, or they look wedged.
     spacing: 4
 
     Repeater {
@@ -26,17 +23,11 @@ Flow {
             required property int index
             readonly property bool active: root.currentIndex === pill.index
 
-            // Square, so the active indicator is a true circle — the same shape
-            // as the QuickToggleButtons at the other end of the row, just
-            // smaller. A stadium here read as a different kind of control.
-            // Five of these plus the divider still fit the 460px sidebar once
-            // the "Tools" label has collapsed.
+            // Square: a circle, matching the toggles. Five fit the 460px
+            // sidebar once the "Tools" label collapses.
             implicitHeight: 32
             implicitWidth: 32
-            // width / 2, not Appearance.rounding.full. The sentinel is meant to
-            // clamp to half the shorter side and it did not here — the result
-            // rendered as a rounded square. Half the width is unambiguous, and
-            // it is what this file used before.
+            // width / 2: rounding.full did not clamp here, it rendered square.
             radius: width / 2
             color: pill.active ? Appearance.colors.colPrimary
                  : (pillHov.hovered ? Appearance.colors.colLayer1Hover : "transparent")
@@ -46,14 +37,12 @@ Flow {
             TapHandler { onTapped: root.picked(pill.index) }
 
             MaterialSymbol {
-                // MaterialSymbol is a Text, so centerIn alone centres the line
-                // box — ascent and descent included — and sits the glyph low.
+                // MaterialSymbol is a Text: centerIn centres the line box, not the glyph.
                 anchors.fill: parent
                 horizontalAlignment: Text.AlignHCenter
                 verticalAlignment: Text.AlignVCenter
                 text: pill.modelData.icon
-                // 20, matching the grid_view icon to its left and closing the
-                // gap to the 22px toggles at the other end of the same row.
+                // 20, between the 20px grid_view and the 22px toggles.
                 iconSize: 20
                 fill: pill.active ? 1 : 0
                 color: pill.active ? Appearance.m3colors.m3onPrimary

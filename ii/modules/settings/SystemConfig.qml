@@ -6,18 +6,11 @@ import qs.services
 import qs.modules.common
 import qs.modules.common.widgets
 
-// The plain settings: where you are, what you type with, when the screen goes
-// warm, what opens when the shell needs a terminal.
+// The basics: where you are, what you type with, when the screen goes warm,
+// what opens when the shell needs a terminal.
 //
-// They were scattered — language under General, night light nowhere, time zone
-// and system locale not exposed at all — because the page list had no place
-// for "the basics". This is that place, and it is the first page the welcome
-// app walks you through.
-//
-// Time zone, system locale and the console keymap live in /etc and only root
-// may change them, so those three go through pkexec and ask for a password.
-// Reading them is free, so they are always shown even when they cannot be
-// changed.
+// Time zone, system locale and console keymap live in /etc, so those three ask
+// for a password. Reads are free, so they are shown either way.
 ContentPage {
     id: page
     forceWidth: true
@@ -77,8 +70,7 @@ ContentPage {
                 currentValue: Config.options.time.format
                 onSelected: newValue => {
                     Config.options.time.format = newValue;
-                    // 12-hour without the am/pm marker is just a wrong clock,
-                    // so the two move together.
+                    // 12-hour without am/pm is a wrong clock.
                     Config.options.time.dateFormat = newValue === "h:mm AP"
                         ? "ddd, MM/dd" : "ddd, dd/MM";
                     Config.options.time.shortDateFormat = newValue === "h:mm AP"
