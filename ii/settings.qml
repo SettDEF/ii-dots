@@ -452,35 +452,105 @@ ApplicationWindow {
                     // default-sized window is around 690. It used to fit, and
                     // then it quietly did not — the last entries simply had
                     // nowhere to draw and the window has a 500px minimum.
-                    StyledFlickable {
+                    // Wrapped, so the edge fades can sit OVER the list rather
+                    // than in the column with it.
+                    Item {
                         Layout.fillHeight: true
                         Layout.fillWidth: true
                         implicitWidth: railTabs.implicitWidth
-                        contentHeight: railTabs.implicitHeight
-                        contentWidth: width
-                        // Only actually scrolls when it has to.
-                        interactive: contentHeight > height
-                        clip: true
 
-                        NavigationRailTabArray {
-                            id: railTabs
-                            width: parent.width
-                            currentIndex: root.currentPage
-                            expanded: navRail.expanded
-                            Repeater {
-                                model: root.pages
-                                NavigationRailButton {
-                                    required property var index
-                                    required property var modelData
-                                    toggled: root.currentPage === index
-                                    onPressed: root.currentPage = index;
-                                    expanded: navRail.expanded
-                                    buttonIcon: modelData.icon
-                                    buttonIconRotation: modelData.iconRotation || 0
-                                    buttonText: modelData.name
-                                    groupLabel: modelData.group ?? ""
-                                    showToggledHighlight: false
+                        StyledFlickable {
+                            id: railFlick
+                            anchors.fill: parent
+                            contentHeight: railTabs.implicitHeight
+                            contentWidth: width
+                            // Only actually scrolls when it has to.
+                            interactive: contentHeight > height
+                            clip: true
+
+                            NavigationRailTabArray {
+                                id: railTabs
+                                width: parent.width
+                                currentIndex: root.currentPage
+                                expanded: navRail.expanded
+                                Repeater {
+                                    model: root.pages
+                                    NavigationRailButton {
+                                        required property var index
+                                        required property var modelData
+                                        toggled: root.currentPage === index
+                                        onPressed: root.currentPage = index;
+                                        expanded: navRail.expanded
+                                        buttonIcon: modelData.icon
+                                        buttonIconRotation: modelData.iconRotation || 0
+                                        buttonText: modelData.name
+                                        groupLabel: modelData.group ?? ""
+                                        showToggledHighlight: false
+                                    }
                                 }
+                            }
+                        }
+
+                        // The scroll hint.
+                        //
+                        // The first attempt was a gradient band across the full
+                        // width, fading into the window background. It read as
+                        // a black footer bar: the band's square bottom edge met
+                        // the window's rounded corner, and a filled rectangle
+                        // over a list does not look like an edge however it is
+                        // shaded. A floating pill has no edges to disagree with
+                        // anything behind it.
+                        Rectangle {
+                            id: scrollHint
+                            anchors.horizontalCenter: parent.horizontalCenter
+                            anchors.bottom: parent.bottom
+                            anchors.bottomMargin: 6
+                            implicitWidth: 30
+                            implicitHeight: 22
+                            radius: Appearance.rounding.full
+                            color: hintArea.containsMouse
+                                ? Appearance.colors.colLayer1Hover
+                                : Appearance.colors.colLayer1
+                            border.width: 1
+                            border.color: Appearance.colors.colLayer0Border
+
+                            // More below than the couple of pixels of rounding
+                            // error a Flickable sits at when it is exactly full.
+                            readonly property bool more:
+                                railFlick.contentHeight - railFlick.contentY - railFlick.height > 2
+                            visible: opacity > 0
+                            opacity: scrollHint.more ? 1 : 0
+                            Behavior on opacity { NumberAnimation { duration: 150 } }
+                            Behavior on color { ColorAnimation { duration: 140 } }
+
+                            MaterialSymbol {
+                                anchors.fill: parent
+                                horizontalAlignment: Text.AlignHCenter
+                                verticalAlignment: Text.AlignVCenter
+                                text: "keyboard_arrow_down"
+                                iconSize: 16
+                                color: Appearance.colors.colOnLayer1
+                            }
+
+                            // The hint is also the control. Pointing at
+                            // something and not letting anyone act on it is
+                            // worse than not pointing.
+                            MouseArea {
+                                id: hintArea
+                                anchors.fill: parent
+                                hoverEnabled: true
+                                cursorShape: Qt.PointingHandCursor
+                                onClicked: scrollAnim.restart()
+                            }
+                            NumberAnimation {
+                                id: scrollAnim
+                                target: railFlick
+                                property: "contentY"
+                                to: Math.min(railFlick.contentY + railFlick.height * 0.8,
+                                             Math.max(0, railFlick.contentHeight - railFlick.height))
+                                duration: Appearance.animationCurves.expressiveFastSpatialDuration
+                                easing.type: Easing.BezierSpline
+                                easing.bezierCurve: Appearance.animationCurves.expressiveFastSpatial
                             }
                         }
                     }
