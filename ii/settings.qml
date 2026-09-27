@@ -452,21 +452,64 @@ ApplicationWindow {
                     // default-sized window is around 690. It used to fit, and
                     // then it quietly did not — the last entries simply had
                     // nowhere to draw and the window has a 500px minimum.
-                    // Wrapped, so the edge fades can sit OVER the list rather
-                    // than in the column with it.
-                    Item {
-                        Layout.fillHeight: true
-                        Layout.fillWidth: true
-                        implicitWidth: railTabs.implicitWidth
-
-                        StyledFlickable {
+                    StyledFlickable {
                             id: railFlick
-                            anchors.fill: parent
+                            Layout.fillHeight: true
+                            Layout.fillWidth: true
+                            implicitWidth: railTabs.implicitWidth
                             contentHeight: railTabs.implicitHeight
                             contentWidth: width
                             // Only actually scrolls when it has to.
                             interactive: contentHeight > height
                             clip: true
+
+                            // The scroll indicator.
+                            //
+                            // StyledFlickable already carries a scrollbar, but
+                            // its default `active: hovered || pressed` keeps it
+                            // at zero opacity until the pointer is on the bar
+                            // itself — so it can only be found by someone who
+                            // already knows it is there. As a discovery cue
+                            // that is worth nothing.
+                            //
+                            // Pinned on while the rail overflows. It says three
+                            // things a chevron could not: that there is more,
+                            // how much, and where you are; and unlike the
+                            // floating hint this replaces, it does not sit on
+                            // top of the last item in the list.
+                            ScrollBar.vertical: StyledScrollBar {
+                                policy: railFlick.contentHeight > railFlick.height + 2
+                                    ? ScrollBar.AlwaysOn : ScrollBar.AsNeeded
+
+                                // A map of the rail: one dot per page, a
+                                // bigger one where a group starts, filled at
+                                // the page you are on. A drag landing near any
+                                // of them is pulled onto it.
+                                //
+                                // Positions come from the BUTTONS, not from the
+                                // page list, because only the buttons know what
+                                // they measured — a group heading adds height,
+                                // and how much depends on whether the rail is
+                                // expanded.
+                                markers: {
+                                    void root.currentPage;   // re-read on navigation
+                                    const range = railFlick.contentHeight - railFlick.height;
+                                    if (range <= 0) return [];
+                                    const out = [];
+                                    const btns = railTabs.buttons ?? [];
+                                    for (let i = 0; i < btns.length; ++i) {
+                                        const b = btns[i];
+                                        if (!b) continue;
+                                        out.push({
+                                            at: Math.max(0, Math.min(1, b.y / range)),
+                                            label: b.buttonText,
+                                            major: b.hasGroupLabel === true,
+                                            current: i === root.currentPage
+                                        });
+                                    }
+                                    return out;
+                                }
+                            }
 
                             NavigationRailTabArray {
                                 id: railTabs
@@ -491,69 +534,6 @@ ApplicationWindow {
                             }
                         }
 
-                        // The scroll hint.
-                        //
-                        // The first attempt was a gradient band across the full
-                        // width, fading into the window background. It read as
-                        // a black footer bar: the band's square bottom edge met
-                        // the window's rounded corner, and a filled rectangle
-                        // over a list does not look like an edge however it is
-                        // shaded. A floating pill has no edges to disagree with
-                        // anything behind it.
-                        Rectangle {
-                            id: scrollHint
-                            anchors.horizontalCenter: parent.horizontalCenter
-                            anchors.bottom: parent.bottom
-                            anchors.bottomMargin: 6
-                            implicitWidth: 30
-                            implicitHeight: 22
-                            radius: Appearance.rounding.full
-                            color: hintArea.containsMouse
-                                ? Appearance.colors.colLayer1Hover
-                                : Appearance.colors.colLayer1
-                            border.width: 1
-                            border.color: Appearance.colors.colLayer0Border
-
-                            // More below than the couple of pixels of rounding
-                            // error a Flickable sits at when it is exactly full.
-                            readonly property bool more:
-                                railFlick.contentHeight - railFlick.contentY - railFlick.height > 2
-                            visible: opacity > 0
-                            opacity: scrollHint.more ? 1 : 0
-                            Behavior on opacity { NumberAnimation { duration: 150 } }
-                            Behavior on color { ColorAnimation { duration: 140 } }
-
-                            MaterialSymbol {
-                                anchors.fill: parent
-                                horizontalAlignment: Text.AlignHCenter
-                                verticalAlignment: Text.AlignVCenter
-                                text: "keyboard_arrow_down"
-                                iconSize: 16
-                                color: Appearance.colors.colOnLayer1
-                            }
-
-                            // The hint is also the control. Pointing at
-                            // something and not letting anyone act on it is
-                            // worse than not pointing.
-                            MouseArea {
-                                id: hintArea
-                                anchors.fill: parent
-                                hoverEnabled: true
-                                cursorShape: Qt.PointingHandCursor
-                                onClicked: scrollAnim.restart()
-                            }
-                            NumberAnimation {
-                                id: scrollAnim
-                                target: railFlick
-                                property: "contentY"
-                                to: Math.min(railFlick.contentY + railFlick.height * 0.8,
-                                             Math.max(0, railFlick.contentHeight - railFlick.height))
-                                duration: Appearance.animationCurves.expressiveFastSpatialDuration
-                                easing.type: Easing.BezierSpline
-                                easing.bezierCurve: Appearance.animationCurves.expressiveFastSpatial
-                            }
-                        }
-                    }
                 }
             }
             Rectangle { // Content container
