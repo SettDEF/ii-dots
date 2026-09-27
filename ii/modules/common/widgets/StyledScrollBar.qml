@@ -176,20 +176,41 @@ ScrollBar {
 
                 readonly property bool hovered: root.hoveredMarker === index
 
+                // Is this landmark inside the part of the content the thumb is
+                // showing? This is what makes the dots answer to the bar rather
+                // than sit there: scrolling lights them as the thumb reaches them.
+                readonly property real at: modelData.at ?? 0
+                readonly property bool underThumb:
+                    dot.at >= root.position - 0.001
+                    && dot.at <= root.position + root.size + 0.001
+
+                // Smooth falloff either side, so the response is a wave passing
+                // down the map and not a row of switches flicking.
+                readonly property real nearness: {
+                    const span = Math.max(root.size, root.snapRadius * 2);
+                    const d = Math.abs(dot.at - (root.position + root.size / 2));
+                    return Math.max(0, 1 - d / span);
+                }
+                readonly property bool lit: dot.current || dot.pulled || dot.underThumb
+
                 x: (parent.width - width) / 2
-                y: root.topPadding + trackLength * (modelData.at ?? 0) - height / 2
-                // Grows where you are, under the magnet, and under the pointer.
+                y: root.topPadding + trackLength * dot.at - height / 2
+                // Grows where you are, under the magnet, the pointer, and the thumb.
                 width: baseSize + (current ? 2 : 0) + (pulled ? 3 : 0) + (hovered ? 3 : 0)
+                    + dot.nearness * 2
                 height: width
                 radius: width / 2
 
-                color: (current || pulled) ? Appearance.colors.colPrimary
-                                           : Appearance.colors.colOnSurfaceVariant
-                // Visible at rest, or it is not a map; faint, so it still reads as a bar.
+                color: dot.lit ? Appearance.colors.colPrimary
+                               : Appearance.colors.colOnSurfaceVariant
+                // Never invisible: a map you cannot see is not a map. The
+                // resting floor rises with nearness to the thumb.
                 opacity: root.size >= 1.0 ? 0
                     : (current || pulled) ? 1
-                    : (root.hovered || root.pressed) ? (major ? 0.7 : 0.45)
-                    : (major ? 0.38 : 0.22)
+                    : underThumb ? 0.85
+                    : Math.min(1, (major ? 0.5 : 0.34)
+                        + dot.nearness * 0.3
+                        + ((root.hovered || root.pressed) ? 0.25 : 0))
 
                 Behavior on opacity { NumberAnimation { duration: 140 } }
                 Behavior on width   {

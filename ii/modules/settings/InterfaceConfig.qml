@@ -667,28 +667,66 @@ ContentPage {
                 contentHeight: previewCol.implicitHeight
                 clip: true
 
+                // Landmarks measured off the real headings below, not invented
+                // fractions — otherwise the dots answer to nothing and the
+                // behaviour being previewed is not the behaviour you get.
                 ScrollBar.vertical: StyledScrollBar {
-                    // Landmarks, so the map and magnets can be tried here.
-                    markers: [
-                        { at: 0.0,  label: Translation.tr("Top"),    major: true },
-                        { at: 0.35, label: Translation.tr("Middle") },
-                        { at: 0.7,  label: Translation.tr("Further") },
-                        { at: 1.0,  label: Translation.tr("End"),    major: true }
-                    ]
+                    id: previewBar
+                    markers: {
+                        void previewCol.implicitHeight;
+                        const range = preview.contentHeight - preview.height;
+                        if (range <= 0) return [];
+                        const out = [];
+                        for (let i = 0; i < previewCol.children.length; ++i) {
+                            const c = previewCol.children[i];
+                            if (!c || c.heading === undefined) continue;
+                            out.push({
+                                at: Math.max(0, Math.min(1, c.y / range)),
+                                label: c.heading,
+                                major: true
+                            });
+                        }
+                        return out;
+                    }
                 }
 
                 ColumnLayout {
                     id: previewCol
                     width: preview.width
                     spacing: 6
+
                     Repeater {
-                        model: 14
-                        StyledText {
-                            required property int index
+                        model: [
+                            { name: qsTr("Beginning"), lines: 5 },
+                            { name: qsTr("Middle"),    lines: 6 },
+                            { name: qsTr("Later"),     lines: 5 },
+                            { name: qsTr("End"),       lines: 4 }
+                        ]
+                        delegate: ColumnLayout {
+                            id: previewSection
+                            required property var modelData
+                            // Read back by the markers binding above.
+                            property string heading: previewSection.modelData.name
                             Layout.fillWidth: true
-                            text: Translation.tr("Scrollable line %1").arg(index + 1)
-                            font.pixelSize: Appearance.font.pixelSize.smaller
-                            color: Appearance.colors.colSubtext
+                            spacing: 4
+
+                            StyledText {
+                                Layout.topMargin: 6
+                                text: previewSection.heading
+                                font.pixelSize: Appearance.font.pixelSize.smaller
+                                font.weight: Font.DemiBold
+                                color: Appearance.colors.colOnLayer1
+                            }
+                            Repeater {
+                                model: previewSection.modelData.lines
+                                StyledText {
+                                    required property int index
+                                    Layout.fillWidth: true
+                                    text: Translation.tr("Scrollable line %1").arg(index + 1)
+                                    font.pixelSize: Appearance.font.pixelSize.smaller
+                                    color: Appearance.colors.colSubtext
+                                }
+                            }
                         }
                     }
                 }
