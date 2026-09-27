@@ -114,7 +114,7 @@ ApplicationWindow {
         root.findQuery = String(q ?? "").trim();
         root.findIndex = 0;
         root.findMatches = [];
-        if (root.findQuery.length === 0) return;
+        if (root.findQuery.length === 0) { root.pushMatchMarkers(); return; }
         findDebounce.restart();
     }
 
@@ -134,7 +134,34 @@ ApplicationWindow {
         items.sort((a, b) => a.mapToItem(flick.contentItem, 0, 0).y
                            - b.mapToItem(flick.contentItem, 0, 0).y);
         root.findMatches = items;
+        root.pushMatchMarkers();
         if (items.length > 0) root.scrollToMatch(0);
+    }
+
+    /// Put the matches on the page's own scroll bar, so a hit off screen is
+    /// still findable — the browser trick of ticking the gutter.
+    function pushMatchMarkers() {
+        const flick = pageLoader.item;
+        if (!flick || flick.scrollMarkers === undefined) return;
+        const span = flick.contentHeight;
+        if (span <= 0 || root.findMatches.length === 0) {
+            flick.scrollMarkers = [];
+            return;
+        }
+        const out = [];
+        for (let i = 0; i < root.findMatches.length; ++i) {
+            const it = root.findMatches[i];
+            if (!it) continue;
+            out.push({
+                at: Math.max(0, Math.min(1,
+                    it.mapToItem(flick.contentItem, 0, 0).y / span)),
+                label: String(it.text ?? ""),
+                major: i === root.findIndex,
+                color: i === root.findIndex ? Appearance.colors.colPrimary
+                                            : Appearance.m3colors.m3tertiary
+            });
+        }
+        flick.scrollMarkers = out;
     }
 
     function stepFind(delta) {
@@ -144,6 +171,7 @@ ApplicationWindow {
 
     function scrollToMatch(i) {
         root.findIndex = i;
+        Qt.callLater(root.pushMatchMarkers);
         const target = root.findMatches[i];
         const flick = pageLoader.item;
         if (!target || !flick) return;

@@ -28,7 +28,13 @@ Flickable {
     /// Off where the caller supplies its own bar, or there are two.
     property bool showScrollBar: true
 
-    ScrollBar.vertical: StyledScrollBar { visible: root.showScrollBar }
+    /// Forwarded to the attached bar, so a caller can mark its content.
+    property var scrollMarkers: []
+
+    ScrollBar.vertical: StyledScrollBar {
+        visible: root.showScrollBar
+        markers: root.scrollMarkers
+    }
 
     MouseArea {
         visible: Config?.options.interactions.scrolling.fasterTouchpadScroll

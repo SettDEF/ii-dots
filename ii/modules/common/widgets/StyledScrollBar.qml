@@ -71,8 +71,9 @@ ScrollBar {
     }
 
 
-    /// Landmarks: [{ at, label, major }]. `at` is a fraction of the CONTENT,
-    /// the same scale as `position`; `major` draws the bigger dot.
+    /// Landmarks: [{ at, label, major, color }]. `at` is a fraction of the
+    /// CONTENT, the same scale as `position`; `major` draws the bigger dot;
+    /// `color` overrides, for marks of a different kind such as search hits.
     property var markers: []
     /// Pull radius, as a fraction of the range.
     property real snapRadius: 0.035
@@ -387,11 +388,16 @@ ScrollBar {
 
                 // Inverted where the thumb is behind it, so a landmark stays
                 // legible whichever it lands on.
-                color: dot.current ? Appearance.colors.colPrimary
+                readonly property color tint: modelData.color ?? ""
+
+                color: dot.tint.a > 0
+                    ? (dot.underThumb ? Qt.lighter(dot.tint, 1.5) : dot.tint)
+                    : dot.current ? Appearance.colors.colPrimary
                     : dot.underThumb ? Appearance.m3colors.m3surface
                     : dot.pulled ? Appearance.colors.colPrimary
                     : Appearance.colors.colOnSurfaceVariant
                 opacity: root.size >= 1.0 ? 0
+                    : dot.tint.a > 0 ? 0.95
                     : (dot.current || dot.pulled) ? 1
                     : dot.underThumb ? 0.6
                     : Math.min(1, (major ? 0.55 : 0.4)
