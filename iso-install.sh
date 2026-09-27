@@ -199,6 +199,14 @@ fi
 UEFI=0; [ -d /sys/firmware/efi/efivars ] && UEFI=1
 ok "$( [ "$UEFI" = 1 ] && echo 'UEFI' || echo 'BIOS' ) boot, network up"
 
+# An ISO older than the packages it is about to install carries an old keyring,
+# and every signature then fails as untrusted. Cheap to refresh, so always do.
+if [ -d /run/archiso ] && [ "$DRY" != 1 ]; then
+    info "refreshing the keyring (an older ISO signs against an older one)"
+    pacman -Sy --noconfirm --needed archlinux-keyring >/dev/null 2>&1 \
+        || warn "keyring refresh failed; signature errors below would be why"
+fi
+
 # ── What to install onto, and as whom ──────────────────────────────────────
 
 USE_EXISTING=0
@@ -474,7 +482,14 @@ case "$DESKTOP" in
 esac
 
 info "installing the base system (this is the slow part)"
-run pacstrap -K /mnt "${BASE[@]}"
+# -K initialises an empty keyring in the target and only exists in
+# arch-install-scripts 24 and later, so an ISO from the archive may not have it.
+PACSTRAP=(pacstrap -K)
+if command -v pacstrap >/dev/null 2>&1 && ! pacstrap --help 2>&1 | grep -q -- "-K"; then
+    PACSTRAP=(pacstrap)
+    warn "this pacstrap predates -K; the target keyring is inherited instead"
+fi
+run "${PACSTRAP[@]}" /mnt "${BASE[@]}"
 run bash -c "genfstab -U /mnt >> /mnt/etc/fstab"
 ok "base installed"
 
