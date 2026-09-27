@@ -47,7 +47,8 @@ RECOMMENDED_PKGS=(libnotify wl-clipboard networkmanager pipewire pipewire-pulse
                   dolphin                   # file manager, opened from several panels
                   kitty                     # terminal for shell actions
                   pavucontrol               # the audio panel's "advanced" button
-                  nm-connection-editor)     # same, for network
+                  nm-connection-editor      # same, for network
+                  systemsettings)           # KDE's settings app, for what a shell cannot set
 EXTRA_PKGS=(ffmpeg zenity udisks2 translate-shell timew solaar
             mpv loupe)                      # media preview and image viewer
 ROG_PKGS=(asusctl supergfxctl)
@@ -246,6 +247,18 @@ install_config() {
     else
         printf '   would: record the install source in %s\n' "$SOURCE_MARKER"
     fi
+    # The wallpaper picker lists ~/Pictures/Wallpapers with find(1). On a fresh
+    # account that directory does not exist, so the picker comes up empty and
+    # looks broken. Seed it with the wallpaper first run sets anyway.
+    if [ "$DRY" != 1 ]; then
+        mkdir -p "$HOME/Pictures/Wallpapers"
+        [ -f "$HOME/Pictures/Wallpapers/default_wallpaper.png" ] \
+            || cp "$SRC/ii/assets/images/default_wallpaper.png" \
+                  "$HOME/Pictures/Wallpapers/" 2>/dev/null || true
+    else
+        printf '   would: create ~/Pictures/Wallpapers and seed the default wallpaper\n'
+    fi
+
     info "installed"
 }
 
