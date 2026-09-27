@@ -22,6 +22,10 @@ Rectangle {
     property real originX: 0
     property real originW: 0
     property real desiredY: 0
+    /// A MINIMUM now, not the width. A menu is as wide as its widest row needs,
+    /// so "Always — floating, click-through" is read rather than elided at 226.
+    /// Callers that pass a value are asking for a floor, and submenus inherit it
+    /// so a chain of menus cannot get narrower as it goes.
     property int panelWidth: 226
     property bool shown: true
     // function() — tears down the whole menu stack after an item fires.
@@ -32,7 +36,11 @@ Rectangle {
     property real childY: 0
     property bool childOpen: false
 
-    width: panelWidth
+    // mpCol is a ColumnLayout, so its implicitWidth is already the widest row.
+    // Capped to the bounds so one long label cannot push a menu off screen; the
+    // label still elides in that case, which is the right failure.
+    width: Math.min(Math.max(panelWidth, mpCol.implicitWidth + 10),
+                    Math.max(panelWidth, bounds.width - 12))
     implicitHeight: mpCol.implicitHeight + 10
     height: implicitHeight
     x: originW === 0
@@ -97,6 +105,12 @@ Rectangle {
                 required property var modelData
                 Layout.fillWidth: true
                 implicitHeight: modelData.separator ? 7 : 32
+                // 20 = the anchors' left 9 + right 11, which implicitWidth does
+                // not include. A separator claims nothing: it should never be
+                // the reason a menu is wide.
+                implicitWidth: modelData.separator ? 0
+                    : (modelData.slider === true ? 210
+                                                 : itemRow.implicitWidth + 20)
                 radius: 6
                 color: (rowMa.containsMouse && !modelData.separator && modelData.slider !== true)
                     ? (modelData.danger
@@ -116,6 +130,7 @@ Rectangle {
                 // menu so the value keeps applying while you drag — which
                 // also means whatever the menu holds open stays open.
                 RowLayout {
+                    id: sliderRow
                     visible: row.modelData.slider === true
                     anchors { fill: parent; leftMargin: 9; rightMargin: 11 }
                     spacing: 9
@@ -144,6 +159,7 @@ Rectangle {
                 }
 
                 RowLayout {
+                    id: itemRow
                     visible: !row.modelData.separator && row.modelData.slider !== true
                     anchors { fill: parent; leftMargin: 9; rightMargin: 11 }
                     spacing: 9
