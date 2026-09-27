@@ -486,20 +486,10 @@ ApplicationWindow {
                                 currentMarker: root.currentPage
 
                                 function rebuildMap() {
-                                    const range = railFlick.contentHeight - railFlick.height;
-                                    if (range <= 0) { railScroll.markers = []; return; }
-                                    const out = [];
-                                    const btns = railTabs.buttons ?? [];
-                                    for (let i = 0; i < btns.length; ++i) {
-                                        const b = btns[i];
-                                        if (!b) continue;
-                                        out.push({
-                                            at: Math.max(0, Math.min(1, b.y / range)),
-                                            label: b.buttonText,
-                                            major: b.hasGroupLabel === true
-                                        });
-                                    }
-                                    railScroll.markers = out;
+                                    railScroll.markers = railScroll.markersFromItems(
+                                        railTabs.buttons ?? [], railFlick,
+                                        b => b.buttonText ?? "",
+                                        b => b.hasGroupLabel === true);
                                 }
 
                                 // Coalesced: expanding moves every button at once.

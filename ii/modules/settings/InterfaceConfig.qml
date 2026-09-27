@@ -674,19 +674,8 @@ ContentPage {
                     id: previewBar
                     markers: {
                         void previewCol.implicitHeight;
-                        const range = preview.contentHeight - preview.height;
-                        if (range <= 0) return [];
-                        const out = [];
-                        for (let i = 0; i < previewCol.children.length; ++i) {
-                            const c = previewCol.children[i];
-                            if (!c || c.heading === undefined) continue;
-                            out.push({
-                                at: Math.max(0, Math.min(1, c.y / range)),
-                                label: c.heading,
-                                major: true
-                            });
-                        }
-                        return out;
+                        return previewBar.markersFromItems(previewCol, preview,
+                            c => c.heading ?? "");
                     }
                 }
 

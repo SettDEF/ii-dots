@@ -434,6 +434,8 @@ Item { // Wrapper
                 ScrollBar.vertical: StyledScrollBar {
                     // Computed, not index/count: a header is 24px and a row is
                     // not, so a fraction drifts further down the list.
+                    // Not markersFromItems: a virtualised ListView has no y for
+                    // delegates it has not realised, so these come from the model.
                     markers: {
                         const vals = resultModel.values ?? [];
                         if (vals.length === 0) return [];

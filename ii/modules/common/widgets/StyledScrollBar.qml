@@ -4,13 +4,17 @@ import qs.modules.common
 import qs.modules.common.functions
 
 /// The shell's scroll bar. Optionally a map of its content — see `markers`.
+///
+/// Works in either orientation: every position below is computed along the
+/// bar's own long axis and assigned to x or y at the end, rather than being
+/// written twice.
 ScrollBar {
     id: root
 
     /// "minimal" | "rail" | "stripes"
     property string style: Config.options?.appearance?.scrollbar?.style ?? "minimal"
 
-    /// Drawn width at rest, and engaged.
+    /// Drawn thickness at rest, and engaged.
     property real barWidth: Config.options?.appearance?.scrollbar?.width ?? 4
     property real barWidthActive: Config.options?.appearance?.scrollbar?.activeWidth ?? 9
     /// Visible whenever content overflows, not only when engaged.
@@ -19,7 +23,17 @@ ScrollBar {
     /// list's edge, since an attached ScrollBar overlays rather than reserves.
     property real hitWidth: 12
     /// Shortest the thumb may become, in pixels.
-    property real minimumThumbHeight: 40
+    property real minimumThumbLength: 40
+
+    readonly property bool isVertical: root.orientation === Qt.Vertical
+    /// Padding at each end of the track, whichever end that is.
+    readonly property real padLead:  root.isVertical ? root.topPadding : root.leftPadding
+    readonly property real padTrail: root.isVertical ? root.bottomPadding : root.rightPadding
+    /// Length of the track, and the bar's thickness across it.
+    readonly property real trackLength: Math.max(0,
+        (root.isVertical ? root.height : root.width) - root.padLead - root.padTrail)
+    readonly property real thickness:
+        (root.pressed || root.hovered) ? root.barWidthActive : root.barWidth
 
     /// Landmarks: [{ at, label, major }]. `at` is a fraction of the scrollable
     /// range; `major` draws the bigger dot. Empty = a plain scroll bar.
@@ -28,6 +42,33 @@ ScrollBar {
     property real snapRadius: 0.035
     readonly property bool hasMap: (root.markers?.length ?? 0) > 0
         && (Config.options?.appearance?.scrollbar?.showMap ?? true)
+
+    /// Build `markers` from items: a container, or an array of them.
+    ///
+    /// Every caller was hand-rolling this — measure, guard the range, convert
+    /// to fractions. `label(item)` returns a landmark's name, or "" to skip it;
+    /// `major(item)` marks a section start.
+    function markersFromItems(items, flick, label, major) {
+        if (!items || !flick) return [];
+        const list = Array.isArray(items) ? items : items.children;
+        if (!list) return [];
+        const range = (root.isVertical ? flick.contentHeight - flick.height
+                                       : flick.contentWidth - flick.width);
+        if (range <= 0) return [];
+        const out = [];
+        for (let i = 0; i < list.length; ++i) {
+            const c = list[i];
+            if (!c) continue;
+            const name = label ? label(c) : "";
+            if (!name) continue;
+            out.push({
+                at: Math.max(0, Math.min(1, (root.isVertical ? c.y : c.x) / range)),
+                label: name,
+                major: major ? major(c) === true : true
+            });
+        }
+        return out;
+    }
 
     /// A dot was clicked. The bar scrolls there itself; this is for hosts that
     /// want to do more (the settings rail switches page).
@@ -63,12 +104,17 @@ ScrollBar {
         snapAnim.restart();
     }
 
+    /// Centre the thumb on a point along the track, as a fraction of it.
+    function scrollToFraction(frac) {
+        root.snapAnimTo(Math.max(0, Math.min(1 - root.size, frac - root.size / 2)));
+    }
+
     /// Where the thumb sat when the press began, to tell a drag from a tap.
     property real _pressAnchor: 0
 
     onPressedChanged: {
         if (root.pressed) { root._pressAnchor = root.position; return; }
-        // Only after a real drag: a plain click is handled by the tap below,
+        // Only after a real drag: a plain click is handled by the press below,
         // and snapping it here would fight that animation.
         if (Math.abs(root.position - root._pressAnchor) < 0.001) return;
         if (root.hasMap && root.nearestMarker >= 0
@@ -79,11 +125,6 @@ ScrollBar {
         }
     }
 
-    /// Centre the thumb on a point down the track, as a fraction of it.
-    function scrollToFraction(frac) {
-        const target = Math.max(0, Math.min(1 - root.size, frac - root.size / 2));
-        root.snapAnimTo(target);
-    }
     NumberAnimation {
         id: snapAnim
         target: root
@@ -96,43 +137,44 @@ ScrollBar {
     policy: (root.alwaysVisible && root.size < 1.0) ? ScrollBar.AlwaysOn : ScrollBar.AsNeeded
     topPadding: Appearance.rounding.normal
     bottomPadding: Appearance.rounding.normal
+    leftPadding: Appearance.rounding.normal
+    rightPadding: Appearance.rounding.normal
 
     // `active` is left to Qt: it sets it while the flickable moves, not only on hover.
-    implicitWidth: root.hitWidth
-    // minimumSize is a fraction of the track; height is 0 before first layout.
-    minimumSize: root.height > 0 ? Math.min(1, root.minimumThumbHeight / root.height) : 0
+    implicitWidth:  root.isVertical ? root.hitWidth : 0
+    implicitHeight: root.isVertical ? 0 : root.hitWidth
+    // minimumSize is a fraction of the track; it is 0 before the first layout.
+    minimumSize: root.trackLength > 0
+        ? Math.min(1, root.minimumThumbLength / root.trackLength) : 0
 
-    // Drawn, not interactive: a MouseArea over the groove swallows the events
-    // Qt's own press-and-drag needs.
     background: Item {
-        implicitWidth: root.hitWidth
+        implicitWidth:  root.isVertical ? root.hitWidth : 0
+        implicitHeight: root.isVertical ? 0 : root.hitWidth
 
         // Click the groove to glide there instead of stepping a page.
         //
-        // The press has to be INTERCEPTED, not undone: Qt steps on press, and
-        // putting the position back afterwards shows as a flick. A press on
-        // the thumb is declined so it falls through to Qt, which owns dragging.
+        // The press is INTERCEPTED, not undone: Qt steps on press, and putting
+        // the position back afterwards shows as a flick. A press on the thumb
+        // is declined so it falls through to Qt, which owns dragging.
         MouseArea {
             anchors.fill: parent
             preventStealing: false
-            // Nothing to scroll means nothing to intercept. Without this the
-            // strip keeps eating presses down the edge of every list that
-            // happens to fit, and opacity 0 does not stop a MouseArea.
+            // opacity 0 does not stop a MouseArea, and this is attached to
+            // every list — including the ones whose content fits.
             enabled: root.size < 1.0
             onPressed: mouse => {
-                const track = root.height - root.topPadding - root.bottomPadding;
+                const track = root.trackLength;
                 if (track <= 0) { mouse.accepted = false; return; }
-                const thumbTop = root.topPadding + track * root.position;
-                const thumbEnd = thumbTop + track * root.size;
-                if (mouse.y >= thumbTop && mouse.y <= thumbEnd) {
+                const along = (root.isVertical ? mouse.y : mouse.x) - root.padLead;
+                const thumbStart = track * root.position;
+                if (along >= thumbStart && along <= thumbStart + track * root.size) {
                     mouse.accepted = false;   // the thumb: Qt drags it
                     return;
                 }
-                const frac = (mouse.y - root.topPadding) / track;
+                const frac = along / track;
 
                 // A click within reach of a landmark is a click ON it, so the
-                // dots need no handler of their own to race this one for the
-                // same press.
+                // dots need no handler of their own racing this one.
                 if (root.hasMap) {
                     let best = -1, bestPx = 11;
                     for (let i = 0; i < root.markers.length; ++i) {
@@ -150,15 +192,13 @@ ScrollBar {
         }
 
         Rectangle {
-            // x, not a centring anchor: anchors resolve a pass later than the
-            // width feeding them, so an animated width trails by a frame.
-            x: (parent.width - width) / 2
-            anchors.top: parent.top
-            anchors.bottom: parent.bottom
-            anchors.topMargin: root.topPadding
-            anchors.bottomMargin: root.bottomPadding
-            width: (root.pressed || root.hovered) ? root.barWidthActive : root.barWidth
-            radius: width / 2
+            // Bound, not anchored: a centring anchor resolves a pass later than
+            // the thickness feeding it, so an animated thickness trails a frame.
+            x: root.isVertical ? (parent.width - width) / 2 : root.padLead
+            y: root.isVertical ? root.padLead : (parent.height - height) / 2
+            width:  root.isVertical ? root.thickness : root.trackLength
+            height: root.isVertical ? root.trackLength : root.thickness
+            radius: Math.min(width, height) / 2
             visible: root.style !== "stripes"
             color: Appearance.colors.colOnSurfaceVariant
             // rail keeps the track drawn; minimal shows it only when engaged.
@@ -173,46 +213,30 @@ ScrollBar {
                     easing.bezierCurve: Appearance.animation.elementMoveFast.bezierCurve
                 }
             }
-            Behavior on width {
-                NumberAnimation {
-                    duration: Appearance.animation.elementMoveFast.duration
-                    easing.type: Appearance.animation.elementMoveFast.type
-                    easing.bezierCurve: Appearance.animation.elementMoveFast.bezierCurve
-                }
-            }
+            Behavior on width  { NumberAnimation { duration: Appearance.animation.elementMoveFast.duration } }
+            Behavior on height { NumberAnimation { duration: Appearance.animation.elementMoveFast.duration } }
         }
 
         // stripes: the track as countable rungs, with the thumb riding over.
         Repeater {
             model: root.style === "stripes" && root.size < 1.0 ? stripeCount : 0
 
-            // From the height, so rungs stay evenly spaced on any panel.
-            property int stripeCount: {
-                const track = Math.max(0, root.height - root.topPadding - root.bottomPadding);
-                return Math.max(0, Math.floor(track / 9));
-            }
+            // From the track length, so rungs stay evenly spaced on any panel.
+            property int stripeCount: Math.max(0, Math.floor(root.trackLength / 9))
 
             delegate: Rectangle {
                 required property int index
-                readonly property real track: Math.max(0,
-                    root.height - root.topPadding - root.bottomPadding)
+                readonly property real along: root.padLead + index * 9
 
-                x: (parent.width - width) / 2
-                y: root.topPadding + index * 9
-                width: (root.pressed || root.hovered) ? root.barWidthActive : root.barWidth
-                height: 2
+                x: root.isVertical ? (parent.width - width) / 2 : along
+                y: root.isVertical ? along : (parent.height - height) / 2
+                width:  root.isVertical ? root.thickness : 2
+                height: root.isVertical ? 2 : root.thickness
                 radius: 1
                 color: Appearance.colors.colOnSurfaceVariant
                 opacity: (root.hovered || root.pressed) ? 0.3 : 0.18
 
                 Behavior on opacity { NumberAnimation { duration: 140 } }
-                Behavior on width {
-                    NumberAnimation {
-                        duration: Appearance.animation.elementMoveFast.duration
-                        easing.type: Appearance.animation.elementMoveFast.type
-                        easing.bezierCurve: Appearance.animation.elementMoveFast.bezierCurve
-                    }
-                }
             }
         }
 
@@ -228,32 +252,28 @@ ScrollBar {
                 readonly property bool major: modelData.major === true
                 readonly property bool current: root.currentMarker === index
                 readonly property bool pulled: root.nearestMarker === index
-
-                readonly property real trackLength: Math.max(0,
-                    root.height - root.topPadding - root.bottomPadding)
-                readonly property real baseSize: major ? 6 : 3
-
                 readonly property bool hovered: root.hoveredMarker === index
-
-                // Is this landmark inside the part of the content the thumb is
-                // showing? This is what makes the dots answer to the bar rather
-                // than sit there: scrolling lights them as the thumb reaches them.
+                readonly property real baseSize: major ? 6 : 3
                 readonly property real at: modelData.at ?? 0
+
+                // Inside the span the thumb is showing: this is what makes the
+                // dots answer to the bar rather than sit there.
                 readonly property bool underThumb:
                     dot.at >= root.position - 0.001
                     && dot.at <= root.position + root.size + 0.001
 
-                // Smooth falloff either side, so the response is a wave passing
-                // down the map and not a row of switches flicking.
+                // Smooth falloff either side, so the response is a wave down
+                // the map and not a row of switches flicking.
                 readonly property real nearness: {
                     const span = Math.max(root.size, root.snapRadius * 2);
                     const d = Math.abs(dot.at - (root.position + root.size / 2));
                     return Math.max(0, 1 - d / span);
                 }
                 readonly property bool lit: dot.current || dot.pulled || dot.underThumb
+                readonly property real along: root.padLead + root.trackLength * dot.at
 
-                x: (parent.width - width) / 2
-                y: root.topPadding + trackLength * dot.at - height / 2
+                x: root.isVertical ? (parent.width - width) / 2 : along - width / 2
+                y: root.isVertical ? along - height / 2 : (parent.height - height) / 2
                 // Grows where you are, under the magnet, the pointer, and the thumb.
                 width: baseSize + (current ? 2 : 0) + (pulled ? 3 : 0) + (hovered ? 3 : 0)
                     + dot.nearness * 2
@@ -262,8 +282,7 @@ ScrollBar {
 
                 color: dot.lit ? Appearance.colors.colPrimary
                                : Appearance.colors.colOnSurfaceVariant
-                // Never invisible: a map you cannot see is not a map. The
-                // resting floor rises with nearness to the thumb.
+                // Never invisible: a map you cannot see is not a map.
                 opacity: root.size >= 1.0 ? 0
                     : (current || pulled) ? 1
                     : underThumb ? 0.85
@@ -272,7 +291,7 @@ ScrollBar {
                         + ((root.hovered || root.pressed) ? 0.25 : 0))
 
                 Behavior on opacity { NumberAnimation { duration: 140 } }
-                Behavior on width   {
+                Behavior on width {
                     NumberAnimation {
                         duration: Appearance.animation.elementMoveFast.duration
                         easing.type: Easing.BezierSpline
@@ -341,6 +360,8 @@ ScrollBar {
             id: mapLabel
             readonly property int shown: root.hoveredMarker >= 0 ? root.hoveredMarker : root.nearestMarker
             readonly property var marker: (root.hasMap && shown >= 0) ? root.markers[shown] : null
+            readonly property real along: root.padLead
+                + root.trackLength * (mapLabel.marker?.at ?? 0)
 
             visible: opacity > 0
             // nearestMarker is live during ordinary scrolling; gate on intent.
@@ -349,24 +370,17 @@ ScrollBar {
                       && (root.hoveredMarker >= 0 || root.pressed)) ? 1 : 0
             Behavior on opacity { NumberAnimation { duration: 120 } }
 
-            // Opens away from whichever edge the bar is on.
-            anchors.right: root.mirrored ? undefined : parent.left
-            anchors.rightMargin: 6
-            anchors.left: root.mirrored ? parent.right : undefined
-            anchors.leftMargin: 6
-            y: {
-                const at = mapLabel.marker?.at ?? 0;
-                const track = Math.max(0, root.height - root.topPadding - root.bottomPadding);
-                return Math.max(0, Math.min(root.height - height,
-                    root.topPadding + track * at - height / 2));
-            }
-            Behavior on y {
-                NumberAnimation {
-                    duration: Appearance.animation.elementMoveFast.duration
-                    easing.type: Easing.BezierSpline
-                    easing.bezierCurve: Appearance.animationCurves.expressiveFastSpatial
-                }
-            }
+            // Along the track for its landmark; clear of the bar on the other
+            // axis, on whichever side the bar is not.
+            x: root.isVertical
+                ? (root.mirrored ? parent.width + 6 : -width - 6)
+                : Math.max(0, Math.min(root.width - width, along - width / 2))
+            y: root.isVertical
+                ? Math.max(0, Math.min(root.height - height, along - height / 2))
+                : (root.mirrored ? parent.height + 6 : -height - 6)
+
+            Behavior on x { NumberAnimation { duration: Appearance.animation.elementMoveFast.duration } }
+            Behavior on y { NumberAnimation { duration: Appearance.animation.elementMoveFast.duration } }
 
             implicitWidth: mapLabelText.implicitWidth + 16
             implicitHeight: mapLabelText.implicitHeight + 8
@@ -386,17 +400,18 @@ ScrollBar {
     }
 
     contentItem: Item {
-        implicitWidth: root.hitWidth
-        implicitHeight: root.minimumThumbHeight
+        implicitWidth:  root.isVertical ? root.hitWidth : root.minimumThumbLength
+        implicitHeight: root.isVertical ? root.minimumThumbLength : root.hitWidth
 
         Rectangle {
             id: thumb
-            // Centred in the hit area, not filling it. Bound, not anchored — see above.
-            x: (parent.width - width) / 2
-            y: 0
-            width: (root.pressed || root.hovered) ? root.barWidthActive : root.barWidth
-            height: parent.height
-            radius: width / 2
+            // Centred across the hit area, not filling it, so the target grows
+            // without the bar looking heavier.
+            x: root.isVertical ? (parent.width - width) / 2 : 0
+            y: root.isVertical ? 0 : (parent.height - height) / 2
+            width:  root.isVertical ? root.thickness : parent.width
+            height: root.isVertical ? parent.height : root.thickness
+            radius: Math.min(width, height) / 2
 
             color: root.pressed ? Appearance.colors.colPrimary
                                 : Appearance.colors.colOnSurfaceVariant
@@ -412,15 +427,14 @@ ScrollBar {
                     easing.bezierCurve: Appearance.animation.elementMoveFast.bezierCurve
                 }
             }
-            Behavior on width {
-                NumberAnimation {
+            Behavior on width  { NumberAnimation { duration: Appearance.animation.elementMoveFast.duration } }
+            Behavior on height { NumberAnimation { duration: Appearance.animation.elementMoveFast.duration } }
+            Behavior on color {
+                ColorAnimation {
                     duration: Appearance.animation.elementMoveFast.duration
                     easing.type: Appearance.animation.elementMoveFast.type
                     easing.bezierCurve: Appearance.animation.elementMoveFast.bezierCurve
                 }
-            }
-            Behavior on color {
-                animation: Appearance.animation.elementMoveFast.colorAnimation.createObject(this)
             }
         }
     }

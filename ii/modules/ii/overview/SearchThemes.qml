@@ -321,6 +321,7 @@ Item {
                 spacing: 4
                 clip: true
                 boundsBehavior: Flickable.StopAtBounds
+                ScrollBar.horizontal: StyledScrollBar {}
                 model: root.walltuneHistory
 
                 delegate: Rectangle {
