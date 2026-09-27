@@ -49,7 +49,8 @@ hl.config({
         disable_hyprland_logo = true,
         disable_splash_rendering = true,
         focus_on_activate = true,
-        vfr = true,
+        -- No vfr here: Hyprland 0.55 removed misc:vfr and made it always on.
+        -- It survives as debug:vfr, which is not where a default belongs.
     },
     dwindle = { preserve_split = true },
     xwayland = { force_zero_scaling = true },
