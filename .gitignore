@@ -16,3 +16,7 @@ target,size,avail,pcent
 
 *.bak
 *.orig
+
+# A convenience symlink to a local checkout; it points at a path that exists
+# on one machine and dangles everywhere else.
+/quarry

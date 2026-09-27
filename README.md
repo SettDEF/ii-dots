@@ -228,6 +228,11 @@ hidden rather than erroring:
 - **Never installed for you** — `warp-cli`, `nordvpn`, `virt-viewer`,
   `minimeters`. Personal tools; the toggles that drive them simply do not
   appear.
+- **quarry** — a separate daemon of mine, found through `$QUARRY_SOCK`. It
+  backs four tabs of the wallpaper picker (wallhaven, videos, local, reddit)
+  over one long-lived socket instead of a subprocess per page. Without it those
+  tabs stay quiet and everything else is unaffected; nothing installs it and
+  nothing needs it.
 
 Wallpaper theming expects [`matugen`](https://github.com/InioX/matugen) if you
 want colours to follow the wallpaper.
