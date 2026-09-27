@@ -25,7 +25,10 @@ Flickable {
     // Accumulated scroll destination so wheel deltas stack while animating
     property real scrollTargetY: 0
 
-    ScrollBar.vertical: StyledScrollBar {}
+    /// Off where the caller supplies its own bar, or there are two.
+    property bool showScrollBar: true
+
+    ScrollBar.vertical: StyledScrollBar { visible: root.showScrollBar }
 
     MouseArea {
         visible: Config?.options.interactions.scrolling.fasterTouchpadScroll

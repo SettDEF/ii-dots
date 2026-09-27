@@ -500,6 +500,7 @@ ApplicationWindow {
 
                     StyledFlickable {
                         id: railFlick
+                        showScrollBar: false      // railScroll is its bar
                         Layout.fillHeight: true
                         Layout.fillWidth: true
                         implicitWidth: railTabs.implicitWidth
