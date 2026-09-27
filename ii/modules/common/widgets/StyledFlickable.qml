@@ -47,7 +47,11 @@ Flickable {
         }
     }
 
+    /// Off while something else animates contentY; two animators step, not glide.
+    property bool animateContentY: true
+
     Behavior on contentY {
+        enabled: root.animateContentY
         NumberAnimation {
             id: scrollAnim
             duration: Appearance.animation.scroll.duration

@@ -602,123 +602,105 @@ ApplicationWindow {
 
                     // Scrollable: eleven pages plus four headings is ~840px
                     // against a ~690px content area.
+                    // A sibling, not an attached bar: attached lives inside the
+                    // flickable and pushes the entries right. Out here it uses
+                    // the margin that was already empty.
+                    StyledScrollBar {
+                        id: railScroll
+
+                        parent: navRail
+                        flickable: railFlick
+                        orientation: Qt.Vertical
+                        anchors.left: navRail.left
+                        anchors.leftMargin: -hitWidth - 2
+                        y: railFlick.y
+                        height: railFlick.height
+
+                        size: railFlick.height / Math.max(1, railFlick.contentHeight)
+                        position: railFlick.contentY / Math.max(1, railFlick.contentHeight)
+                        onPositionChanged: if (pressed)
+                            railFlick.contentY = position * railFlick.contentHeight
+
+                        policy: railFlick.contentHeight > railFlick.height + 2
+                            ? ScrollBar.AlwaysOn : ScrollBar.AsNeeded
+                        currentMarker: root.currentPage
+                        onMarkerActivated: index => root.currentPage = index
+
+                        /// Scroll the current entry into view, if it is not.
+                        function revealCurrent() {
+                            const b = (railTabs.buttons ?? [])[root.currentPage];
+                            const range = railFlick.contentHeight - railFlick.height;
+                            if (!b || range <= 0) return;
+                            if (b.y < railFlick.contentY)
+                                railScroll.snapAnimTo(Math.max(0, b.y / range));
+                            else if (b.y + b.height > railFlick.contentY + railFlick.height)
+                                railScroll.snapAnimTo(Math.min(1,
+                                    (b.y + b.height - railFlick.height) / range));
+                        }
+
+                        /// Landmarks come from the buttons: only they know what a
+                        /// group heading measured.
+                        function rebuildMap() {
+                            railScroll.markers = railScroll.markersFromItems(
+                                railTabs.buttons ?? [], railFlick,
+                                b => b.buttonText ?? "",
+                                b => b.hasGroupLabel === true);
+                        }
+
+                        // Coalesced: expanding the rail moves every button at once.
+                        Timer {
+                            id: mapRebuild
+                            interval: 80
+                            onTriggered: railScroll.rebuildMap()
+                        }
+                        Component.onCompleted: railScroll.rebuildMap()
+                        Connections {
+                            target: railFlick
+                            function onContentHeightChanged() { mapRebuild.restart() }
+                            function onHeightChanged() { mapRebuild.restart() }
+                        }
+                        Connections {
+                            target: navRail
+                            function onExpandedChanged() { mapRebuild.restart() }
+                        }
+                        Connections {
+                            target: root
+                            function onCurrentPageChanged() { railScroll.revealCurrent() }
+                        }
+                    }
+
                     StyledFlickable {
-                            id: railFlick
-                            Layout.fillHeight: true
-                            Layout.fillWidth: true
-                            implicitWidth: railTabs.implicitWidth
-                            contentHeight: railTabs.implicitHeight
-                            contentWidth: width
-                            // Only actually scrolls when it has to.
-                            interactive: contentHeight > height
-                            clip: true
+                        id: railFlick
+                        Layout.fillHeight: true
+                        Layout.fillWidth: true
+                        implicitWidth: railTabs.implicitWidth
+                        contentHeight: railTabs.implicitHeight
+                        contentWidth: width
+                        // Only actually scrolls when it has to.
+                        interactive: contentHeight > height
+                        clip: true
 
-                            // The scroll indicator.
-                            //
-                            // StyledFlickable already carries a scrollbar, but
-                            // its default `active: hovered || pressed` keeps it
-                            // at zero opacity until the pointer is on the bar
-                            // itself — so it can only be found by someone who
-                            // already knows it is there. As a discovery cue
-                            // that is worth nothing.
-                            //
-                            // Pinned on while the rail overflows. It says three
-                            // things a chevron could not: that there is more,
-                            // how much, and where you are; and unlike the
-                            // floating hint this replaces, it does not sit on
-                            // top of the last item in the list.
-                            ScrollBar.vertical: StyledScrollBar {
-                                id: railScroll
-
-                                // Outer edge: on the seam it collides with the
-                                // content pane. LayoutMirroring, not a hand-set
-                                // x — Qt's layout pass overwrites that.
-                                LayoutMirroring.enabled: true
-                                LayoutMirroring.childrenInherit: false
-
-                                policy: railFlick.contentHeight > railFlick.height + 2
-                                    ? ScrollBar.AlwaysOn : ScrollBar.AsNeeded
-
-                                // Positions come from the BUTTONS: only they know
-                                // what a group heading measured. Computed on demand —
-                                // as a binding on every button's y, each highlight
-                                // animation rebuilt every dot under the pointer.
-                                currentMarker: root.currentPage
-
-                                // Switching page from the list left the rail
-                                // where it was, so on a page below the fold the
-                                // highlight moved somewhere you could not see.
-                                function revealCurrent() {
-                                    const b = (railTabs.buttons ?? [])[root.currentPage];
-                                    if (!b) return;
-                                    const range = railFlick.contentHeight - railFlick.height;
-                                    if (range <= 0) return;
-                                    const top = b.y;
-                                    const bottom = b.y + b.height;
-                                    if (top < railFlick.contentY)
-                                        railScroll.snapAnimTo(Math.max(0, top / range));
-                                    else if (bottom > railFlick.contentY + railFlick.height)
-                                        railScroll.snapAnimTo(
-                                            Math.min(1, (bottom - railFlick.height) / range));
-                                }
-                                Connections {
-                                    target: root
-                                    function onCurrentPageChanged() { railScroll.revealCurrent() }
-                                }
-
-                                function rebuildMap() {
-                                    railScroll.markers = railScroll.markersFromItems(
-                                        railTabs.buttons ?? [], railFlick,
-                                        b => b.buttonText ?? "",
-                                        b => b.hasGroupLabel === true);
-                                }
-
-                                // Coalesced: expanding moves every button at once.
-                                Timer {
-                                    id: mapRebuild
-                                    interval: 80
-                                    onTriggered: railScroll.rebuildMap()
-                                }
-                                Component.onCompleted: railScroll.rebuildMap()
-                                Connections {
-                                    target: railFlick
-                                    function onContentHeightChanged() { mapRebuild.restart() }
-                                    function onHeightChanged() { mapRebuild.restart() }
-                                }
-                                Connections {
-                                    target: navRail
-                                    function onExpandedChanged() { mapRebuild.restart() }
-                                }
-
-                                onMarkerActivated: index => {
-                                    root.currentPage = index;
+                        NavigationRailTabArray {
+                            id: railTabs
+                            width: parent.width
+                            currentIndex: root.currentPage
+                            expanded: navRail.expanded
+                            Repeater {
+                                model: root.pages
+                                NavigationRailButton {
+                                    required property var index
+                                    required property var modelData
+                                    toggled: root.currentPage === index
+                                    onPressed: root.currentPage = index;
+                                    expanded: navRail.expanded
+                                    buttonIcon: modelData.icon
+                                    buttonIconRotation: modelData.iconRotation || 0
+                                    buttonText: modelData.name
+                                    groupLabel: modelData.group ?? ""
+                                    showToggledHighlight: false
                                 }
                             }
-
-                            NavigationRailTabArray {
-                                id: railTabs
-                                // Gutter for the map: the pills fill the full
-                                // width, so at x=0 the dots draw through them.
-                                x: railScroll.width + 2
-                                width: parent.width - x
-                                currentIndex: root.currentPage
-                                expanded: navRail.expanded
-                                Repeater {
-                                    model: root.pages
-                                    NavigationRailButton {
-                                        required property var index
-                                        required property var modelData
-                                        toggled: root.currentPage === index
-                                        onPressed: root.currentPage = index;
-                                        expanded: navRail.expanded
-                                        buttonIcon: modelData.icon
-                                        buttonIconRotation: modelData.iconRotation || 0
-                                        buttonText: modelData.name
-                                        groupLabel: modelData.group ?? ""
-                                        showToggledHighlight: false
-                                    }
-                                }
-                            }
+                        }
                         }
 
                 }

@@ -136,25 +136,22 @@ ScrollBar {
         // jump down the whole track.
         const dist = Math.abs(target - root.position);
         snapAnim.stop();
-        snapAnim.duration = Math.round(140 + dist * 340);
+        snapAnim.duration = Math.round(200 + dist * 520);
 
-        // ASSIGN contentY; do not animate it. StyledFlickable already carries
-        // `Behavior on contentY`, so an animation here sets the value every
-        // frame and retriggers that Behavior on each one — two animators on one
-        // property, which is what kept arriving as a jump. One assignment lets
-        // the Behavior do the easing.
+        // Ours drives it, with the flickable's Behavior off: its fixed 200ms
+        // snaps across a long page, and both on is two animators, one property.
         if (root.hasFlickable) {
             const f = root.attached;
-            if (root.isVertical) {
-                const range = Math.max(0, f.contentHeight - f.height);
-                f.contentY = (f.originY ?? 0) + target * range;
-            } else {
-                const range = Math.max(0, f.contentWidth - f.width);
-                f.contentX = (f.originX ?? 0) + target * range;
-            }
+            const vert = root.isVertical;
+            const range = Math.max(0, vert ? f.contentHeight - f.height
+                                           : f.contentWidth - f.width);
+            if (f.animateContentY !== undefined) f.animateContentY = false;
+            snapAnim.target = f;
+            snapAnim.property = vert ? "contentY" : "contentX";
+            snapAnim.to = ((vert ? f.originY : f.originX) ?? 0) + target * range;
+            snapAnim.restart();
             return;
         }
-        // No flickable to ease it: animate the bar itself.
         snapAnim.target = root;
         snapAnim.property = "position";
         snapAnim.to = target;
@@ -182,11 +179,11 @@ ScrollBar {
         }
     }
 
-    /// The flickable this bar is attached to, if it is attached to one.
-    ///
-    /// Detected by shape, not `instanceof`: the type check does not survive the
-    /// QML/JS boundary reliably.
-    readonly property Item attached: root.parent
+    /// Set this to drive a flickable the bar is NOT parented to.
+    property Item flickable: null
+
+    /// Detected by shape, not `instanceof`, which does not survive QML/JS.
+    readonly property Item attached: root.flickable ?? root.parent
     readonly property bool hasFlickable: !!root.attached
         && root.attached.contentY !== undefined
         && root.attached.contentHeight !== undefined
@@ -195,6 +192,9 @@ ScrollBar {
         id: snapAnim
         easing.type: Easing.BezierSpline
         easing.bezierCurve: Appearance.animationCurves.emphasizedDecel
+        // Hand the Behavior back, or wheel scrolling stops easing.
+        onStopped: if (root.hasFlickable && root.attached.animateContentY !== undefined)
+            root.attached.animateContentY = true
     }
 
     policy: (root.alwaysVisible && root.size < 1.0) ? ScrollBar.AlwaysOn : ScrollBar.AsNeeded
