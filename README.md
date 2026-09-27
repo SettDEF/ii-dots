@@ -3,14 +3,29 @@
 A bar, dock, sidebars, overlays and a set of panels, written in QML for
 [quickshell](https://quickshell.outfoxxed.me) on Hyprland.
 
+## Install
+
+**From a fresh Arch install**, once you have a network — this fetches packages,
+clones the repo and walks you through locale, keyboard layout and profile:
+
 ```sh
-git clone <this repo> quickshell-ii && cd quickshell-ii
+curl -fsSL https://github.com/SettDEF/ii-dots/raw/master/bootstrap.sh | bash
+```
+
+It reads its prompts from the terminal rather than from the pipe, so
+`curl | bash` behaves the same as running it from a file. `--yes` takes the
+defaults and asks nothing; `--dry-run` prints every action and changes nothing.
+
+**If you already have a desktop**, clone it and look before you leap:
+
+```sh
+git clone https://github.com/SettDEF/ii-dots.git quickshell-ii && cd quickshell-ii
 ./install.sh --dry-run          # see exactly what it would do
 ./install.sh                    # install as `ii`
 qs -c ii
 ```
 
-## Installing
+## Install options
 
 The installer is deliberately non-destructive. It installs under a **config
 name**, so an existing quickshell setup keeps working and you can run this one
@@ -92,6 +107,22 @@ replaced, and backed up first.
 
 Untested on a machine that old — the reasoning is from what the code does, not
 from a benchmark on 2013 hardware.
+
+## Updating
+
+The shell knows about the checkout it runs out of. **Settings -> System ->
+Shell updates** checks a remote branch on a timer, says how far behind you are
+and can pull.
+
+Pulls are `--ff-only` and are skipped while the tree is dirty. This config is
+meant to be edited by the person running it, so an update that stashes your
+work would be worse than no update at all — commit or stash first, and the
+button un-greys. Automatic installs are off by default; notifications are on.
+
+```sh
+qs -c ii ipc call shellUpdate check     # same check, from a script
+qs -c ii ipc call shellUpdate status    # JSON: behind, dirty, latest, error
+```
 
 ## What needs what
 

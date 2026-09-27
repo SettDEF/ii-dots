@@ -25,9 +25,8 @@
 set -euo pipefail
 
 REPO_URL="${QS_REPO_URL:-}"       # set by --repo, or detected from a clone
-BRANCH="${QS_BRANCH:-main}"
-# Filled in when the repo is published; until then the prompt asks for it.
-DEFAULT_REPO="${QS_DEFAULT_REPO:-}"
+BRANCH="${QS_BRANCH:-master}"
+DEFAULT_REPO="${QS_DEFAULT_REPO:-https://github.com/SettDEF/ii-dots}"
 CLONE_DIR="${QS_CLONE_DIR:-$HOME/.local/share/quickshell-ii-src}"
 PROFILE="recommended"
 CHOSE_PROFILE=0
