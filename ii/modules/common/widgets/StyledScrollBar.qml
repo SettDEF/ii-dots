@@ -38,8 +38,14 @@ ScrollBar {
     /// Length of the track, and the bar's thickness across it.
     readonly property real trackLength: Math.max(0,
         (root.isVertical ? root.height : root.width) - root.padLead - root.padTrail)
+    /// Hover from a handler of our own, not only Control.hovered: the wide
+    /// container and the press interceptor both sit between the pointer and
+    /// whatever the control was reading.
+    property bool pointerNear: false
+    readonly property bool engaged: root.pressed || root.hovered || root.pointerNear
+
     readonly property real thickness:
-        (root.pressed || root.hovered) ? root.barWidthActive : root.barWidth
+        root.engaged ? root.barWidthActive : root.barWidth
 
     /// Cross-axis position for something `w` thick, hugging the outer edge.
     function laneOffset(containerThickness, w) {
@@ -179,6 +185,11 @@ ScrollBar {
         implicitWidth:  root.isVertical ? root.hitWidth : 0
         implicitHeight: root.isVertical ? 0 : root.hitWidth
 
+        HoverHandler {
+            id: barHover
+            onHoveredChanged: root.pointerNear = hovered
+        }
+
         // Click the groove to glide there instead of stepping a page.
         //
         // The press is INTERCEPTED, not undone: Qt steps on press, and putting
@@ -231,7 +242,7 @@ ScrollBar {
             color: Appearance.colors.colOnSurfaceVariant
             // rail keeps the track drawn; minimal shows it only when engaged.
             opacity: root.size >= 1.0 ? 0
-                : (root.hovered || root.pressed) ? 0.16
+                : root.engaged ? 0.16
                 : (root.style === "rail" ? 0.10 : 0)
 
             Behavior on opacity {
@@ -262,7 +273,7 @@ ScrollBar {
                 height: root.isVertical ? 2 : root.thickness
                 radius: 1
                 color: Appearance.colors.colOnSurfaceVariant
-                opacity: (root.hovered || root.pressed) ? 0.3 : 0.18
+                opacity: root.engaged ? 0.3 : 0.18
 
                 Behavior on opacity { NumberAnimation { duration: 140 } }
             }
@@ -318,7 +329,7 @@ ScrollBar {
                     : underThumb ? 0.85
                     : Math.min(1, (major ? 0.5 : 0.34)
                         + dot.nearness * 0.3
-                        + ((root.hovered || root.pressed) ? 0.25 : 0))
+                        + (root.engaged ? 0.25 : 0))
 
                 Behavior on opacity { NumberAnimation { duration: 140 } }
                 Behavior on width {
@@ -446,8 +457,9 @@ ScrollBar {
             color: root.pressed ? Appearance.colors.colPrimary
                                 : Appearance.colors.colOnSurfaceVariant
 
-            opacity: root.policy === ScrollBar.AlwaysOn || (root.active && root.size < 1.0)
-                ? (root.pressed ? 0.9 : root.hovered ? 0.75 : 0.5)
+            opacity: root.policy === ScrollBar.AlwaysOn
+                || root.engaged || (root.active && root.size < 1.0)
+                ? (root.pressed ? 0.9 : root.engaged ? 0.75 : 0.5)
                 : 0
 
             Behavior on opacity {
