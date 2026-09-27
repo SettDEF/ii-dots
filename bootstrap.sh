@@ -214,18 +214,41 @@ for h in paru yay; do command -v "$h" >/dev/null 2>&1 && { HELPER="$h"; break; }
 if [ -n "$HELPER" ]; then
     ok "$HELPER is already installed"
 else
-    info "no AUR helper found; building paru from source"
+    info "no AUR helper found; installing paru"
     if [ "$DRY" = 1 ]; then
-        printf '   would: makepkg -si paru-bin in a temporary directory\n'
+        printf '   would: makepkg -si paru-bin, then paru from source if it will not run\n'
         HELPER="paru"
     else
-        tmp="$(mktemp -d)"
-        git clone --depth 1 https://aur.archlinux.org/paru-bin.git "$tmp/paru-bin"
-        ( cd "$tmp/paru-bin" && makepkg -si --noconfirm )
-        rm -rf "$tmp"
-        command -v paru >/dev/null 2>&1 || die "paru did not install; build it by hand and re-run"
+        build_aur() {   # build_aur <aur package name>
+            local pkg="$1" tmp
+            tmp="$(mktemp -d)"
+            git clone --depth 1 "https://aur.archlinux.org/$pkg.git" "$tmp/$pkg" \
+                && ( cd "$tmp/$pkg" && makepkg -si --noconfirm )
+            local rc=$?
+            rm -rf "$tmp"
+            return $rc
+        }
+
+        # paru-bin first: it is a download rather than a Rust build, so it is
+        # minutes faster when it works.
+        build_aur paru-bin || true
+
+        # Existing is not the same as working. paru-bin is linked against the
+        # libalpm that was current when it was PACKAGED, so on a system whose
+        # pacman differs it installs cleanly and then cannot start:
+        #   paru: error while loading shared libraries: libalpm.so.15
+        # Checking only for the file let that through, and every package after
+        # this point silently did not install.
+        if ! paru --version >/dev/null 2>&1; then
+            warn "paru-bin will not run here (libalpm mismatch); building from source"
+            sudo pacman -R --noconfirm paru-bin paru-bin-debug >/dev/null 2>&1 || true
+            run sudo pacman -S --needed --noconfirm rust
+            build_aur paru || die "could not build paru; build an AUR helper by hand and re-run"
+        fi
+
+        paru --version >/dev/null 2>&1 || die "paru installed but will not run; build one by hand and re-run"
         HELPER="paru"
-        ok "paru built and installed"
+        ok "paru installed and working"
     fi
 fi
 
