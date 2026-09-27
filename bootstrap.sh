@@ -282,7 +282,29 @@ if [ ${#missing[@]} -eq 0 ]; then
     ok "all desktop packages already present"
 else
     info "installing: ${missing[*]}"
-    run "$HELPER" -S --needed --noconfirm "${missing[@]}"
+    run "$HELPER" -S --needed --noconfirm "${missing[@]}" || true
+fi
+
+# Verify, rather than assume. An AUR helper that fails mid-run still exits
+# after printing, and without this the script went on to write a Hyprland
+# config and report success while leaving nothing to start -- a black screen
+# with a cursor, three steps away from the actual error.
+if [ "$DRY" != 1 ]; then
+    still=()
+    for p in "${SESSION_PKGS[@]}"; do pacman -Qq "$p" >/dev/null 2>&1 || still+=("$p"); done
+    if [ ${#still[@]} -gt 0 ]; then
+        warn "these did not install: ${still[*]}"
+        case " ${still[*]} " in
+            *" hyprland "*|*" quickshell "*)
+                die "hyprland or quickshell is missing, so there is no session to log into.
+       Fix the error above and re-run this script. Usually the AUR helper:
+         paru --version    # must print a version
+         $HELPER -S quickshell" ;;
+        esac
+        warn "the session will start, but some features will be missing"
+    else
+        ok "all desktop packages present"
+    fi
 fi
 
 # NetworkManager is the one that has to be running before you log out of the
@@ -292,6 +314,25 @@ if ! systemctl is-enabled NetworkManager >/dev/null 2>&1; then
     run sudo systemctl enable --now NetworkManager
 else
     ok "NetworkManager already enabled"
+fi
+
+# Audio and the portals are user services. They are socket-activated, so they
+# usually start themselves -- but "usually" is how you end up with a session
+# that has no sound and no file picker and nothing saying why.
+if [ "$DRY" != 1 ]; then
+    for u in pipewire.socket pipewire-pulse.socket wireplumber.service; do
+        systemctl --user is-enabled "$u" >/dev/null 2>&1 \
+            || systemctl --user enable "$u" >/dev/null 2>&1 || true
+    done
+    ok "audio services enabled for this user"
+else
+    printf '   would: systemctl --user enable pipewire.socket pipewire-pulse.socket wireplumber.service\n'
+fi
+
+# A login manager, or the install ends at a TTY with no way in.
+if command -v sddm >/dev/null 2>&1 && ! systemctl is-enabled display-manager >/dev/null 2>&1; then
+    info "enabling sddm"
+    run sudo systemctl enable sddm
 fi
 
 # ── 5. This config ──────────────────────────────────────────────────────────
