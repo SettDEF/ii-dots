@@ -722,6 +722,31 @@ ContentPage {
             }
         }
 
+        StyledText {
+            Layout.fillWidth: true
+            Layout.leftMargin: 8
+            Layout.rightMargin: 8
+            Layout.topMargin: 4
+            wrapMode: Text.Wrap
+            font.pixelSize: Appearance.font.pixelSize.smaller
+            color: Appearance.colors.colSubtext
+            text: Translation.tr("What widens when the pointer is near")
+        }
+
+        SegmentedButtons {
+            Layout.fillWidth: true
+            Layout.leftMargin: 8
+            Layout.rightMargin: 8
+            Layout.bottomMargin: 4
+            currentId: Config.options.appearance.scrollbar.hoverGrow
+            onSelected: id => Config.options.appearance.scrollbar.hoverGrow = id
+            model: [
+                { id: "bar",   label: Translation.tr("The bar"),   icon: "drag_handle" },
+                { id: "track", label: Translation.tr("The track"), icon: "expand" },
+                { id: "none",  label: Translation.tr("Nothing"),   icon: "block" }
+            ]
+        }
+
         ConfigSwitch {
             buttonIcon: "visibility"
             text: Translation.tr("Always show when there is more to scroll")

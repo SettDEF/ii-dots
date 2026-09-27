@@ -38,11 +38,26 @@ ScrollBar {
     property bool pointerNear: false
     readonly property bool engaged: root.pressed || root.hovered || root.pointerNear
 
-    /// The one animated size. Everything — track, thumb, stripes, dots and the
-    /// positions derived from them — reads this, so nothing can animate at a
-    /// different rate from the thing it is centred on.
-    property real thickness: root.engaged ? root.barWidthActive : root.barWidth
+    /// "bar" | "track" | "none" — what widens when the pointer is near.
+    property string hoverGrow: Config.options?.appearance?.scrollbar?.hoverGrow ?? "bar"
+
+    /// The thumb's size, and the one everything centred on it reads, so nothing
+    /// can animate at a different rate from what it is centred on.
+    property real thickness:
+        (root.engaged && root.hoverGrow === "bar") ? root.barWidthActive : root.barWidth
+    /// The track's. With "track" it widens on its own and the thumb stays thin
+    /// inside it; with "bar" it follows the thumb so the two stay concentric.
+    property real trackThickness:
+        (root.engaged && root.hoverGrow !== "none") ? root.barWidthActive : root.barWidth
+
     Behavior on thickness {
+        NumberAnimation {
+            duration: Appearance.animation.elementMoveFast.duration
+            easing.type: Appearance.animation.elementMoveFast.type
+            easing.bezierCurve: Appearance.animation.elementMoveFast.bezierCurve
+        }
+    }
+    Behavior on trackThickness {
         NumberAnimation {
             duration: Appearance.animation.elementMoveFast.duration
             easing.type: Appearance.animation.elementMoveFast.type
@@ -254,14 +269,14 @@ ScrollBar {
             // the thickness feeding it, so an animated thickness trails a frame.
             x: root.isVertical ? root.laneOffset(parent.width, width) : root.padLead
             y: root.isVertical ? root.padLead : root.laneOffset(parent.height, height)
-            width:  root.isVertical ? root.thickness : root.trackLength
-            height: root.isVertical ? root.trackLength : root.thickness
+            width:  root.isVertical ? root.trackThickness : root.trackLength
+            height: root.isVertical ? root.trackLength : root.trackThickness
             radius: Math.min(width, height) / 2
             visible: root.style !== "stripes"
             color: Appearance.colors.colOnSurfaceVariant
             // rail keeps the track drawn; minimal shows it only when engaged.
             opacity: root.size >= 1.0 ? 0
-                : root.engaged ? 0.16
+                : root.engaged ? (root.hoverGrow === "track" ? 0.22 : 0.16)
                 : (root.style === "rail" ? 0.10 : 0)
 
             Behavior on opacity {
@@ -286,8 +301,8 @@ ScrollBar {
 
                 x: root.isVertical ? root.laneOffset(parent.width, width) : along
                 y: root.isVertical ? along : root.laneOffset(parent.height, height)
-                width:  root.isVertical ? root.thickness : 2
-                height: root.isVertical ? 2 : root.thickness
+                width:  root.isVertical ? root.trackThickness : 2
+                height: root.isVertical ? 2 : root.trackThickness
                 radius: 1
                 color: Appearance.colors.colOnSurfaceVariant
                 opacity: root.engaged ? 0.3 : 0.18

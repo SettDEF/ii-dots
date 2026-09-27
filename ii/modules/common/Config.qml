@@ -122,6 +122,11 @@ Singleton {
                     property string style: "minimal"
                     property int width: 4
                     property int activeWidth: 9
+                    // What widens when you go near it:
+                    //   "bar"   the thumb, and the track with it
+                    //   "track" only the track — the thumb stays thin inside it
+                    //   "none"  nothing moves
+                    property string hoverGrow: "bar"
                     property bool alwaysVisible: false  // not just while engaged
                     property bool showMap: true         // landmark dots, where supplied
                     property bool magnets: true         // release snaps to nearest
