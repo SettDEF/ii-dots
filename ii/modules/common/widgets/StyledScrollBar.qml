@@ -55,17 +55,35 @@ ScrollBar {
     signal snapCaught(int index)
 
     function snapAnimTo(target) {
+        // Duration follows the distance, or a one-dot hop takes as long as a
+        // jump down the whole track.
+        const dist = Math.abs(target - root.position);
+        snapAnim.duration = Math.round(120 + dist * 320);
         snapAnim.to = target;
         snapAnim.restart();
     }
 
+    /// Where the thumb sat when the press began. Used to undo Qt's instant
+    /// page-step on a groove click, and to tell a drag from a tap.
+    property real _pressAnchor: 0
+
     onPressedChanged: {
-        if (!root.pressed && root.hasMap && root.nearestMarker >= 0
+        if (root.pressed) { root._pressAnchor = root.position; return; }
+        // Only after a real drag: a plain click is handled by the tap below,
+        // and snapping it here would fight that animation.
+        if (Math.abs(root.position - root._pressAnchor) < 0.001) return;
+        if (root.hasMap && root.nearestMarker >= 0
                 && (Config.options?.appearance?.scrollbar?.magnets ?? true)) {
             const i = root.nearestMarker;
             root.snapAnimTo(root.markers[i].at ?? 0);
             root.snapCaught(i);
         }
+    }
+
+    /// Centre the thumb on a point down the track, as a fraction of it.
+    function scrollToFraction(frac) {
+        const target = Math.max(0, Math.min(1 - root.size, frac - root.size / 2));
+        root.snapAnimTo(target);
     }
     NumberAnimation {
         id: snapAnim
@@ -73,7 +91,7 @@ ScrollBar {
         property: "position"
         duration: Appearance.animationCurves.expressiveFastSpatialDuration
         easing.type: Easing.BezierSpline
-        easing.bezierCurve: Appearance.animationCurves.expressiveFastSpatial
+        easing.bezierCurve: Appearance.animationCurves.emphasizedDecel
     }
 
     policy: (root.alwaysVisible && root.size < 1.0) ? ScrollBar.AlwaysOn : ScrollBar.AsNeeded
@@ -89,6 +107,19 @@ ScrollBar {
     // Qt's own press-and-drag needs.
     background: Item {
         implicitWidth: root.hitWidth
+
+        // Click the track to glide there, rather than jumping a page at a
+        // time. DragThreshold, so dragging the bar still belongs to Qt; the
+        // position is rewound first because Qt has already stepped by then.
+        TapHandler {
+            gesturePolicy: TapHandler.DragThreshold
+            onTapped: eventPoint => {
+                const track = root.height - root.topPadding - root.bottomPadding;
+                if (track <= 0) return;
+                root.position = root._pressAnchor;
+                root.scrollToFraction((eventPoint.position.y - root.topPadding) / track);
+            }
+        }
 
         Rectangle {
             // x, not a centring anchor: anchors resolve a pass later than the
@@ -272,6 +303,7 @@ ScrollBar {
                     gesturePolicy: TapHandler.DragThreshold
                     margin: 9
                     onTapped: {
+                        root.position = root._pressAnchor;
                         root.snapAnimTo(modelData.at ?? 0);
                         root.markerActivated(index);
                     }
