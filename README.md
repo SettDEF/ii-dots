@@ -169,6 +169,15 @@ was ruled out and why, and what is still unexplained — including a ~1.4 GB
 resident figure that is **not** a QML leak (the JS heap is 21 MB; it is roughly
 one Mesa GL context per mapped surface).
 
+## Credits
+
+Built on [quickshell](https://quickshell.outfoxxed.me) and Hyprland.
+
+The config directory and the settings file path are still named
+`illogical-impulse`, after [end-4/dots-hyprland](https://github.com/end-4/dots-hyprland),
+which is where this started out. [caelestia-dots/shell](https://github.com/caelestia-dots/shell)
+was a reference for parts of the service layer.
+
 ## Licence
 
 MIT. See `LICENSE`.
