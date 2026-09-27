@@ -3,36 +3,67 @@ import qs.modules.common.widgets
 import QtQuick
 import QtQuick.Layouts
 
-/// Material 3 segmented buttons.
-/// https://m3.material.io/components/segmented-buttons/overview
+/// A recessed track with one pill that slides to the chosen segment.
 ///
 ///   SegmentedButtons {
 ///       model: [{ id: "fade", label: "Fade", icon: "blur_on" }, …]
 ///       currentId: state
 ///       onSelected: id => state = id
 ///   }
+///
+/// A sliding indicator rather than a full-bleed fill: the fill has to square
+/// off its inner edges to meet its neighbours, which reads as unfinished next
+/// to a rounded container — and it cannot animate between segments.
 Rectangle {
     id: root
 
     /// [{ id, label, icon? }]
     property var model: []
     property var currentId
-    /// M3 shows a check on the selection; off where icons already say enough.
-    property bool showCheck: true
-    property real segmentHeight: 36
+    property bool showCheck: false
+    property real segmentHeight: 38
 
     signal selected(var id)
 
-    implicitHeight: root.segmentHeight
-    radius: height / 2
-    color: "transparent"
-    border.width: 1
-    border.color: Appearance.colors.colLayer0Border
+    readonly property int currentIndex: {
+        for (let i = 0; i < root.model.length; ++i)
+            if (root.model[i].id === root.currentId) return i;
+        return -1;
+    }
+    readonly property real segmentWidth:
+        root.model.length > 0 ? (width - 4) / root.model.length : 0
 
-    RowLayout {
+    implicitHeight: root.segmentHeight
+    radius: Appearance.rounding.full
+    // A hole, not a raised surface: the pill sits in it.
+    color: Qt.darker(Appearance.colors.colLayer0, 1.25)
+
+    Rectangle {
+        id: indicator
+        visible: root.currentIndex >= 0
+        x: 2 + root.currentIndex * root.segmentWidth
+        y: 2
+        width: root.segmentWidth
+        height: parent.height - 4
+        radius: parent.radius - 2
+        color: Appearance.colors.colSecondaryContainer
+
+        Behavior on x {
+            NumberAnimation {
+                duration: Appearance.animation.elementMoveFast.duration
+                easing.type: Easing.BezierSpline
+                easing.bezierCurve: Appearance.animationCurves.expressiveFastSpatial
+            }
+        }
+        Behavior on width { NumberAnimation { duration: 140 } }
+        Behavior on color {
+            ColorAnimation { duration: Appearance.animation.elementMoveFast.duration }
+        }
+    }
+
+    Row {
         anchors.fill: parent
-        anchors.margins: 1
-        spacing: 0
+        anchors.margins: 2
 
         Repeater {
             model: root.model
@@ -41,45 +72,10 @@ Rectangle {
                 id: segment
                 required property var modelData
                 required property int index
+                readonly property bool active: root.currentIndex === index
 
-                readonly property bool active: root.currentId === modelData.id
-                readonly property bool first: index === 0
-                readonly property bool last: index === (root.model.length - 1)
-
-                Layout.fillWidth: true
-                Layout.fillHeight: true
-
-                Rectangle {
-                    anchors.fill: parent
-                    // Only outer corners round: one pill, not a row of them.
-                    topLeftRadius: segment.first ? root.radius : 0
-                    bottomLeftRadius: segment.first ? root.radius : 0
-                    topRightRadius: segment.last ? root.radius : 0
-                    bottomRightRadius: segment.last ? root.radius : 0
-
-                    color: segment.active ? Appearance.colors.colSecondaryContainer
-                        : segHov.hovered ? Appearance.colors.colLayer1Hover
-                        : "transparent"
-
-                    Behavior on color {
-                        ColorAnimation {
-                            duration: Appearance.animation.elementMoveFast.duration
-                            easing.type: Appearance.animation.elementMoveFast.type
-                            easing.bezierCurve: Appearance.animation.elementMoveFast.bezierCurve
-                        }
-                    }
-                }
-
-                // Hidden next to a filled segment, where it would cut the fill.
-                Rectangle {
-                    visible: !segment.first && !segment.active
-                        && !(root.currentId === (root.model[segment.index - 1]?.id))
-                    anchors.left: parent.left
-                    anchors.verticalCenter: parent.verticalCenter
-                    implicitWidth: 1
-                    implicitHeight: parent.height - 12
-                    color: Appearance.colors.colLayer0Border
-                }
+                width: root.segmentWidth
+                height: parent.height
 
                 Row {
                     anchors.centerIn: parent
@@ -93,7 +89,8 @@ Rectangle {
                         iconSize: Appearance.font.pixelSize.small
                         color: segment.active ? Appearance.m3colors.m3onSecondaryContainer
                                               : Appearance.colors.colOnLayer1
-                        opacity: segment.active ? 1 : 0.7
+                        opacity: segment.active ? 1 : 0.6
+                        Behavior on color { ColorAnimation { duration: 140 } }
                     }
                     StyledText {
                         anchors.verticalCenter: parent.verticalCenter
@@ -103,12 +100,23 @@ Rectangle {
                         font.weight: segment.active ? Font.Medium : Font.Normal
                         color: segment.active ? Appearance.m3colors.m3onSecondaryContainer
                                               : Appearance.colors.colOnLayer1
-                        opacity: segment.active ? 1 : 0.75
+                        opacity: segment.active ? 1 : 0.7
+                        Behavior on color { ColorAnimation { duration: 140 } }
                     }
                 }
 
                 HoverHandler { id: segHov }
                 TapHandler { onTapped: root.selected(segment.modelData.id) }
+
+                // Hover shows only on segments that are not already chosen.
+                Rectangle {
+                    anchors.fill: parent
+                    anchors.margins: 1
+                    radius: root.radius - 2
+                    color: Appearance.colors.colLayer1Hover
+                    opacity: (segHov.hovered && !segment.active) ? 0.5 : 0
+                    Behavior on opacity { NumberAnimation { duration: 120 } }
+                }
             }
         }
     }

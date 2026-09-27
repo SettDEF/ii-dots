@@ -18,11 +18,9 @@ Rectangle {
     component SectionLabel: StyledText {
         Layout.fillWidth: true
         Layout.topMargin: 2
-        font.pixelSize: Appearance.font.pixelSize.smaller - 1
+        font.pixelSize: Appearance.font.pixelSize.smaller
         font.weight: Font.Medium
-        font.letterSpacing: 0.4
-        color: Appearance.colors.colOnLayer0
-        opacity: 0.45
+        color: Appearance.colors.colSubtext
     }
 
     /// The two halves of this panel: what the wallpaper does, and what the
@@ -30,6 +28,10 @@ Rectangle {
     /// stack, then dark/light, extraction — so neither read as a group.
     component GroupHeading: RowLayout {
         property alias text: groupText.text
+        /// Trailing note — a count, a state. Keeps a group to ONE heading.
+        property alias note: groupNote.text
+        default property alias trailing: trailingSlot.data
+
         Layout.fillWidth: true
         Layout.topMargin: 10
         spacing: 8
@@ -45,6 +47,18 @@ Rectangle {
             implicitHeight: 1
             color: Appearance.colors.colOnLayer0
             opacity: 0.12
+        }
+        StyledText {
+            id: groupNote
+            visible: text.length > 0
+            font.pixelSize: Appearance.font.pixelSize.smallest
+            color: Appearance.colors.colSubtext
+        }
+        Item {
+            id: trailingSlot
+            Layout.alignment: Qt.AlignVCenter
+            implicitWidth: childrenRect.width
+            implicitHeight: childrenRect.height
         }
     }
 
@@ -1191,30 +1205,19 @@ Rectangle {
             }
         }
 
-        GroupHeading { text: qsTr("Recent") }
-        // ── History row ─────────────────────────────────────────────────
-        // Newest output first. Each chip shows a visual preview of the tuned
-        // wallpaper with overlaid primary/secondary/tertiary colors.
+        // The count rides on the heading: "Recent" above "Recent Themes" was
+        // the same word twice for one strip of thumbnails.
+        GroupHeading {
+            text: qsTr("Recent")
+            note: root.history.length + ""
+            visible: root.history.length > 0
+        }
+        // Newest output first. Each chip previews the tuned wallpaper with its
+        // primary/secondary/tertiary overlaid.
         ColumnLayout {
             Layout.fillWidth: true
             spacing: 4
             visible: root.history.length > 0
-
-            RowLayout {
-                Layout.fillWidth: true; spacing: 4
-                StyledText {
-                    Layout.fillWidth: true
-                    text: qsTr("Recent Themes")
-                    font.pixelSize: Appearance.font.pixelSize.smaller - 1
-                    font.weight: Font.Medium
-                    color: Appearance.colors.colOnLayer0; opacity: 0.5
-                }
-                StyledText {
-                    text: root.history.length + ""
-                    font.pixelSize: Appearance.font.pixelSize.smaller - 2
-                    color: Appearance.colors.colOnLayer0; opacity: 0.35
-                }
-            }
 
             Item {
                 Layout.fillWidth: true
@@ -1607,7 +1610,6 @@ Rectangle {
             }
         }
 
-        SectionLabel { text: qsTr("Apply to") }
         SegmentedButtons {
             Layout.fillWidth: true
             showCheck: false
@@ -1793,7 +1795,6 @@ Rectangle {
         }
 
         GroupHeading { text: qsTr("Colour") }
-        SectionLabel { text: qsTr("Theme mode") }
         SegmentedButtons {
             Layout.fillWidth: true
             showCheck: false
