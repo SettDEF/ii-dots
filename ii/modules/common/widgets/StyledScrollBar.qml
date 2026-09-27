@@ -146,6 +146,23 @@ ScrollBar {
         }
     }
 
+    /// The flickable this is attached to, for telling a jump from a flick.
+    readonly property Flickable attached: (root.parent instanceof Flickable) ? root.parent : null
+
+    // Jumps glide. Drags and flicks do NOT: the flickable drives position
+    // continuously during those, and animating it would write contentY back
+    // underneath the hand and fight whatever is already moving.
+    Behavior on position {
+        enabled: !root.pressed && !snapAnim.running
+            && !(root.attached?.moving ?? false)
+            && !(root.attached?.dragging ?? false)
+        NumberAnimation {
+            duration: 170
+            easing.type: Easing.BezierSpline
+            easing.bezierCurve: Appearance.animationCurves.emphasizedDecel
+        }
+    }
+
     NumberAnimation {
         id: snapAnim
         target: root

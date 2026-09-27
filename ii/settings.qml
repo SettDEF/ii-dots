@@ -485,6 +485,27 @@ ApplicationWindow {
                                 // animation rebuilt every dot under the pointer.
                                 currentMarker: root.currentPage
 
+                                // Switching page from the list left the rail
+                                // where it was, so on a page below the fold the
+                                // highlight moved somewhere you could not see.
+                                function revealCurrent() {
+                                    const b = (railTabs.buttons ?? [])[root.currentPage];
+                                    if (!b) return;
+                                    const range = railFlick.contentHeight - railFlick.height;
+                                    if (range <= 0) return;
+                                    const top = b.y;
+                                    const bottom = b.y + b.height;
+                                    if (top < railFlick.contentY)
+                                        railScroll.snapAnimTo(Math.max(0, top / range));
+                                    else if (bottom > railFlick.contentY + railFlick.height)
+                                        railScroll.snapAnimTo(
+                                            Math.min(1, (bottom - railFlick.height) / range));
+                                }
+                                Connections {
+                                    target: root
+                                    function onCurrentPageChanged() { railScroll.revealCurrent() }
+                                }
+
                                 function rebuildMap() {
                                     railScroll.markers = railScroll.markersFromItems(
                                         railTabs.buttons ?? [], railFlick,
