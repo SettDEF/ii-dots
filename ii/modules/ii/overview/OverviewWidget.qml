@@ -611,6 +611,9 @@ Item {
         // paging. Tap any shape to view that group.
         Row {
             id: groupPager
+            // One group means nothing to page between: a lone pill that cannot
+            // be acted on reads as an unexplained artefact.
+            visible: root.dotGroups.length > 1
             anchors.horizontalCenter: parent.horizontalCenter
             anchors.bottom: parent.bottom
             anchors.bottomMargin: parent.padding - 2
