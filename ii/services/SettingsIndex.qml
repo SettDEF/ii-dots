@@ -18,6 +18,7 @@ pragma ComponentBehavior: Bound
 // quietly rather than breaking the page.
 
 import qs.modules.common
+import qs.modules.common.functions
 import QtQuick
 import Quickshell
 import Quickshell.Io
@@ -46,7 +47,9 @@ Singleton {
     // swallowed the real controls nested inside it.
     readonly property var widgetKinds: [
         "ConfigSwitch", "ConfigSpinBox", "ConfigSelectionArray",
-        "ConfigSlider", "MaterialTextField", "ConfigColorPicker"
+        "ConfigSlider", "MaterialTextField", "MaterialTextArea",
+        "ConfigColorPicker", "StyledComboBox", "SegmentedButtons",
+        "RippleButtonWithIcon"
     ]
 
     property var perFile: ({})        // page file → parsed rows
@@ -118,6 +121,8 @@ Singleton {
         const widgetRe = new RegExp("^(" + root.widgetKinds.join("|") + ")\\s*\\{");
         const titleRe = /^(?:text|title):\s*(?:Translation\.tr\()?"([^"]+)"/;
         const sectionRe = /^ContentSection\s*\{/;
+        const labelRe = /^StyledText\s*\{/;
+        const maxLabel = 44;
 
         const lines = String(src).split("\n");
         const out = [];
@@ -133,12 +138,26 @@ Singleton {
             if (sectionRe.test(s)) { secDepth = depth; section = ""; }
             if (secDepth >= 0 && depth === secDepth + 1 && section.length === 0) {
                 const m = titleRe.exec(s);
-                if (m) section = m[1];
+                if (m) {
+                    section = m[1];
+                    // A heading is findable in its own right: some rows are
+                    // plain labels next to a control and are indexed by nothing
+                    // else, so "time zone" had no way of reaching its page.
+                    out.push({ section: section, title: section, desc: "",
+                               kind: "section" });
+                }
             }
 
             const wm = widgetRe.exec(s);
             if (wm) stack.push({ depth: depth, rec: { section: section, title: "",
                                                       desc: "", kind: wm[1] } });
+
+            // A short StyledText is the label for the control beside it — the
+            // pattern "Time zone" + StyledComboBox. The control carries no text
+            // of its own, so without this the row is reachable by nothing.
+            // Length-capped, or the explanatory paragraphs become results too.
+            if (labelRe.test(s)) stack.push({ depth: depth, label: true,
+                rec: { section: section, title: "", desc: "", kind: "label" } });
 
             if (stack.length > 0) {
                 const m = titleRe.exec(s);
@@ -160,7 +179,8 @@ Singleton {
 
             while (stack.length > 0 && depth <= stack[stack.length - 1].depth) {
                 const done = stack.pop();
-                if (done.rec.title.length > 0) {
+                const t = done.rec.title;
+                if (t.length > 0 && !(done.label && t.length > maxLabel)) {
                     done.rec.file = fileName;
                     out.push(done.rec);
                 }
@@ -173,25 +193,51 @@ Singleton {
     // Ranked search. Title matches beat section matches beat description
     // matches, and a prefix match beats a mid-word one, so typing "vol" puts
     // "Volume limit" above a row that merely mentions volume in its tooltip.
-    function search(query, limit) {
-        const q = String(query ?? "").trim().toLowerCase();
-        if (q.length === 0) return [];
+    // Two keys per entry, because one cannot do both jobs. The title alone
+    // ranks properly — "scrollbar" should find "Scroll bars", not every row
+    // inside that section. The combined one catches a query whose words are
+    // split across fields: "keyboard layout" is the heading "Keyboard" plus the
+    // row "Session layout", and matching field-by-field sees neither.
+    //
+    // Each is doubled with its spaces removed, which is what lets "scrollbar"
+    // reach "Scroll bars" at all.
+    function _sq(t) { return t + " " + t.replace(/\s+/g, ""); }
+
+    readonly property var haystacks: {
         const out = [];
         for (let i = 0; i < root.entries.length; ++i) {
             const e = root.entries[i];
-            const t = (e.title ?? "").toLowerCase();
-            const s = (e.section ?? "").toLowerCase();
-            const d = (e.desc ?? "").toLowerCase();
-            let score = -1;
-            if (t.startsWith(q)) score = 0;
-            else if (t.indexOf(q) !== -1) score = 1;
-            else if (s.indexOf(q) !== -1) score = 2;
-            else if (d.indexOf(q) !== -1) score = 3;
-            if (score >= 0) out.push({ e: e, score: score });
+            const title = e.title ?? "";
+            const all = [title, e.section ?? "", e.desc ?? "",
+                         String(e.file ?? "").replace(/Config\.qml$|\.qml$/, "")]
+                        .filter(x => x.length > 0).join(" ");
+            out.push({
+                entry: e,
+                titleKey: Fuzzy.prepare(root._sq(title)),
+                allKey: Fuzzy.prepare(root._sq(all))
+            });
         }
-        out.sort((a, b) => a.score - b.score
-            || (a.e.title ?? "").localeCompare(b.e.title ?? ""));
-        return out.slice(0, limit ?? 12).map(x => x.e);
+        return out;
+    }
+
+    function search(query, limit) {
+        const q = String(query ?? "").trim();
+        if (q.length === 0) return [];
+
+        // fuzzysort, the matcher the launcher already uses: subsequence
+        // matching, so a query need not be contiguous and a typo costs rank
+        // rather than every result. The 250 penalty is what keeps a section
+        // match below a title match without hiding it.
+        const hits = Fuzzy.go(q, root.haystacks, {
+            all: false,
+            keys: ["titleKey", "allKey"],
+            scoreFn: a => Math.max(a[0] ? a[0].score : -9999,
+                                   a[1] ? a[1].score - 250 : -9999)
+        });
+        const out = [];
+        for (let i = 0; i < hits.length && out.length < (limit ?? 12); ++i)
+            out.push(hits[i].obj.entry);
+        return out;
     }
 
     function pageIndexOf(entry) {
