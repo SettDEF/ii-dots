@@ -22,7 +22,18 @@ machine. Arguments over a pipe need `bash -s --`:
 ```sh
 curl -fsSL .../iso-install.sh | QS_PASSWORD=hunter2 bash -s -- --disk /dev/nvme0n1 --yes
 ```
- UEFI (systemd-boot) and BIOS (GRUB), ext4 or `--fs btrfs`.
+ GRUB on both UEFI and BIOS, with `os-prober` switched on so another OS on the
+disk actually gets a menu entry. ext4 or `--fs btrfs`.
+
+It can install something other than this desktop, the way archinstall does —
+`--desktop`, or pick from the menu:
+
+| | |
+|---|---|
+| `ii` *(default)* | Hyprland + this quickshell desktop |
+| `hyprland` | Hyprland on its own |
+| `gnome` · `plasma` · `xfce` | with gdm · sddm · lightdm |
+| `none` | base system, no desktop |
 
 Partitioning, if the defaults do not suit:
 

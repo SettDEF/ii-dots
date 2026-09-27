@@ -28,8 +28,9 @@
 #   --user NAME           account to create
 #   --host NAME           hostname
 #   --fs ext4|btrfs       root filesystem (default ext4)
-#   --profile P           passed to install.sh (default recommended)
-#   --no-shell            base Arch only, skip this desktop
+#   --desktop D           ii | hyprland | gnome | plasma | xfce | none
+#   --profile P           passed to bootstrap.sh for the ii desktop
+#   --no-shell            same as --desktop none
 #   -y, --yes             do not stop for confirmation
 #   --dry-run             print every action, change nothing
 
@@ -40,7 +41,7 @@ BRANCH="${QS_BRANCH:-master}"
 DISK=""; USERNAME=""; HOSTNAME_NEW="arch"; FS="ext4"; PROFILE="recommended"
 ESP_SIZE="1G"; SWAP_SIZE=""; HOME_SIZE=""
 ROOTPART=""; BOOTPART=""; HOMEPART=""; FORMAT_HOME=0
-DO_SHELL=1; ASSUME_YES=0; DRY=0
+DESKTOP="ii"; ASSUME_YES=0; DRY=0
 TIMEZONE=""; LOCALE="en_US.UTF-8"; KEYMAP=""
 
 c()    { printf '\033[%sm%s\033[0m\n' "$1" "$2"; }
@@ -93,7 +94,8 @@ while [ $# -gt 0 ]; do
         --format-home) FORMAT_HOME=1; shift ;;
         --profile)   PROFILE="${2:?--profile needs a value}"; shift 2 ;;
         --repo)      REPO="${2:?--repo needs a value}"; shift 2 ;;
-        --no-shell)  DO_SHELL=0; shift ;;
+        --desktop)   DESKTOP="${2:?--desktop needs a value}"; shift 2 ;;
+        --no-shell)  DESKTOP="none"; shift ;;
         -y|--yes)    ASSUME_YES=1; shift ;;
         --dry-run)   DRY=1; shift ;;
         -h|--help)   sed -n '2,26p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
@@ -147,6 +149,24 @@ if [ -z "$TIMEZONE" ]; then
 fi
 [ -n "$KEYMAP" ]   || KEYMAP=$(ask "  Console keymap" "us")
 
+if [ "$ASSUME_YES" != 1 ]; then
+    echo; info "desktops:"
+    printf '   %-10s %s\n' \
+        "ii"       "Hyprland + this quickshell desktop" \
+        "hyprland" "Hyprland on its own, nothing else" \
+        "gnome"    "GNOME" \
+        "plasma"   "KDE Plasma" \
+        "xfce"     "Xfce" \
+        "none"     "no desktop, base system only"
+    echo
+    DESKTOP=$(ask "  Desktop" "$DESKTOP")
+fi
+
+case "$DESKTOP" in
+    ii|hyprland|gnome|plasma|xfce|none) ;;
+    *) die "unknown desktop: $DESKTOP (ii, hyprland, gnome, plasma, xfce, none)" ;;
+esac
+
 if [ "$DRY" = 1 ]; then PASSWORD="(not asked in dry-run)"; else PASSWORD=$(ask_secret "  Password for $USERNAME and root"); fi
 
 echo
@@ -164,7 +184,7 @@ printf '   %-12s %s\n' "target"  "$( [ "$USE_EXISTING" = 1 ] && echo "$ROOTPART 
                        "fs"      "$FS" \
                        "tz"      "$TIMEZONE" \
                        "keymap"  "$KEYMAP" \
-                       "desktop" "$( [ "$DO_SHELL" = 1 ] && echo "$REPO ($PROFILE)" || echo 'no' )"
+                       "desktop" "$( [ "$DESKTOP" = ii ] && echo "ii ($PROFILE)" || echo "$DESKTOP" )"
 echo
 if [ "$ASSUME_YES" != 1 ] && [ "$DRY" != 1 ]; then
     # Typing the path back, not "y": a stray keystroke should not wipe a disk.
@@ -248,10 +268,24 @@ ok "mounted"
 BASE=(base base-devel linux linux-firmware sudo networkmanager git nano
       pipewire pipewire-pulse wireplumber polkit)
 [ "$FS" = btrfs ] && BASE+=(btrfs-progs)
-[ "$UEFI" = 1 ] || BASE+=(grub)
+BASE+=(grub os-prober)
+[ "$UEFI" = 1 ] && BASE+=(efibootmgr)
 # No swap partition: zram is faster, needs no sizing guess, and survives a
 # resize of the root filesystem later.
 [ -n "${SWAPPART:-}" ] || BASE+=(zram-generator)
+
+# Everything but `none` gets a greeter: a machine that boots to a bare tty
+# after a graphical install reads as a failed one.
+case "$DESKTOP" in
+    gnome)    BASE+=(gnome gnome-tweaks gdm);            GREETER=gdm ;;
+    plasma)   BASE+=(plasma kde-applications sddm);      GREETER=sddm ;;
+    xfce)     BASE+=(xfce4 xfce4-goodies lightdm lightdm-gtk-greeter); GREETER=lightdm ;;
+    hyprland) BASE+=(hyprland foot sddm);                GREETER=sddm ;;
+    # ii installs its own packages through bootstrap.sh; it only needs the
+    # greeter up front.
+    ii)       BASE+=(sddm);                              GREETER=sddm ;;
+    none)     GREETER="" ;;
+esac
 
 info "installing the base system (this is the slow part)"
 run pacstrap -K /mnt "${BASE[@]}"
@@ -276,23 +310,25 @@ if [ "$DRY" != 1 ]; then
     printf 'root:%s\n%s:%s\n' "$PASSWORD" "$USERNAME" "$PASSWORD" | arch-chroot /mnt chpasswd
 fi
 inchroot "systemctl enable NetworkManager"
+[ -n "${GREETER:-}" ] && inchroot "systemctl enable $GREETER"
 
 info "bootloader"
 if [ "$UEFI" = 1 ]; then
-    inchroot "bootctl install"
-    ROOTUUID=$([ "$DRY" = 1 ] && echo "UUID" || blkid -s UUID -o value "$ROOTPART")
-    ROOTOPTS="root=UUID=$ROOTUUID rw"
-    [ "$FS" = btrfs ] && ROOTOPTS="$ROOTOPTS rootflags=subvol=@"
-    inchroot "printf 'default arch\ntimeout 3\neditor no\n' > /boot/loader/loader.conf"
-    inchroot "printf 'title Arch Linux\nlinux /vmlinuz-linux\ninitrd /initramfs-linux.img\noptions %s\n' '$ROOTOPTS' > /boot/loader/entries/arch.conf"
+    inchroot "grub-install --target=x86_64-efi --efi-directory=/boot --bootloader-id=GRUB"
 else
-    inchroot "grub-install --target=i386-pc '$DISK' && grub-mkconfig -o /boot/grub/grub.cfg"
+    inchroot "grub-install --target=i386-pc '$DISK'"
 fi
+# os-prober is off by default and silently finds nothing until it is on, which
+# is why a dual boot so often ends up with no menu entry for the other system.
+inchroot "grep -q GRUB_DISABLE_OS_PROBER /etc/default/grub \
+    && sed -i 's/^#\?GRUB_DISABLE_OS_PROBER=.*/GRUB_DISABLE_OS_PROBER=false/' /etc/default/grub \
+    || echo 'GRUB_DISABLE_OS_PROBER=false' >> /etc/default/grub"
+inchroot "grub-mkconfig -o /boot/grub/grub.cfg"
 ok "system configured"
 
 # ── The desktop ────────────────────────────────────────────────────────────
 
-if [ "$DO_SHELL" = 1 ]; then
+if [ "$DESKTOP" = "ii" ]; then
     info "installing the desktop"
 
     # bootstrap.sh, not install.sh: quickshell is in the AUR and a fresh chroot
@@ -329,4 +365,8 @@ fi
 echo
 ok "done"
 echo "   umount -R /mnt && reboot"
-echo "   Log in as $USERNAME. The welcome screen opens on the first start."
+case "$DESKTOP" in
+    ii)   echo "   Log in as $USERNAME. The welcome screen opens on the first start." ;;
+    none) echo "   Log in as $USERNAME at the console." ;;
+    *)    echo "   Log in as $USERNAME at the $GREETER greeter." ;;
+esac
