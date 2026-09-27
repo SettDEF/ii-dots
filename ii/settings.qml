@@ -565,7 +565,13 @@ ApplicationWindow {
 
                             NavigationRailTabArray {
                                 id: railTabs
-                                width: parent.width
+                                // A gutter for the scroll map, so the bar sits
+                                // beside the buttons instead of under them. The
+                                // rail's pills fill the full width, so with the
+                                // bar at x=0 the map was drawing straight
+                                // through the active pill.
+                                x: railScroll.width + 2
+                                width: parent.width - x
                                 currentIndex: root.currentPage
                                 expanded: navRail.expanded
                                 Repeater {

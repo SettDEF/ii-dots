@@ -15,6 +15,10 @@ import Qt5Compat.GraphicalEffects
 
 Item {
     id: root
+    // Declared and never read: every anchor below is horizontal. The vertical
+    // bar uses VerticalWorkspaces instead — passing vertical: true here only
+    // ever produced a full-width widget spilling out of a 40px bar. Kept so
+    // any caller still setting it is not a hard error.
     property bool vertical: false
     property bool borderless: Config.options.bar.borderless
     property int widgetPadding: 0 // kept for BarContent.qml compatibility
