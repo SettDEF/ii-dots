@@ -47,8 +47,9 @@ Singleton {
     property var profiles: ({})
 
     // Re-apply a monitor's profile whenever it reappears (dock/undock, cable
-    // swap). Off by default because it fights manual `hyprctl` experiments.
-    property bool autoApply: false
+    // swap) and once at startup. On by default: a display setting that does
+    // not survive a reboot reads as one that did not save.
+    property bool autoApply: true
 
     // Set while applying so the HyprlandData refresh we trigger does not look
     // like a user-initiated change and bounce back into apply().
@@ -270,6 +271,18 @@ Singleton {
         }
     }
 
+    // Hyprland has to have enumerated the outputs before a monitor rule can
+    // name one; applying straight from onLoaded races that and silently does
+    // nothing.
+    Timer {
+        id: restoreTimer
+        interval: 1500
+        onTriggered: {
+            if (Object.keys(root.profiles).length === 0) return;
+            root.applyAll();
+        }
+    }
+
     FileView {
         id: store
         path: Qt.resolvedUrl(root.storePath)
@@ -277,14 +290,18 @@ Singleton {
             try {
                 const d = JSON.parse(store.text() || "{}");
                 root.profiles = d.profiles ?? {};
-                root.autoApply = d.autoApply === true;
+                // Absent means a store written before this was persisted, and
+                // the answer for those is the new default rather than off.
+                root.autoApply = d.autoApply !== false;
             } catch (e) {
                 root.profiles = ({});
             }
+            if (root.autoApply && Object.keys(root.profiles).length > 0)
+                restoreTimer.restart();
         }
         onLoadFailed: (error) => {
             if (error === FileViewError.FileNotFound)
-                store.setText(JSON.stringify({ profiles: {}, autoApply: false }, null, 2));
+                store.setText(JSON.stringify({ profiles: {}, autoApply: true }, null, 2));
         }
     }
 }
