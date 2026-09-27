@@ -15,11 +15,8 @@ Image {
     asynchronous: true
     fillMode: Image.PreserveAspectFit
 
-    /// Every lookup passes a fallback name. Without one a theme that lacks the
-    /// requested icon hands back an empty path and the tile renders as blank
-    /// space, which is what an uninstalled icon theme looks like: the XDG
-    /// folders resolve through their own fallbacks while every ordinary folder
-    /// comes back empty.
+    /// Always pass a fallback: a theme missing the icon returns an empty path
+    /// and the tile renders blank.
     function themed(name, fallback) {
         return Quickshell.iconPath(name, fallback);
     }
@@ -28,19 +25,15 @@ Image {
         if (!root.isDir)
             return root.themed("application-x-zerosize", "text-x-generic");
 
-        // A folder icon named after the folder, for every directory and not
-        // just the handful of XDG ones. Themes ship a lot of these — Reversal
-        // has 192 (folder-android, folder-code, folder-blender…) — and looking
-        // them up only for XDG paths left almost all of that artwork unused.
-        // Spaces become dashes, which is the convention themes follow.
+        // Themes ship per-name folder icons (Reversal has 192), not just the
+        // XDG ones. Spaces become dashes, which is the naming convention.
         const stem = (root.fileModelData?.fileName ?? "")
             .toLowerCase().replace(/\s+/g, "-");
         return root.themed(`folder-${stem}`, "inode-directory");
     }
 
     onStatusChanged: {
-        // Null with an empty source is "the theme returned nothing", which is a
-        // different failure from Error ("found it, could not decode it").
+        // Null + empty source is "theme returned nothing"; Error is "would not decode".
         if (status === Image.Error || (status === Image.Null && source == ""))
             source = root.themed("folder", "unknown");
     }
@@ -48,16 +41,13 @@ Image {
     /// What kind of file it is, for anything that is not a directory.
     Process {
         running: !root.isDir
-        // `file` follows symlinks, and a link into an absent automount makes it
-        // block for the whole autofs timeout — measured at 15s and 30s here,
-        // once per entry, which stalls any folder holding one. The timeout
-        // turns that into a 1s miss and the generic icon.
+        // `file` follows symlinks; one into an absent automount blocks for the
+        // autofs timeout (15-30s here) per entry. The cap makes that a 1s miss.
         command: ["timeout", "1", "file", "--mime", "-b",
                   root.fileModelData?.filePath ?? ""]
         stdout: StdioCollector {
             onStreamFinished: {
-                // No output means the timeout fired or `file` failed; leave
-                // whatever the theme already resolved.
+                // No output = timeout or failure; keep what the theme resolved.
                 const out = text.trim();
                 if (out.length === 0) return;
 

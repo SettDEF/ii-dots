@@ -17,11 +17,8 @@ StyledFlickable {
     
     ColumnLayout {
         id: contentColumn
-        // Capped: a form whose rows run the full width of a 1100px window is
-        // a long way for the eye to travel between a label and its control.
-        // The cap is a constant, not root.width — root's own implicitWidth
-        // comes from this column, so reading it back here is a binding loop
-        // and the page lays out empty.
+        // A constant, not root.width: root's implicitWidth comes from this
+        // column, so reading it back is a binding loop and the page lays out empty.
         readonly property real maxWidth: 880
         width: root.forceWidth ? root.baseWidth
              : Math.max(root.baseWidth, Math.min(implicitWidth, maxWidth))
@@ -30,7 +27,7 @@ StyledFlickable {
             horizontalCenter: parent.horizontalCenter
             margins: 20
         }
-        // The cards carry the separation now; 30 left them adrift.
+
         spacing: 18
     }
 

@@ -10,8 +10,7 @@ Rectangle {
     default property alias data: buttonRow.data
 
     radius: Appearance.rounding.normal
-    // A note, not an alert. Filled with the accent it out-shouted every
-    // control above it; the tinted icon carries the same meaning.
+    // A note, not an alert: the tinted icon carries it, not a filled panel.
     color: Appearance.colors.colLayer2
     border.width: 1
     border.color: Appearance.colors.colLayer0Border

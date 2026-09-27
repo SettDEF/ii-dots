@@ -25,9 +25,7 @@ Scope {
     // first opened, otherwise events that happened pre-HUD-open are lost.
     Connections { target: KeyTracker; ignoreUnknownSignals: true }
 
-    // Same reason: the shell-update check is a singleton with a timer in it,
-    // and a singleton nothing refers to is never built, so the timer never
-    // starts and no update is ever noticed.
+    // Same reason: nothing refers to ShellUpdates, so its timer never starts.
     Connections { target: ShellUpdates; ignoreUnknownSignals: true }
 
     IpcHandler {

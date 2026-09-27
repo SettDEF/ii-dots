@@ -11,9 +11,8 @@ import QtQuick.Layouts
 ///       onSelected: id => state = id
 ///   }
 ///
-/// A sliding indicator rather than a full-bleed fill: the fill has to square
-/// off its inner edges to meet its neighbours, which reads as unfinished next
-/// to a rounded container — and it cannot animate between segments.
+/// A sliding indicator, not a full-bleed fill: a fill has to square its inner
+/// edges to meet its neighbours, and cannot animate between segments.
 Rectangle {
     id: root
 

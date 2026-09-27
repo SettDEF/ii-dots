@@ -65,9 +65,8 @@ Rectangle {
         }
     }
 
-    /// Every GroupHeading that asked to be navigable, in column order. Some
-    /// sit inside a wrapper layout rather than directly in `col`, so this
-    /// descends — two levels is every case the panel actually has.
+    /// Navigable GroupHeadings in column order. Descends one level: some sit
+    /// inside a wrapper layout rather than directly in `col`.
     readonly property var sections: {
         const out = [];
         const walk = (item, depth) => {
@@ -97,21 +96,16 @@ Rectangle {
         root.currentSection = i;
     }
 
-    // Follows the scroll, so the rail says where you are and not only where
-    // you last clicked.
+    // Follows the scroll, not just the last click.
     Connections {
         target: scroll
         function onContentYChanged() {
             if (sectionScroll.running) return;
-            // The last sections sit inside the final screenful and never reach
-            // the top, so a fixed reading line at the top would leave them
-            // permanently unhighlighted. The line instead sweeps from the top
-            // of the viewport to its bottom as the scroll runs its course.
+            // The last sections never reach the top, so the reading line
+            // sweeps down the viewport as the scroll runs out.
             const max = Math.max(1, scroll.contentHeight - scroll.height);
             const t = Math.min(1, Math.max(0, scroll.contentY / max));
-            // Flat for the first half, so a heading at the top of the viewport
-            // reads as the current one; then it sweeps down to the foot of the
-            // content so the trailing sections become reachable at all.
+            // Flat for the first half so the top heading wins, then sweeps.
             const sweep = Math.max(0, (t - 0.5) * 2);
             const line = scroll.contentY + 28 + (scroll.height - 28) * sweep;
             let best = 0;
@@ -202,16 +196,10 @@ Rectangle {
         }
     }
 
-    // ── Active mix summary ─────────────────────────────────────────────────
-    // Surfaces every non-default section choice as a dismissable chip so the
-    // user can see (and undo) the full stack at a glance, even when every
-    // section dropdown is collapsed.
-    // Draggable order of the "Active mix" chips. The relative order of
-    // theory/style/practical/remap is passed to switchwall.sh as --mix-order
-    // and drives the order palette_transform.py applies them (the result
-    // genuinely differs by order). "mode" (matugen extraction) and "curve"
-    // (image-stage LUT) run at fixed pipeline stages, so they can be dragged
-    // for tidiness but don't change the palette-transform order.
+    // Draggable order of the active mix. The relative order of
+    // theory/style/practical/remap goes to switchwall.sh as --mix-order and
+    // the palette genuinely differs by it. "mode" and "curve" run at fixed
+    // stages, so dragging those is cosmetic.
     property var mixOrder: ["mode", "theory", "style", "practical", "remap", "curve"]
 
     readonly property var activeMix: {
@@ -766,20 +754,9 @@ Rectangle {
         // Persistent location — must survive a reboot, since this path is
         // saved into config.json as background.wallpaperPath. /tmp is cleared.
         const cacheDir  = home + "/.cache/quickshell/walltune"
-        // Alternate between two filenames so wallpaperPath actually changes
-        // every apply. Without this, Image.source stays bound to the same
-        // string and never reloads — leaving the OLD processed image on
-        // screen even though the file was overwritten with new content.
-        // (Path-change is the only reload trigger; QML Image doesn't watch
-        // the underlying file's mtime.)
-        // Always write to the slot the bg layer is NOT currently showing,
-        // so wallpaperPath actually changes and QML's Image cache reloads.
-        // Basing the choice on `currentWall` (the live displayed path) is
-        // robust to cancelled mid-runs — the previous lastProcessedSlot
-        // counter could drift out of sync if a run was killed before it
-        // finished writing, leaving the next run to overwrite the same slot
-        // that's already on screen. Same-path write → no reload → looks
-        // exactly like the wallpaper "stacking" effects on top of itself.
+        // Two filenames, alternating: a path change is QML Image's only reload
+        // trigger, it does not watch mtime. Chosen off `currentWall` rather
+        // than a counter, which drifts when a run is killed mid-write.
         const currentIsA = /processed-a\.png$/.test(currentWall || "")
         const currentIsB = /processed-b\.png$/.test(currentWall || "")
         const slot       = currentIsA ? "b" : (currentIsB ? "a"
@@ -1170,10 +1147,8 @@ Rectangle {
     }
 
     // ── Section rail ────────────────────────────────────────────────────
-    // The panel is long enough that the only way to reach the bottom was to
-    // scroll the whole way. The rail scrolls to a heading rather than swapping
-    // pages: the column is one continuous document and splitting it would mean
-    // the state at the top no longer sits next to what it affects.
+    // Scrolls to a heading rather than swapping pages: the column is one
+    // document, and splitting it separates state from what it affects.
     Rectangle {
         id: sectionRail
         anchors {
@@ -1185,8 +1160,7 @@ Rectangle {
             bottomMargin: 12
         }
         width: 140
-        // A surface, not bare ground. The column is only ever a third full, and
-        // unfilled ground reads as a hole where unfilled chrome reads as room.
+        // A surface, not bare ground: the column is only ever a third full.
         radius: Appearance.rounding.large
         color: Appearance.colors.colLayer1
         visible: root.sections.length > 1
@@ -1254,9 +1228,7 @@ Rectangle {
             }
         }
 
-        /// Reset / shuffle / pick. Secondary to Reprocess, so they sit in the
-        /// rail's own column rather than crowding the primary button — which
-        /// also gives the rail something at both ends instead of a long drop.
+        /// Secondary to Reprocess, so they sit here rather than beside it.
         component RailAction: Rectangle {
             property string icon: ""
             property var action
@@ -1280,9 +1252,8 @@ Rectangle {
             anchors {
                 horizontalCenter: parent.horizontalCenter
                 bottom: parent.bottom
-                // Centres these on the Reprocess button beside them: that bar
-                // is 48 tall on a 12 margin, these are 38 inside a rail that
-                // already carries its own 12.
+                // Centres on the 48-tall Reprocess button: 12 + 24 from the
+                // bottom, less the rail's own 12 and this row's 19.
                 bottomMargin: 5
             }
             spacing: 4
@@ -1596,8 +1567,7 @@ Rectangle {
                     }
                 }
 
-                // Without this the strip ends on a chip sliced down the middle,
-                // which reads as a clipping bug rather than as more to scroll.
+                // Or the strip ends on a chip sliced down the middle.
                 Rectangle {
                     anchors { right: parent.right; top: parent.top; bottom: parent.bottom }
                     width: 28
@@ -1612,9 +1582,7 @@ Rectangle {
             }
         }
 
-        // ── Active mix ─────────────────────────────────────────────────────
-        // A row, not a block: the stack is set once and then read, so it costs
-        // the column 44px instead of a heading plus one card per stage.
+        // A row, not a block: the stack is set once and then read.
         RippleButton {
             id: mixRow
             Layout.fillWidth: true
@@ -1643,8 +1611,7 @@ Rectangle {
                     font.pixelSize: Appearance.font.pixelSize.smaller
                     color: Appearance.colors.colOnLayer1
                 }
-                // The stage colours, in run order: the row says what is in the
-                // stack without spelling any of it out.
+                // The stack, in run order, without spelling it out.
                 Row {
                     spacing: 3
                     Repeater {
@@ -1710,8 +1677,7 @@ Rectangle {
             }
         }
 
-        // Unlabelled, this read as a second row of the transition picker
-        // above it rather than as the separate question it is.
+        // Unlabelled, it reads as a second row of the transition picker.
         ColumnLayout {
             Layout.fillWidth: true
             spacing: 5
@@ -1904,8 +1870,7 @@ Rectangle {
         }
 
         GroupHeading { sectionId: "colour"; sectionIcon: "palette"; text: qsTr("Colour") }
-        // Staged, not applied: Reprocess is what commits it, so these only
-        // set root.darkMode.
+        // Staged, not applied: Reprocess commits it.
         RowLayout {
             Layout.fillWidth: true
             spacing: 6
@@ -1964,8 +1929,7 @@ Rectangle {
             }
         }
 
-        // Everything below shapes the palette after extraction, so it is its
-        // own zone rather than a divider in the middle of "Colour".
+        // Everything below shapes the palette after extraction.
         GroupHeading {
             sectionId: "grading"; sectionIcon: "tune"
             text: qsTr("Grading")
@@ -2951,8 +2915,7 @@ Rectangle {
         }
     }
 
-    // The mix, on demand. A grid rather than a list: six stages down the
-    // column was most of a screenful for six short words.
+    // A grid, not a list: six stages down the column was most of a screenful.
     PanelSheet {
         id: mixSheet
         open: root.mixOpen
@@ -2976,8 +2939,7 @@ Rectangle {
                     required property int index
 
                     Layout.fillWidth: true
-                    // An odd last card spans both columns, so the block ends
-                    // square instead of on a half-width orphan.
+                    // An odd last card spans both, so the block ends square.
                     Layout.columnSpan: (index === root.activeMix.length - 1
                                         && root.activeMix.length % 2 === 1) ? 2 : 1
                     implicitHeight: 54
@@ -2992,8 +2954,7 @@ Rectangle {
                     Behavior on color { ColorAnimation { duration: 100 } }
                     Behavior on border.color { ColorAnimation { duration: 100 } }
 
-                    // Moved by transform, not x/y: the layout keeps owning
-                    // position, so the drag cannot fight it.
+                    // Transform, not x/y: the layout keeps owning position.
                     z: stageDrag.active ? 50 : 0
                     scale: stageDrag.active ? 1.03 : 1
                     Behavior on scale { NumberAnimation { duration: 90 } }
@@ -3008,8 +2969,7 @@ Rectangle {
                         property string dropKey: ""
                         onActiveTranslationChanged: {
                             if (!active) return;
-                            // Nearest centre in both axes now that the cards
-                            // sit in a grid rather than a single column.
+                            // Both axes: the cards are a grid, not a column.
                             const cx = stage.x + activeTranslation.x + stage.width / 2;
                             const cy = stage.y + activeTranslation.y + stage.height / 2;
                             let best = null, bestD = Infinity;
@@ -3052,8 +3012,7 @@ Rectangle {
                             Layout.fillWidth: true
                             spacing: 7
 
-                            // One marker, two jobs: the disc is the stage
-                            // colour and the number is its place in the run.
+                            // One marker: disc is the stage, number is its place.
                             Rectangle {
                                 implicitWidth: 18; implicitHeight: 18; radius: 9
                                 color: Qt.alpha(stage.modelData.color, 0.22)

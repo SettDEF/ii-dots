@@ -122,10 +122,7 @@ Item {
         // true, which re-showed the popup over the icon, which made the icon
         // fire onExited, which cleared buttonHovered — measured as a 2ms
         // flip-flop between the two on every hover after the first.
-        // The context menu takes the pointer off the icon, so the icon's own
-        // MouseArea fires onExited and the preview used to vanish the instant
-        // you right-clicked. The menu is about the app you are previewing, so
-        // the preview stays for as long as it is up.
+        // The context menu takes the pointer off the icon, firing onExited.
         property bool hovered: (previewPopup.show && popupMouseArea.containsMouse)
             || root.buttonHovered
             || appMenu.visible
@@ -152,14 +149,9 @@ Item {
             edges: Edges.Top | Edges.Left
 
         }
-        // Never bind the window's visibility to a child's `visible`: in QML
-        // that property reads EFFECTIVE visibility, which is false whenever an
-        // ancestor is hidden — so the window was hidden because the child read
-        // hidden, and the child read hidden because the window was hidden.
-        // Measured as show=true, opacity=1, visible=false.
-        //
-        // The fade lives on the window instead, so nothing inside it decides
-        // whether it exists.
+        // Never bind a window's visibility to a child's `visible`: that reads
+        // EFFECTIVE visibility, so the two hold each other false. The fade
+        // lives on the window, and nothing inside decides whether it exists.
         property real panelOpacity: previewPopup.show ? 1 : 0
         Behavior on panelOpacity {
             enabled: (Config.options.dock.previewAnimation ?? "grow") !== "none"
@@ -170,15 +162,8 @@ Item {
             }
         }
         visible: previewPopup.panelOpacity > 0
-        // Input only where the panel actually is.
-        //
-        // The window spans the whole dock width, so without a mask its
-        // MouseArea claimed the pointer even while the panel was invisible —
-        // measured: popupHovered=true with visible=false. Hovering an icon
-        // therefore handed the pointer straight to the hidden popup,
-        // buttonHovered fell back to false a frame later, and the show/hide
-        // machine flip-flopped. That is the hover that works once and then
-        // will not come back.
+        // The window spans the whole dock, so without a mask it claims the
+        // pointer while invisible and the show/hide machine flip-flops.
         mask: Region {
             item: previewPopup.show ? popupMouseArea : null
         }
@@ -212,12 +197,9 @@ Item {
                 // Rises and settles rather than only fading: a panel that
                 // appears at full size reads as a different surface arriving,
                 // one that grows from the dock reads as the icon's own.
-                // Transforms, never implicitWidth/implicitHeight. The popup's
-                // window follows this item, so animating its size resized the
-                // Wayland surface on every frame of the open — a relayout and
-                // a reallocation per frame with live captures inside it. That
-                // is the version that stuttered; a transform costs the GPU
-                // nothing and runs on the render thread.
+                // Transforms, never implicitWidth/Height: the popup's window
+                // follows this item, so a size animation reallocates the
+                // Wayland surface every frame.
                 readonly property string anim: Config.options.dock.previewAnimation ?? "grow"
                 transformOrigin: Item.Bottom
                 scale: (previewPopup.show || popupBackground.anim !== "grow") ? 1 : 0.9
@@ -322,36 +304,18 @@ Item {
                                         }
                                     }
                                 }
-                                // Rounded by the scene graph, not by an
-                                // offscreen layer. layer.enabled + OpacityMask
-                                // cost an FBO render and a mask pass PER
-                                // PREVIEW PER FRAME, and a live capture
-                                // changes every frame, so both ran flat out
-                                // the whole time the popup was up.
+                                // Scene-graph rounding: layer + OpacityMask is
+                                // an FBO and a mask pass per preview per frame.
                                 ClippingWrapperRectangle {
                                   color: "transparent"
                                   radius: Appearance.rounding.small
                                   ScreencopyView {
                                     id: screencopyView
-                                    // Both gated on the popup being up. live:true
-                                    // captured every previewed window every
-                                    // frame for the life of the popup object —
-                                    // a GPU copy per window per frame, running
-                                    // while nothing was on screen.
-                                    //
-                                    // Detaching captureSource when hidden also
-                                    // forces a fresh attach on the next hover.
-                                    // A delegate reused with its source still
-                                    // set never re-signalled new content, which
-                                    // is the hover that works once and then
-                                    // shows nothing.
-                                    // Attached as soon as a hover is INTENDED
-                                    // (shouldShow), not when the popup arrives:
-                                    // attaching on show left the previews blank
-                                    // for the first frames, which reads as lag.
-                                    // live stays tied to show, so nothing is
-                                    // captured continuously behind a closed
-                                    // popup.
+                                    // A reused delegate whose source is still
+                                    // set never re-signals content, so detach
+                                    // on hide. Attach on shouldShow, not show,
+                                    // or the first frames are blank; live stays
+                                    // on show, or it copies behind a closed popup.
                                     captureSource: previewPopup.shouldShow ? windowButton.modelData : null
                                     // Off: still attaches for one frame, so the
                                     // preview is a still, not a blank box.

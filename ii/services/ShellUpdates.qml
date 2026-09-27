@@ -6,12 +6,10 @@ import Quickshell
 import Quickshell.Io
 
 /**
- * Updates to the shell itself, read from the git checkout it runs out of.
+ * Updates to the shell itself, from the git checkout it runs out of.
  *
- * Pulls are always --ff-only and never run over a dirty tree: this config is
- * meant to be edited by the person running it, so an update that rewrites or
- * stashes their work is worse than no update at all. When the tree is dirty the
- * check still reports, and applying is left to them.
+ * Pulls are --ff-only and skipped over a dirty tree: this config is meant to be
+ * edited by the person running it. A dirty tree still reports; it just waits.
  */
 Singleton {
     id: root

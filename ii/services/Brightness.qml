@@ -9,16 +9,11 @@ import Quickshell.Hyprland
 import QtQuick
 
 /**
- * Backlight control, one BrightnessMonitor per screen.
+ * Backlight control, one BrightnessMonitor per screen: `brightnessctl` for an
+ * internal panel, `ddcutil` over DDC/CI for an external one.
  *
- * Two transports, picked per screen: an internal panel goes through
- * `brightnessctl`, an external one over DDC/CI through `ddcutil`. DDC is slow
- * and dislikes being written to in bursts, so its writes are debounced and its
- * changes are not animated; a laptop panel takes them immediately.
- *
- * `brightness` is what the user asked for. `multipliedBrightness` is what is
- * actually written, after the anti-flashbang multiplier that dims the backlight
- * when the screen content is bright.
+ * `brightness` is what was asked for; `multipliedBrightness` is what gets
+ * written, after the anti-flashbang scaling below.
  */
 Singleton {
     id: root
@@ -51,8 +46,6 @@ Singleton {
     function decreaseBrightness(): void { root.stepBrightness(-0.05); }
 
     // ── Discovery ──────────────────────────────────────────────────────────
-    // Screens are enumerated first; the DDC probe follows, and each monitor is
-    // initialised in turn once it knows whether it has a bus to talk to.
 
     onMonitorsChanged: {
         root.ddcMonitors = [];
@@ -192,21 +185,17 @@ Singleton {
 
             let percent = Math.floor(value * 100);
 
-            // This panel's firmware curve folds over at the top. amdgpu logs
-            // "Using custom brightness curve" and reports a non-linear scale.
-            // Measured on the raw device (max 65535), reading actual_brightness
-            // back after each write:
+            // This panel's firmware curve folds over at the top. Measured on
+            // the raw device (max 65535), reading actual_brightness back:
             //     64224  (98%) -> actual 65290   brightest, stable
             //     64450        -> actual 65535   last good value
             //     64550        -> actual     0   backlight OFF
             //     65535 (100%) -> actual     0   backlight OFF
-            // Above ~64500 the backlight physically switches off, which is why a
-            // slider reading 100 looked darker than 0 (at 0 the panel clamps to
-            // a lit floor of ~3084). 98% is 99.6% of maximum light, with margin.
+            // Above ~64500 the backlight switches off. 98% is 99.6% of maximum
+            // light, with margin.
             if (percent > 98) percent = 98;
 
-            // "1%" and not "1": brightnessctl reads a bare number as a RAW
-            // value, so "1" means 1/65535 — indistinguishable from off.
+            // "1%" not "1": a bare number is RAW, so "1" means 1/65535.
             const arg = percent <= 0 ? "1%" : `${percent}%`;
             writeProc.exec(["brightnessctl", "--class", "backlight", "s", arg, "--quiet"]);
         }
@@ -226,19 +215,14 @@ Singleton {
     }
 
     // ── Anti-flashbang ─────────────────────────────────────────────────────
-    // A dark theme on a screen that suddenly fills with white is the thing this
-    // exists for. The screen is sampled after it settles and the backlight is
-    // scaled down in proportion to how bright the content turned out to be.
+    // Sample the screen once it settles, scale the backlight by how bright it is.
 
     /// A workspace switch animates, so sampling has to wait for it to finish.
     property int workspaceAnimationDelay: 500
-    /// Was 30, which fired a full-screen grim per monitor on every window and
-    /// title change — a title storm ran them back to back. 400 coalesces a
-    /// burst into one capture.
+    /// 400, not 30: a title storm fires a full-screen grim per monitor.
     property int contentSwitchDelay: 400
 
-    /// Fitted to hand-picked pairs of (screen lightness, comfortable multiplier):
-    /// 6.600135 + 216.360356 * e^(-0.0811129189x), over 100 to land in 0..1.
+    /// Fitted to hand-picked (lightness, multiplier) pairs; /100 to land in 0..1.
     function brightnessMultiplierForLightness(x: real): real {
         return (6.600135 + 216.360356 * Math.exp(-0.0811129189 * x)) / 100.0;
     }
@@ -269,15 +253,13 @@ Singleton {
                 id: sampleTimer
                 interval: root.workspaceAnimationDelay
                 onTriggered: {
-                    // Restart rather than start: a capture still running is
-                    // sampling a screen that has since changed.
+                    // Restart: a running capture is sampling a stale screen.
                     sampleProc.running = false;
                     sampleProc.running = true;
                 }
             }
 
-            /// Straight down a pipe — no temp file to write, clean up, or leave
-            /// behind when the shell reloads mid-capture.
+            /// Down a pipe: no temp file left behind on a reload mid-capture.
             Process {
                 id: sampleProc
                 command: ["bash", "-c",

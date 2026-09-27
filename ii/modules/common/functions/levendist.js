@@ -1,13 +1,7 @@
-// Fuzzy match scoring for the launcher, the clipboard history and the emoji
-// picker. Every function returns 0..1, higher is a better match, so callers can
-// keep one threshold and sort descending.
-//
-// Two scores rather than one, because the two jobs pull in opposite directions:
-// an app name is about as long as what you typed, so the whole string matters;
-// a clipboard entry is a paragraph, so only the best-matching window of it does.
+// Fuzzy match scoring. Every function returns 0..1, higher is better, so
+// callers share one threshold and sort descending.
 
-/// Wagner-Fischer, two rows instead of a full matrix: the haystack can be a
-/// whole clipboard entry, and an n*m matrix of those is worth avoiding.
+/// Two rows, not an n*m matrix: the haystack can be a whole clipboard entry.
 function editDistance(a, b) {
     if (a === b) return 0;
     if (a.length === 0) return b.length;
@@ -39,9 +33,8 @@ function similarity(a, b) {
     return 1 - editDistance(a, b) / longest;
 }
 
-/// The best the needle scores against any window of the haystack its own
-/// length. This is what lets "fox" find "the quick brown fox" at all: whole
-/// string similarity of those two is near zero.
+/// Best score against any window of the haystack the needle's own length.
+/// Whole-string similarity of "fox" and "the quick brown fox" is near zero.
 function bestWindow(needle, hay) {
     if (needle.length === 0) return 1;
     if (needle.length >= hay.length) return similarity(needle, hay);
@@ -67,9 +60,8 @@ function clamp01(x) {
     return x < 0 ? 0 : (x > 1 ? 1 : x);
 }
 
-/// For short labels — an app name against what was typed. Weighted toward the
-/// whole string, because with two short strings a window match is nearly free
-/// and would rank every three-letter app equally.
+/// For short labels. Weighted to the whole string: between two short strings
+/// a window match is nearly free and would rank every 3-letter app alike.
 function computeScore(s1, s2) {
     if (s1 === s2) return 1;
     if (s1.length === 0 || s2.length === 0) return 0;
@@ -79,8 +71,7 @@ function computeScore(s1, s2) {
 
     let score = 0.85 * similarity(s1, s2) + 0.15 * bestWindow(short, long);
 
-    // Typing usually starts at the start of a word, so agreeing there is
-    // evidence and disagreeing there is evidence against.
+    // Typing starts at the start of a word, so the first character is evidence.
     score += 0.02 * sharedPrefix(s1, s2);
     if (s1[0] !== s2[0]) score -= 0.05;
 
@@ -93,9 +84,8 @@ function computeScore(s1, s2) {
     return clamp01(score);
 }
 
-/// For long text — a clipboard entry or an emoji description. Weighted toward
-/// the window match, since the query is a fragment of something much longer and
-/// whole-string similarity would just measure the length difference.
+/// For long text. Weighted to the window match: the query is a fragment, so
+/// whole-string similarity would only measure the length difference.
 function computeTextMatchScore(s1, s2) {
     if (s1 === s2) return 1;
     if (s1.length === 0 || s2.length === 0) return 0;

@@ -547,12 +547,8 @@ Singleton {
                 // Off, a preview is one frame grabbed on hover instead of a
                 // GPU copy per window per frame.
                 property bool livePreviews: true
-                // How the window-preview popup arrives:
-                //   "grow" | "rise" | "fade" | "none"
-                // All four are transforms on a surface that was allocated once.
-                // The popup used to animate its own implicitWidth/Height, which
-                // resized the Wayland surface on every frame with live captures
-                // inside it — that is the version that stuttered.
+                // "grow" | "rise" | "fade" | "none". All transforms — animating
+                // the popup's size resizes its Wayland surface every frame.
                 property string previewAnimation: "grow"
                 property real height: 60
                 property real hoverRegionHeight: 2
@@ -940,14 +936,12 @@ Singleton {
                 property int adviseUpdateThreshold: 75 // packages
                 property int stronglyAdviseUpdateThreshold: 200 // packages
 
-                // Updates to the shell itself, from the git checkout it runs
-                // out of. Separate from the pacman counts above.
+                // The shell's own checkout, not the pacman counts above.
                 property JsonObject shell: JsonObject {
                     property bool enable: true
                     property int checkIntervalHours: 6
-                    // Off by default. Pulling under someone who is mid-edit is
-                    // not a convenience, and the shell hot-reloads on the pull,
-                    // so an unattended update changes the desktop underfoot.
+                    // Off: the shell hot-reloads on the pull, so an unattended
+                    // update changes the desktop underfoot.
                     property bool autoApply: false
                     property bool notify: true
                 }

@@ -6,9 +6,8 @@ import QtQuick
 import QtQuick.Layouts
 import Quickshell
 
-/// Light/dark as a picture of the result rather than two words. The mock
-/// scales off its own width, so the same button works in a 500px welcome
-/// screen and in a 190px panel column.
+/// Light/dark as a picture of the result. The mock scales off its own width,
+/// so it works at 500px and at 190px.
 RippleButton {
     id: root
     required property bool dark
@@ -30,9 +29,8 @@ RippleButton {
     // Same selection colour as every other toggle in the shell.
     colBackgroundToggled: Appearance.colors.colSecondaryContainer
     colBackgroundToggledHover: Appearance.colors.colSecondaryContainerHover
-    /// What picking this side does. Overridden where the choice is staged
-    /// rather than applied on the spot (the Palette panel applies on
-    /// Reprocess, so switching the live theme here would be wrong).
+    /// Overridden where the choice is staged, not applied now — the Palette
+    /// panel commits on Reprocess.
     property var apply: mode => Quickshell.execDetached(["bash", "-c",
         `${Directories.wallpaperSwitchScriptPath} --mode ${mode} --noswitch`])
     onClicked: root.apply(root.dark ? "dark" : "light")
@@ -88,8 +86,7 @@ RippleButton {
                     Layout.fillWidth: true
                     value: 0.7
                     wavy: true
-                    // Only the chosen side animates: a still mock next to a
-                    // moving one says which is live without a second marker.
+                    // Only the chosen side animates; that is the selection marker.
                     animateWave: root.toggled
                     highlightColor: root.toggled ? Appearance.m3colors.m3primary : root.previewFg
                     trackColor: ColorUtils.mix(root.previewBg, root.previewFg, 0.5)
