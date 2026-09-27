@@ -280,9 +280,10 @@ ScrollBar {
                 readonly property bool current: root.currentMarker === index
                 readonly property bool pulled: root.nearestMarker === index
                 readonly property bool hovered: root.hoveredMarker === index
-                // Derived from the bar, not fixed: a dot wider than the line it
-                // sits on reads as a pin head on a stick.
-                readonly property real baseSize: root.thickness + (major ? 2 : 0)
+                /// Minor landmarks stay small whatever the bar does — they sit
+                /// INSIDE it and are read by contrast, not by size. Only a
+                /// section start thickens the line.
+                readonly property real baseSize: major ? root.thickness + 2 : 3
                 readonly property real at: modelData.at ?? 0
 
                 // Inside the span the thumb is showing: this is what makes the
@@ -314,12 +315,17 @@ ScrollBar {
                 height: width
                 radius: width / 2
 
-                color: dot.lit ? Appearance.colors.colPrimary
-                               : Appearance.colors.colOnSurfaceVariant
+                // Inverted against whatever is behind it: dark where it sits on
+                // the thumb, light where it sits on the empty track. Matching
+                // the thumb's own colour made every marker under it disappear.
+                color: dot.underThumb
+                    ? Appearance.m3colors.m3surface
+                    : (dot.current || dot.pulled) ? Appearance.colors.colPrimary
+                                                  : Appearance.colors.colOnSurfaceVariant
                 // Never invisible: a map you cannot see is not a map.
                 opacity: root.size >= 1.0 ? 0
+                    : underThumb ? 0.95
                     : (current || pulled) ? 1
-                    : underThumb ? 0.85
                     : Math.min(1, (major ? 0.5 : 0.34)
                         + dot.nearness * 0.3
                         + (root.engaged ? 0.25 : 0))
@@ -344,7 +350,8 @@ ScrollBar {
                     radius: width / 2
                     color: "transparent"
                     border.width: 1.5
-                    border.color: Appearance.colors.colPrimary
+                    border.color: dot.underThumb ? Appearance.m3colors.m3surface
+                                                 : Appearance.colors.colPrimary
                     opacity: 0
                     visible: opacity > 0
 
