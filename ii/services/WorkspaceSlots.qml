@@ -4,6 +4,7 @@ pragma ComponentBehavior: Bound
 import QtQuick
 import Quickshell
 import Quickshell.Hyprland
+import qs.modules.common
 
 /**
  * Which workspaces a bar should show, and what is in them.
@@ -60,6 +61,32 @@ Singleton {
             : Hyprland.workspaces.values.some(w => w.id === id);
     }
     function idAt(index) { return root.slotWsIds[index] ?? -1 }
+
+    readonly property var romanTable: ["I","II","III","IV","V","VI","VII","VIII","IX","X"]
+
+    /// What a slot should be labelled, by the same rules the horizontal bar
+    /// uses: an explicit workspace name wins, then the user's own nerd-font
+    /// glyph list, then roman numerals, then the plain id.
+    ///
+    /// Derived from the workspace ID, never from the index: out-of-group slots
+    /// are appended after the group, so index+1 named them wrong — workspace 61
+    /// showed up as "VII".
+    function labelAt(index) {
+        const id = root.idAt(index);
+        if (id < 0) return "";
+        const ws = Hyprland.workspaces.values.find(w => w.id === id);
+        const name = ws?.name ?? "";
+        if (name && name !== String(id)) return name;
+
+        const w = Config.options.bar.workspaces;
+        const off = id - root.groupStart;
+        const inGroup = off >= 0 && off < root.workspacesPerGroup;
+        if (w.useNerdFont && inGroup && (w.numberMap?.length ?? 0) > off)
+            return w.numberMap[off];
+        if (w.romanNumerals && inGroup)
+            return root.romanTable[off] ?? String(id);
+        return String(id);
+    }
 
     function focusIndex(index) {
         const id = root.idAt(index);

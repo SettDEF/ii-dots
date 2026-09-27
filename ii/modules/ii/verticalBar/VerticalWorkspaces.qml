@@ -46,13 +46,6 @@ Item {
     implicitWidth: root.slotSize
     implicitHeight: slotColumn.implicitHeight
 
-    function roman(n) {
-        const table = [[10, "X"], [9, "IX"], [5, "V"], [4, "IV"], [1, "I"]];
-        let out = "";
-        for (const [v, s] of table) { while (n >= v) { out += s; n -= v; } }
-        return out;
-    }
-
     HoverHandler {
         onHoveredChanged: root.hovered = hovered
     }
@@ -105,19 +98,18 @@ Item {
                 HoverHandler { id: slotHov }
                 TapHandler { onTapped: WorkspaceSlots.focusIndex(slot.modelData) }
 
+                // Same label rules and same typography as the horizontal
+                // bar — numbers family, extra bold — so this reads as the
+                // workspaces you already have, turned on its side.
                 StyledText {
                     anchors.fill: parent
                     horizontalAlignment: Text.AlignHCenter
                     verticalAlignment: Text.AlignVCenter
-                    // Numbers on the active slot, on hover, or always if asked.
-                    // An unoccupied slot you are not pointing at is a dot.
                     visible: root.alwaysShowNumbers || root.hovered || slot.active
-                    text: {
-                        const n = slot.wsId - WorkspaceSlots.groupStart + 1;
-                        if (n < 1 || n > WorkspaceSlots.workspacesPerGroup) return String(slot.wsId);
-                        return root.romanNumerals ? root.roman(n) : String(n);
-                    }
-                    font.pixelSize: Appearance.font.pixelSize.smaller
+                    text: WorkspaceSlots.labelAt(slot.modelData)
+                    font.pixelSize: Appearance.font.pixelSize.small
+                    font.family: Appearance.font.family.numbers
+                    font.weight: Font.ExtraBold
                     color: slot.active ? Appearance.m3colors.m3onPrimary
                                        : Appearance.colors.colOnLayer1
                 }
