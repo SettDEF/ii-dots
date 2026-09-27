@@ -63,6 +63,14 @@ ScrollBar {
     property real snapRadius: 0.035
     readonly property bool hasMap: (root.markers?.length ?? 0) > 0
 
+    /// Emitted when a dot on the map is clicked. The bar scrolls there itself;
+    /// this is for a host that wants to do more — the settings rail switches
+    /// page on it, so the map navigates rather than merely scrolls.
+    signal markerActivated(int index)
+
+    /// Index of the dot under the pointer, or -1.
+    property int hoveredMarker: -1
+
     /// Index of the marker currently pulling, or -1.
     readonly property int nearestMarker: {
         if (!root.hasMap) return -1;
@@ -78,10 +86,18 @@ ScrollBar {
     // The magnet. Only while dragging, and only once the drag settles — pulling
     // during the drag itself would fight the pointer, which feels like a stuck
     // scroll rather than a snap.
+    signal snapCaught(int index)
+
+    function snapAnimTo(target) {
+        snapAnim.to = target;
+        snapAnim.restart();
+    }
+
     onPressedChanged: {
         if (!root.pressed && root.hasMap && root.nearestMarker >= 0) {
-            snapAnim.to = root.markers[root.nearestMarker].at ?? 0;
-            snapAnim.restart();
+            const i = root.nearestMarker;
+            root.snapAnimTo(root.markers[i].at ?? 0);
+            root.snapCaught(i);
         }
     }
     NumberAnimation {
@@ -154,6 +170,7 @@ ScrollBar {
             model: root.hasMap ? root.markers : []
 
             delegate: Rectangle {
+                id: dot
                 required property var modelData
                 required property int index
 
@@ -165,11 +182,14 @@ ScrollBar {
                     root.height - root.topPadding - root.bottomPadding)
                 readonly property real baseSize: major ? 6 : 3
 
+                readonly property bool hovered: root.hoveredMarker === index
+
                 anchors.horizontalCenter: parent.horizontalCenter
                 y: root.topPadding + trackLength * (modelData.at ?? 0) - height / 2
-                // Grows when it is where you are, and again when the magnet has
-                // hold of it — so the pull is visible before you let go.
-                width: baseSize + (current ? 2 : 0) + (pulled ? 3 : 0)
+                // Grows when it is where you are, again when the magnet has
+                // hold of it — so the pull is visible before you let go — and
+                // again under the pointer, so it is obvious it can be clicked.
+                width: baseSize + (current ? 2 : 0) + (pulled ? 3 : 0) + (hovered ? 3 : 0)
                 height: width
                 radius: width / 2
 
@@ -193,6 +213,123 @@ ScrollBar {
                 Behavior on color {
                     animation: Appearance.animation.elementMoveFast.colorAnimation.createObject(this)
                 }
+
+                // A ring that expands and fades once when the magnet catches,
+                // so a snap is something you SEE happen rather than something
+                // you notice afterwards.
+                Rectangle {
+                    id: catchRing
+                    anchors.centerIn: parent
+                    // Not bound to the dot: the animation drives this, and a
+                    // binding would be dropped on the first frame anyway.
+                    width: dot.width
+                    height: width
+                    radius: width / 2
+                    color: "transparent"
+                    border.width: 1.5
+                    border.color: Appearance.colors.colPrimary
+                    opacity: 0
+                    visible: opacity > 0
+
+                    ParallelAnimation {
+                        id: catchAnim
+                        NumberAnimation {
+                            target: catchRing; property: "width"
+                            from: dot.width; to: dot.width * 3.4
+                            duration: 420
+                            easing.type: Easing.BezierSpline
+                            easing.bezierCurve: Appearance.animationCurves.emphasizedDecel
+                        }
+                        NumberAnimation {
+                            target: catchRing; property: "opacity"
+                            from: 0.85; to: 0
+                            duration: 420
+                        }
+                    }
+                }
+
+                // Only fires for the dot that was actually caught.
+                Connections {
+                    target: root
+                    function onSnapCaught(i) { if (i === index) catchAnim.restart() }
+                }
+
+                // The hit target is bigger than the dot, because a 3px circle
+                // is not something anyone can click. Transparent, so the map
+                // still looks like dots.
+                //
+                // DragThreshold, so the tap is abandoned the moment the pointer
+                // moves: dragging the bar from a dot has to keep working, and
+                // a handler that grabs on press would take that away.
+                TapHandler {
+                    gesturePolicy: TapHandler.DragThreshold
+                    margin: 9
+                    onTapped: {
+                        root.snapAnimTo(modelData.at ?? 0);
+                        root.markerActivated(index);
+                    }
+                }
+                HoverHandler {
+                    margin: 9
+                    // Clearing unconditionally clobbers the neighbour: moving
+                    // from one dot to the next, the one being LEFT reports
+                    // false after the one being entered has already claimed the
+                    // slot, and the label vanishes mid-slide.
+                    onHoveredChanged: {
+                        if (hovered) root.hoveredMarker = index;
+                        else if (root.hoveredMarker === index) root.hoveredMarker = -1;
+                    }
+                }
+            }
+        }
+
+        // The label for whichever dot is under the pointer or being pulled.
+        // One instance, not one per dot: only ever one is shown, and forty
+        // permanently-constructed pills to show one of them is waste.
+        Rectangle {
+            id: mapLabel
+            readonly property int shown: root.hoveredMarker >= 0 ? root.hoveredMarker : root.nearestMarker
+            readonly property var marker: (root.hasMap && shown >= 0) ? root.markers[shown] : null
+
+            visible: opacity > 0
+            // Only while the pointer is on the map or dragging the bar.
+            // `nearestMarker` is live whenever the position happens to pass
+            // near a dot, so without this the label popped up on its own during
+            // ordinary scrolling.
+            opacity: (marker && String(marker.label ?? "").length > 0
+                      && (root.hoveredMarker >= 0 || root.pressed)) ? 1 : 0
+            Behavior on opacity { NumberAnimation { duration: 120 } }
+
+            // To the LEFT of the bar, since the bar lives on a right edge.
+            anchors.right: parent.left
+            anchors.rightMargin: 6
+            y: {
+                const at = mapLabel.marker?.at ?? 0;
+                const track = Math.max(0, root.height - root.topPadding - root.bottomPadding);
+                return Math.max(0, Math.min(root.height - height,
+                    root.topPadding + track * at - height / 2));
+            }
+            Behavior on y {
+                NumberAnimation {
+                    duration: Appearance.animation.elementMoveFast.duration
+                    easing.type: Easing.BezierSpline
+                    easing.bezierCurve: Appearance.animationCurves.expressiveFastSpatial
+                }
+            }
+
+            implicitWidth: mapLabelText.implicitWidth + 16
+            implicitHeight: mapLabelText.implicitHeight + 8
+            radius: Appearance.rounding.full
+            color: Appearance.colors.colLayer2
+            border.width: 1
+            border.color: Appearance.colors.colLayer0Border
+
+            StyledText {
+                id: mapLabelText
+                anchors.centerIn: parent
+                text: mapLabel.marker?.label ?? ""
+                font.pixelSize: Appearance.font.pixelSize.smaller
+                color: Appearance.colors.colOnLayer2
             }
         }
     }

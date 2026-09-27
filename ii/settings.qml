@@ -509,6 +509,15 @@ ApplicationWindow {
                                     }
                                     return out;
                                 }
+
+                                // The map navigates, it does not merely
+                                // scroll: a dot is a page, so clicking one
+                                // opens it. Scrolling the rail to a page you
+                                // then still have to click would be a worse
+                                // version of the list that is already there.
+                                onMarkerActivated: index => {
+                                    root.currentPage = index;
+                                }
                             }
 
                             NavigationRailTabArray {
