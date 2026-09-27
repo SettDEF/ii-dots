@@ -69,6 +69,22 @@ ContentPage {
             }
         }
 
+        ConfigRow {
+            StyledText {
+                Layout.leftMargin: 8
+                Layout.fillWidth: true
+                wrapMode: Text.WordWrap
+                color: Appearance.colors.colOnLayer0
+                text: Translation.tr("The welcome screen has the first-run setup and a list of what is installed.")
+            }
+            RippleButtonWithIcon {
+                buttonRadius: Appearance.rounding.small
+                materialIcon: "waving_hand"
+                mainText: Translation.tr("Open it")
+                onClicked: Quickshell.execDetached(["qs", "-c", "ii", "ipc", "call", "welcome", "open"])
+            }
+        }
+
         ConfigSwitch {
             buttonIcon: "update"
             text: Translation.tr("Check for updates")

@@ -392,7 +392,9 @@ Item {
         + (root.vertical ? 0 : (ctxTotalW > 0 ? ctxTotalW + 2 : 0))
 
     implicitWidth:  root.vertical ? Appearance.sizes.verticalBarWidth : root.slotsExtent
-    implicitHeight: root.vertical ? root.slotsExtent : Appearance.sizes.barHeight
+    // baseBarHeight, not barHeight: in Float the latter includes the gap either
+    // side of the card, so the island spilled past it top and bottom.
+    implicitHeight: root.vertical ? root.slotsExtent : Appearance.sizes.baseBarHeight
 
     Behavior on implicitWidth {
         // Must match contextSlot's `Behavior on width` (300 ms) — when

@@ -22,6 +22,28 @@ Scope {
         onPressed: GlobalStates.wallTuneOpen = !GlobalStates.wallTuneOpen
     }
 
+    // In-process reload, the same one the right sidebar's button uses. The
+    // welcome and settings apps are separate processes, so Quickshell.reload()
+    // there would only reload themselves.
+    IpcHandler {
+        target: "shell"
+        function reload(): void { Quickshell.reload(true) }
+        function reloadAll(): void {
+            HyprDispatch.run("reload");
+            Quickshell.reload(true);
+        }
+    }
+
+    // Opens the right sidebar on its Wi-Fi dialog. Used by the welcome app,
+    // which is a separate process and cannot reach GlobalStates directly.
+    IpcHandler {
+        target: "wifi"
+        function open(): void {
+            GlobalStates.sidebarRightOpen = true;
+            GlobalStates.openWifiDialogRequest++;
+        }
+    }
+
     // ── Per-app colours ─────────────────────────────────────────────────
     GlobalShortcut {
         name: "appColorsToggle"

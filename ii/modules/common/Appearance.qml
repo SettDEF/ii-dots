@@ -423,6 +423,10 @@ Singleton {
         }
         property real barHeight: Config.options.bar.cornerStyle === 1 ?
             (baseBarHeight + root.sizes.hyprlandGapsOut * 2) : baseBarHeight
+        // barHeight is the strip the bar OCCUPIES; in Float it includes the gap
+        // on either side of the floating card. Anything drawn inside the bar
+        // has to inset from the card, not the strip, or it overflows it.
+        property real barIslandHeight: baseBarHeight - 8
         property real barCenterSideModuleWidth: Config.options?.bar.verbose ? 360 : 140
         property real barCenterSideModuleWidthShortened: 280
         property real barCenterSideModuleWidthHellaShortened: 190

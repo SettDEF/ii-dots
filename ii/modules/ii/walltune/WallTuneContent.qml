@@ -1184,9 +1184,11 @@ Rectangle {
                     Layout.fillWidth: true
                     implicitHeight: 34
                     radius: Appearance.rounding.full
+                    // Not bare "transparent": a ColorAnimation to it walks RGB
+                    // to 0 too, so the fade-out frames are translucent black.
                     color: railItem.active ? Appearance.colors.colSecondaryContainer
                          : railHov.hovered ? Appearance.colors.colLayer2
-                         : "transparent"
+                         : ColorUtils.transparentize(Appearance.colors.colSecondaryContainer)
                     Behavior on color { ColorAnimation { duration: 140 } }
 
                     readonly property color fg: railItem.active

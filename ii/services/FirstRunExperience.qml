@@ -25,6 +25,16 @@ Singleton {
         Quickshell.execDetached(["bash", "-c", `echo '${root.firstRunFileContent}' > '${root.firstRunFilePath}'`])
     }
 
+    /// Opening it again later, from the settings or a keybind.
+    function open() {
+        Quickshell.execDetached(["bash", "-c", `qs -p '${root.welcomeQmlPath}'`])
+    }
+
+    IpcHandler {
+        target: "welcome"
+        function open(): void { root.open() }
+    }
+
     function handleFirstRun() {
         Quickshell.execDetached([Directories.wallpaperSwitchScriptPath, root.defaultWallpaperPath])
         Quickshell.execDetached(["bash", "-c", `qs -p '${root.welcomeQmlPath}'`])

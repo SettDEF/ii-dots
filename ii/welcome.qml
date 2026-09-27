@@ -136,9 +136,26 @@ ApplicationWindow {
             Layout.fillWidth: true
             Layout.fillHeight: true
 
+            SectionRail {
+                id: sectionRail
+                anchors {
+                    left: parent.left; top: parent.top; bottom: parent.bottom
+                    margins: 10
+                }
+                flickable: contentColumn
+                column: contentColumn.contentItem
+            }
+
             ContentPage {
                 id: contentColumn
-                anchors.fill: parent
+                anchors {
+                    left: sectionRail.visible ? sectionRail.right : parent.left
+                    right: parent.right
+                    top: parent.top
+                    bottom: parent.bottom
+                }
+                forceWidth: true
+                baseWidth: 560
 
                 ContentSection {
                     Layout.fillWidth: true
@@ -199,6 +216,35 @@ ApplicationWindow {
                 }
 
                 SystemBasicsSection {}
+
+                ContentSection {
+                    icon: "wifi"
+                    title: Translation.tr("Network")
+
+                    ConfigRow {
+                        StyledText {
+                            Layout.fillWidth: true
+                            wrapMode: Text.WordWrap
+                            color: Appearance.colors.colOnLayer0
+                            text: !SystemRequirements.has("nmcli")
+                                    ? Translation.tr("NetworkManager is not installed, so there is nothing to configure here.")
+                                : Network.ethernet ? Translation.tr("Connected over Ethernet.")
+                                : Network.wifiStatus === "connected"
+                                    ? Translation.tr("Connected to %1.").arg(Network.networkName)
+                                : Network.wifiStatus === "limited"
+                                    ? Translation.tr("Connected to %1, but with no route out — a captive portal, probably.").arg(Network.networkName)
+                                : Translation.tr("Not connected. You will want this before installing anything below.")
+                        }
+                        RippleButtonWithIcon {
+                            buttonRadius: Appearance.rounding.small
+                            visible: SystemRequirements.has("nmcli")
+                            materialIcon: "wifi_find"
+                            mainText: Translation.tr("Wi-Fi")
+                            onClicked: Quickshell.execDetached(["qs", "-p", Quickshell.shellPath(""),
+                                                                "ipc", "call", "wifi", "open"])
+                        }
+                    }
+                }
 
                 ContentSection {
                     icon: "screenshot_monitor"
@@ -407,6 +453,246 @@ ApplicationWindow {
                 }
 
                 ContentSection {
+                    icon: "inventory_2"
+                    title: Translation.tr("What's missing")
+
+                    StyledText {
+                        Layout.fillWidth: true
+                        wrapMode: Text.WordWrap
+                        color: Appearance.colors.colSubtext
+                        font.pixelSize: Appearance.font.pixelSize.smaller
+                        text: Translation.tr("A feature whose tool is absent hides itself rather than erroring, which is why half of this can be missing without saying so. Nothing here is required.")
+                    }
+
+                    StyledText {
+                        Layout.fillWidth: true
+                        visible: SystemRequirements.checked && SystemRequirements.missingRelevant.length === 0
+                        color: Appearance.colors.colOnLayer0
+                        text: Translation.tr("Everything optional is installed.")
+                    }
+
+                    ColumnLayout {
+                        Layout.fillWidth: true
+                        spacing: 2
+                        visible: SystemRequirements.missingRelevant.length > 0
+
+                        Repeater {
+                            model: SystemRequirements.missingRelevant
+                            delegate: RowLayout {
+                                required property var modelData
+                                Layout.fillWidth: true
+                                spacing: 8
+
+                                MaterialSymbol {
+                                    text: "remove"
+                                    iconSize: Appearance.font.pixelSize.normal
+                                    color: Appearance.colors.colSubtext
+                                }
+                                StyledText {
+                                    Layout.preferredWidth: 150
+                                    text: modelData.pkg
+                                    font.family: Appearance.font.family.monospace
+                                    font.pixelSize: Appearance.font.pixelSize.smaller
+                                    color: Appearance.colors.colOnLayer0
+                                }
+                                StyledText {
+                                    Layout.fillWidth: true
+                                    text: modelData.label
+                                    font.pixelSize: Appearance.font.pixelSize.smaller
+                                    color: Appearance.colors.colSubtext
+                                    elide: Text.ElideRight
+                                }
+                            }
+                        }
+                    }
+
+                    Flow {
+                        Layout.fillWidth: true
+                        spacing: 5
+                        visible: SystemRequirements.missingRelevant.length > 0
+
+                        RippleButtonWithIcon {
+                            id: copyInstallButton
+                            property bool copied: false
+                            buttonRadius: Appearance.rounding.small
+                            materialIcon: copied ? "check" : "content_copy"
+                            mainText: copied ? Translation.tr("Copied")
+                                             : Translation.tr("Copy install command")
+                            onClicked: {
+                                Quickshell.clipboardText = SystemRequirements.installCommand();
+                                copyInstallButton.copied = true;
+                                copiedResetTimer.restart();
+                            }
+                            Timer {
+                                id: copiedResetTimer
+                                interval: 1500
+                                onTriggered: copyInstallButton.copied = false
+                            }
+                        }
+                        RippleButtonWithIcon {
+                            buttonRadius: Appearance.rounding.small
+                            materialIcon: "refresh"
+                            mainText: Translation.tr("Check again")
+                            onClicked: SystemRequirements.refresh()
+                        }
+                    }
+                }
+
+                ContentSection {
+                    icon: "system_update"
+                    title: Translation.tr("Updates")
+
+                    ConfigRow {
+                        StyledText {
+                            Layout.fillWidth: true
+                            wrapMode: Text.WordWrap
+                            color: Appearance.colors.colOnLayer0
+                            text: !ShellUpdates.available
+                                    ? Translation.tr("Not a git checkout, so the shell cannot update itself.")
+                                : ShellUpdates.behind > 0
+                                    ? Translation.tr("%1 update(s) waiting for the shell.").arg(ShellUpdates.behind)
+                                : Translation.tr("The shell is up to date.")
+                        }
+                        RippleButtonWithIcon {
+                            buttonRadius: Appearance.rounding.small
+                            visible: ShellUpdates.available
+                            enabled: !ShellUpdates.checking
+                            materialIcon: "refresh"
+                            mainText: Translation.tr("Check")
+                            onClicked: ShellUpdates.check()
+                        }
+                        RippleButtonWithIcon {
+                            buttonRadius: Appearance.rounding.small
+                            visible: ShellUpdates.updateAvailable
+                            enabled: ShellUpdates.canApply
+                            materialIcon: "download"
+                            mainText: Translation.tr("Update")
+                            onClicked: ShellUpdates.apply()
+                        }
+                    }
+
+                    ConfigRow {
+                        visible: Updates.available
+                        StyledText {
+                            Layout.fillWidth: true
+                            wrapMode: Text.WordWrap
+                            color: Appearance.colors.colOnLayer0
+                            text: Updates.count > 0
+                                ? Translation.tr("%1 system package(s) can be updated.").arg(Updates.count)
+                                : Translation.tr("System packages are up to date.")
+                        }
+                    }
+
+                    ConfigSwitch {
+                        buttonIcon: "notifications"
+                        text: Translation.tr("Tell me when a shell update is available")
+                        checked: Config.options.updates.shell.notify
+                        onCheckedChanged: Config.options.updates.shell.notify = checked
+                    }
+                }
+
+                ContentSection {
+                    icon: "build"
+                    title: Translation.tr("Maintenance")
+
+                    StyledText {
+                        Layout.fillWidth: true
+                        wrapMode: Text.WordWrap
+                        color: Appearance.colors.colSubtext
+                        font.pixelSize: Appearance.font.pixelSize.smaller
+                        text: Translation.tr("The shell reloads itself when its files change, so these are for when something is stuck rather than for everyday use.")
+                    }
+
+                    Flow {
+                        Layout.fillWidth: true
+                        spacing: 5
+
+                        RippleButtonWithIcon {
+                            buttonRadius: Appearance.rounding.small
+                            materialIcon: "refresh"
+                            mainText: Translation.tr("Reload shell")
+                            onClicked: Quickshell.execDetached(["qs", "-c", "ii", "ipc", "call", "shell", "reload"])
+                        }
+                        RippleButtonWithIcon {
+                            buttonRadius: Appearance.rounding.small
+                            materialIcon: "restart_alt"
+                            mainText: Translation.tr("Reload both")
+                            onClicked: Quickshell.execDetached(["qs", "-c", "ii", "ipc", "call", "shell", "reloadAll"])
+                        }
+                        RippleButtonWithIcon {
+                            buttonRadius: Appearance.rounding.small
+                            materialIcon: "description"
+                            mainText: Translation.tr("Config file")
+                            onClicked: Quickshell.execDetached(["xdg-open",
+                                `${Directories.config}/illogical-impulse/config.json`])
+                        }
+                        RippleButtonWithIcon {
+                            id: clearCacheButton
+                            property bool done: false
+                            buttonRadius: Appearance.rounding.small
+                            materialIcon: clearCacheButton.done ? "check" : "mop"
+                            mainText: clearCacheButton.done ? Translation.tr("Cleared")
+                                                            : Translation.tr("Clear caches")
+                            // Thumbnails and the QML cache only. Not walltune,
+                            // whose output IS the current wallpaper.
+                            onClicked: {
+                                Quickshell.execDetached(["bash", "-c",
+                                    `rm -rf '${Directories.cache}/quickshell/qmlcache' '${Directories.cache}/quickshell/media'`]);
+                                clearCacheButton.done = true;
+                                clearCacheResetTimer.restart();
+                            }
+                            Timer {
+                                id: clearCacheResetTimer
+                                interval: 1500
+                                onTriggered: clearCacheButton.done = false
+                            }
+                        }
+                    }
+                }
+
+                ContentSection {
+                    icon: "bug_report"
+                    title: Translation.tr("Diagnostics")
+
+                    ConfigRow {
+                        StyledText {
+                            Layout.fillWidth: true
+                            wrapMode: Text.WordWrap
+                            color: Appearance.colors.colOnLayer0
+                            text: ShellUpdates.version.length > 0
+                                ? Translation.tr("Version %1").arg(ShellUpdates.version)
+                                : Translation.tr("Not a git checkout, so there is no version to report.")
+                        }
+                        RippleButtonWithIcon {
+                            id: copyDiagButton
+                            property bool copied: false
+                            buttonRadius: Appearance.rounding.small
+                            materialIcon: copyDiagButton.copied ? "check" : "content_copy"
+                            mainText: copyDiagButton.copied ? Translation.tr("Copied")
+                                                            : Translation.tr("Copy system info")
+                            // What a bug report needs and nobody remembers to
+                            // include. No hostname, no user, no network names.
+                            onClicked: {
+                                Quickshell.clipboardText =
+                                    `shell: ${ShellUpdates.version}\n`
+                                    + `missing: ${SystemRequirements.missingRelevant.map(r => r.pkg).join(" ") || "none"}\n`
+                                    + `asus: ${SystemRequirements.isAsus}\n`
+                                    + `bar: position=${Config.options.bar.bottom ? "bottom" : Config.options.bar.vertical ? "side" : "top"}`
+                                    + ` style=${Config.options.bar.cornerStyle}\n`
+                                    + `dark: ${Appearance.m3colors.darkmode}`;
+                                copyDiagButton.copied = true;
+                                copyDiagResetTimer.restart();
+                            }
+                            Timer {
+                                id: copyDiagResetTimer
+                                interval: 1500
+                                onTriggered: copyDiagButton.copied = false
+                            }
+                        }
+                    }
+                }
+
+                ContentSection {
                     icon: "info"
                     title: Translation.tr("Info")
 
@@ -445,43 +731,25 @@ ApplicationWindow {
                         }
 
                         RippleButtonWithIcon {
-                            materialIcon: "help"
-                            mainText: Translation.tr("Usage")
-                            onClicked: {
-                                Qt.openUrlExternally("https://end-4.github.io/dots-hyprland-wiki/en/ii-qs/02usage/");
-                            }
+                            materialIcon: "settings"
+                            mainText: Translation.tr("All settings")
+                            onClicked: Quickshell.execDetached(["qs", "-p", Quickshell.shellPath(""),
+                                                                "ipc", "call", "settings", "open"])
                         }
                         RippleButtonWithIcon {
-                            materialIcon: "construction"
-                            mainText: Translation.tr("Configuration")
-                            onClicked: {
-                                Qt.openUrlExternally("https://end-4.github.io/dots-hyprland-wiki/en/ii-qs/03config/");
-                            }
-                        }
-                    }
-                }
-
-                ContentSection {
-                    icon: "monitoring"
-                    title: Translation.tr("Useless buttons")
-
-                    Flow {
-                        Layout.fillWidth: true
-                        spacing: 5
-
-                        RippleButtonWithIcon {
-                            nerdIcon: "󰊤"
-                            mainText: Translation.tr("GitHub")
-                            onClicked: {
-                                Qt.openUrlExternally("https://github.com/end-4/dots-hyprland");
-                            }
+                            materialIcon: "menu_book"
+                            mainText: Translation.tr("Read me")
+                            onClicked: Qt.openUrlExternally("https://github.com/SettDEF/ii-dots#readme")
                         }
                         RippleButtonWithIcon {
-                            materialIcon: "favorite"
-                            mainText: "Funny number"
-                            onClicked: {
-                                Qt.openUrlExternally("https://github.com/sponsors/end-4");
-                            }
+                            nerdIcon: ""
+                            mainText: Translation.tr("Source")
+                            onClicked: Qt.openUrlExternally("https://github.com/SettDEF/ii-dots")
+                        }
+                        RippleButtonWithIcon {
+                            materialIcon: "bug_report"
+                            mainText: Translation.tr("Report a problem")
+                            onClicked: Qt.openUrlExternally("https://github.com/SettDEF/ii-dots/issues/new")
                         }
                     }
                 }
@@ -489,6 +757,25 @@ ApplicationWindow {
                 Item {
                     Layout.fillWidth: true
                     Layout.fillHeight: true
+                }
+
+                // The last thing on the page should be the way out of it.
+                RowLayout {
+                    Layout.fillWidth: true
+                    Layout.topMargin: 4
+                    spacing: 8
+
+                    StyledText {
+                        Layout.fillWidth: true
+                        wrapMode: Text.WordWrap
+                        color: Appearance.colors.colSubtext
+                        font.pixelSize: Appearance.font.pixelSize.smaller
+                        text: Translation.tr("None of this is final — all of it is in the settings, under Super+I.")
+                    }
+                    PrimaryActionButton {
+                        buttonText: Translation.tr("Start using it")
+                        onClicked: root.close()
+                    }
                 }
             }
         }

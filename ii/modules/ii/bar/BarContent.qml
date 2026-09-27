@@ -121,7 +121,7 @@ Item { // Bar content region
                 // Shelf main tab pills — uses the shared PillTabBar widget.
                 PillTabBar {
                     anchors.verticalCenter: parent.verticalCenter
-                    height: Appearance.sizes.barHeight - 8
+                    height: Appearance.sizes.barIslandHeight
                     opacity: GlobalStates.shelfOpen ? 1 : 0
                     visible: opacity > 0
                     Behavior on opacity { NumberAnimation { duration: 180; easing.type: Easing.OutCubic } }
@@ -497,7 +497,7 @@ Item { // Bar content region
                        && trayInner.implicitWidth > 0
                 Layout.fillHeight: false
                 Layout.alignment: Qt.AlignVCenter
-                Layout.preferredHeight: Appearance.sizes.barHeight - 8
+                Layout.preferredHeight: Appearance.sizes.barIslandHeight
                 implicitWidth: trayInner.implicitWidth > 0 ? trayInner.implicitWidth + 14 : 0
                 radius: Appearance.rounding.full
                 color: Appearance.colors.colBarIsland

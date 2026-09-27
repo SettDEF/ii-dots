@@ -28,6 +28,8 @@ Singleton {
     property string latest: ""
     property string error: ""
     property double lastChecked: 0
+    /// "142 · 7b929f8 · 2026-09-27", or "" outside a checkout.
+    property string version: ""
 
     readonly property bool updateAvailable: root.available && root.behind > 0
     readonly property bool canApply: root.updateAvailable && !root.dirty && !root.applying
@@ -45,6 +47,16 @@ Singleton {
         if (!root.canApply) return;
         root.applying = true;
         applyProc.running = true;
+    }
+
+    Process {
+        id: versionProc
+        running: true
+        command: ["bash", "-c",
+            `cd '${root.dir}' 2>/dev/null || exit 0
+             printf '%s · %s · %s' "$(git rev-list --count HEAD)" \
+                 "$(git rev-parse --short HEAD)" "$(git log -1 --format=%cs)"`]
+        stdout: StdioCollector { onStreamFinished: root.version = text.trim() }
     }
 
     Process {
