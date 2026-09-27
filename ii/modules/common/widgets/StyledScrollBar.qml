@@ -26,9 +26,16 @@ import qs.modules.common.functions
 ScrollBar {
     id: root
 
+    /// "minimal" — thumb only, track appears on hover
+    /// "rail"    — the track is always drawn behind the thumb
+    /// "stripes" — the track is drawn as rungs and the thumb rides over them
+    property string style: Config.options?.appearance?.scrollbar?.style ?? "minimal"
+
     /// Drawn width at rest, and while engaged.
-    property real barWidth: 4
-    property real barWidthActive: 9
+    property real barWidth: Config.options?.appearance?.scrollbar?.width ?? 4
+    property real barWidthActive: Config.options?.appearance?.scrollbar?.activeWidth ?? 9
+    /// Visible whenever the content overflows, not only while engaged.
+    property bool alwaysVisible: Config.options?.appearance?.scrollbar?.alwaysVisible ?? false
     /// Width of the area that actually responds to the pointer.
     ///
     /// An attached ScrollBar OVERLAYS its flickable rather than reserving a
@@ -62,6 +69,7 @@ ScrollBar {
     /// How near a marker has to be, as a fraction of the range, before it pulls.
     property real snapRadius: 0.035
     readonly property bool hasMap: (root.markers?.length ?? 0) > 0
+        && (Config.options?.appearance?.scrollbar?.showMap ?? true)
 
     /// Emitted when a dot on the map is clicked. The bar scrolls there itself;
     /// this is for a host that wants to do more — the settings rail switches
@@ -102,7 +110,8 @@ ScrollBar {
     }
 
     onPressedChanged: {
-        if (!root.pressed && root.hasMap && root.nearestMarker >= 0) {
+        if (!root.pressed && root.hasMap && root.nearestMarker >= 0
+                && (Config.options?.appearance?.scrollbar?.magnets ?? true)) {
             const i = root.nearestMarker;
             root.snapAnimTo(root.markers[i].at ?? 0);
             root.snapCaught(i);
@@ -117,7 +126,7 @@ ScrollBar {
         easing.bezierCurve: Appearance.animationCurves.expressiveFastSpatial
     }
 
-    policy: ScrollBar.AsNeeded
+    policy: (root.alwaysVisible && root.size < 1.0) ? ScrollBar.AlwaysOn : ScrollBar.AsNeeded
     topPadding: Appearance.rounding.normal
     bottomPadding: Appearance.rounding.normal
 
@@ -154,8 +163,13 @@ ScrollBar {
             anchors.bottomMargin: root.bottomPadding
             width: (root.pressed || root.hovered) ? root.barWidthActive : root.barWidth
             radius: width / 2
+            visible: root.style !== "stripes"
             color: Appearance.colors.colOnSurfaceVariant
-            opacity: (root.hovered || root.pressed) && root.size < 1.0 ? 0.16 : 0
+            // "rail" keeps the track drawn the whole time; "minimal" only
+            // shows it once you are on the bar.
+            opacity: root.size >= 1.0 ? 0
+                : (root.hovered || root.pressed) ? 0.16
+                : (root.style === "rail" ? 0.10 : 0)
 
             Behavior on opacity {
                 NumberAnimation {
@@ -169,6 +183,43 @@ ScrollBar {
                     duration: Appearance.animation.elementMoveFast.duration
                     easing.type: Appearance.animation.elementMoveFast.type
                     easing.bezierCurve: Appearance.animation.elementMoveFast.bezierCurve
+                }
+            }
+        }
+
+        // "stripes": the track as a ladder of rungs rather than a line, so
+        // the distance you have left to scroll is something you can count.
+        // The thumb rides over them.
+        Repeater {
+            model: root.style === "stripes" && root.size < 1.0 ? stripeCount : 0
+
+            // Recomputed from the height, so the rungs stay evenly spaced on
+            // any panel rather than being a fixed number squeezed or stretched.
+            property int stripeCount: {
+                const track = Math.max(0, root.height - root.topPadding - root.bottomPadding);
+                return Math.max(0, Math.floor(track / 9));
+            }
+
+            delegate: Rectangle {
+                required property int index
+                readonly property real track: Math.max(0,
+                    root.height - root.topPadding - root.bottomPadding)
+
+                x: (parent.width - width) / 2
+                y: root.topPadding + index * 9
+                width: (root.pressed || root.hovered) ? root.barWidthActive : root.barWidth
+                height: 2
+                radius: 1
+                color: Appearance.colors.colOnSurfaceVariant
+                opacity: (root.hovered || root.pressed) ? 0.3 : 0.18
+
+                Behavior on opacity { NumberAnimation { duration: 140 } }
+                Behavior on width {
+                    NumberAnimation {
+                        duration: Appearance.animation.elementMoveFast.duration
+                        easing.type: Appearance.animation.elementMoveFast.type
+                        easing.bezierCurve: Appearance.animation.elementMoveFast.bezierCurve
+                    }
                 }
             }
         }
@@ -318,6 +369,7 @@ ScrollBar {
             // near a dot, so without this the label popped up on its own during
             // ordinary scrolling.
             opacity: (marker && String(marker.label ?? "").length > 0
+                      && (Config.options?.appearance?.scrollbar?.labels ?? true)
                       && (root.hoveredMarker >= 0 || root.pressed)) ? 1 : 0
             Behavior on opacity { NumberAnimation { duration: 120 } }
 

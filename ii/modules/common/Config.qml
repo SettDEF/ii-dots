@@ -113,6 +113,27 @@ Singleton {
 
             property JsonObject appearance: JsonObject {
                 property bool extraBackgroundTint: true
+
+                // How every scroll bar in the shell is drawn. One place,
+                // because they are the one widget that appears in nearly every
+                // panel and looked accidental for exactly that reason.
+                property JsonObject scrollbar: JsonObject {
+                    // "minimal" — thumb only, track on hover
+                    // "rail"    — track always drawn behind the thumb
+                    // "stripes" — track drawn as rungs, thumb rides over them
+                    property string style: "minimal"
+                    property int width: 4
+                    property int activeWidth: 9
+                    // Visible whenever the content overflows, rather than only
+                    // while scrolling or hovering.
+                    property bool alwaysVisible: false
+                    // The landmark dots, where a panel supplies them.
+                    property bool showMap: true
+                    // Drag release snaps to the nearest landmark.
+                    property bool magnets: true
+                    // Name the landmark under the pointer.
+                    property bool labels: true
+                }
                 property int fakeScreenRounding: 2 // 0: None | 1: Always | 2: When not fullscreen
                 property JsonObject fonts: JsonObject {
                     property string main: "Google Sans Flex"

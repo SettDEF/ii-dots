@@ -1,4 +1,5 @@
 import QtQuick
+import QtQuick.Controls
 import QtQuick.Layouts
 import qs.services
 import qs.modules.common
@@ -615,6 +616,140 @@ ContentPage {
                     Config.options.regionSelector.circle.padding = value;
                 }
             }
+        }
+    }
+
+    ContentSection {
+        icon: "swap_vert"
+        title: Translation.tr("Scroll bars")
+
+        StyledText {
+            Layout.fillWidth: true
+            Layout.leftMargin: 8
+            Layout.rightMargin: 8
+            Layout.bottomMargin: 2
+            wrapMode: Text.Wrap
+            font.pixelSize: Appearance.font.pixelSize.smaller
+            color: Appearance.colors.colSubtext
+            text: Translation.tr("Every scrollable panel in the shell uses these. The box below is a real scroll bar, not a picture of one.")
+        }
+
+        SegmentedButtons {
+            Layout.fillWidth: true
+            Layout.leftMargin: 8
+            Layout.rightMargin: 8
+            Layout.bottomMargin: 4
+            currentId: Config.options.appearance.scrollbar.style
+            onSelected: id => Config.options.appearance.scrollbar.style = id
+            model: [
+                { id: "minimal", label: Translation.tr("Minimal"), icon: "remove" },
+                { id: "rail",    label: Translation.tr("Rail"),    icon: "straighten" },
+                { id: "stripes", label: Translation.tr("Stripes"), icon: "menu" }
+            ]
+        }
+
+        // A live one, because the difference between these is a few pixels of
+        // opacity and nobody can pick from three words.
+        Rectangle {
+            Layout.fillWidth: true
+            Layout.leftMargin: 8
+            Layout.rightMargin: 8
+            implicitHeight: 110
+            radius: Appearance.rounding.small
+            color: Appearance.colors.colLayer1
+            border.width: 1
+            border.color: Appearance.colors.colLayer0Border
+
+            StyledFlickable {
+                id: preview
+                anchors.fill: parent
+                anchors.margins: 8
+                contentWidth: width
+                contentHeight: previewCol.implicitHeight
+                clip: true
+
+                ScrollBar.vertical: StyledScrollBar {
+                    // Landmarks, so the map and magnets can be tried out here
+                    // rather than only discovered in the settings rail.
+                    markers: [
+                        { at: 0.0,  label: Translation.tr("Top"),    major: true },
+                        { at: 0.35, label: Translation.tr("Middle") },
+                        { at: 0.7,  label: Translation.tr("Further") },
+                        { at: 1.0,  label: Translation.tr("End"),    major: true }
+                    ]
+                }
+
+                ColumnLayout {
+                    id: previewCol
+                    width: preview.width
+                    spacing: 6
+                    Repeater {
+                        model: 14
+                        StyledText {
+                            required property int index
+                            Layout.fillWidth: true
+                            text: Translation.tr("Scrollable line %1").arg(index + 1)
+                            font.pixelSize: Appearance.font.pixelSize.smaller
+                            color: Appearance.colors.colSubtext
+                        }
+                    }
+                }
+            }
+        }
+
+        ConfigSwitch {
+            buttonIcon: "visibility"
+            text: Translation.tr("Always show when there is more to scroll")
+            checked: Config.options.appearance.scrollbar.alwaysVisible
+            onCheckedChanged: Config.options.appearance.scrollbar.alwaysVisible = checked
+            StyledToolTip {
+                text: Translation.tr("Off, the bar appears while you scroll or hover it, and is otherwise out of the way.")
+            }
+        }
+        ConfigSwitch {
+            buttonIcon: "pin_drop"
+            text: Translation.tr("Show landmarks")
+            checked: Config.options.appearance.scrollbar.showMap
+            onCheckedChanged: Config.options.appearance.scrollbar.showMap = checked
+            StyledToolTip {
+                text: Translation.tr("Dots marking the sections of the content, where a panel knows them. A bigger dot starts a section; clicking one goes there.")
+            }
+        }
+        ConfigSwitch {
+            buttonIcon: "adjust"
+            text: Translation.tr("Snap to landmarks")
+            enabled: Config.options.appearance.scrollbar.showMap
+            checked: Config.options.appearance.scrollbar.magnets
+            onCheckedChanged: Config.options.appearance.scrollbar.magnets = checked
+            StyledToolTip {
+                text: Translation.tr("Letting go of a drag near a landmark pulls onto it.")
+            }
+        }
+        ConfigSwitch {
+            buttonIcon: "label"
+            text: Translation.tr("Name the landmark under the pointer")
+            enabled: Config.options.appearance.scrollbar.showMap
+            checked: Config.options.appearance.scrollbar.labels
+            onCheckedChanged: Config.options.appearance.scrollbar.labels = checked
+        }
+
+        ConfigSpinBox {
+            icon: "width_normal"
+            text: Translation.tr("Thickness")
+            value: Config.options.appearance.scrollbar.width
+            from: 2
+            to: 10
+            stepSize: 1
+            onValueChanged: Config.options.appearance.scrollbar.width = value
+        }
+        ConfigSpinBox {
+            icon: "width_wide"
+            text: Translation.tr("Thickness while using it")
+            value: Config.options.appearance.scrollbar.activeWidth
+            from: 4
+            to: 18
+            stepSize: 1
+            onValueChanged: Config.options.appearance.scrollbar.activeWidth = value
         }
     }
 
