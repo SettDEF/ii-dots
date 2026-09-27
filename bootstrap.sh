@@ -30,6 +30,10 @@ DEFAULT_REPO="${QS_DEFAULT_REPO:-https://github.com/SettDEF/ii-dots}"
 CLONE_DIR="${QS_CLONE_DIR:-$HOME/.local/share/quickshell-ii-src}"
 PROFILE="recommended"
 CHOSE_PROFILE=0
+# auto: let install.sh decide from the profile (on for full and rog).
+TELA=auto
+# Not published yet, so opt-in; install.sh says so too.
+QUARRY=auto
 NAME="ii"
 DRY=0
 ASSUME_YES=0
@@ -79,6 +83,12 @@ Options
   -p, --profile P    minimal | core | recommended | full | rog | low-end
                      Passed through to install.sh.     (default: recommended)
       --low-end      Tune for weak hardware. Passed through to install.sh.
+      --with-tela    Also install Tela, the browser. On by default for the
+                     full and rog profiles; this forces it on for any.
+      --no-tela      Never install Tela, whatever the profile.
+      --with-quarry  Also install quarry, the wallpaper picker's search
+                     backend. Off by default until it is published.
+      --no-quarry    Never install quarry.
       --no-hypr      Do not write a Hyprland config. Use this if you already
                      have one you want to keep using.
   -y, --yes          Do not stop for confirmation.
@@ -106,6 +116,10 @@ while [ $# -gt 0 ]; do
         -p|--profile) PROFILE="${2:?--profile needs a value}"; CHOSE_PROFILE=1; shift 2 ;;
         --low-end)    LOWEND=1; shift ;;
         --no-hypr)    DO_HYPR=0; shift ;;
+        --with-tela)  TELA=1; shift ;;
+        --no-tela)    TELA=0; shift ;;
+        --with-quarry) QUARRY=1; shift ;;
+        --no-quarry)  QUARRY=0; shift ;;
         -y|--yes)     ASSUME_YES=1; shift ;;
         --dry-run)    DRY=1; shift ;;
         -h|--help)    usage; exit 0 ;;
@@ -160,9 +174,13 @@ if [ "$DRY" = 1 ]; then warn "dry run — nothing will be changed"; fi
 # Shown when nothing was chosen on the command line and there is a terminal to
 # read from. Piped from curl, stdin is the SCRIPT, so the prompts are read from
 # /dev/tty instead — otherwise the first read swallows the rest of the program.
+# `-r /dev/tty` passes on a terminal that cannot actually be OPENED, and the
+# read that follows then hangs with no prompt visible. Open it and find out.
+have_tty() { exec 3</dev/tty 2>/dev/null && exec 3<&-; }
+
 ask() {                 # ask <prompt> <default>
     local p="$1" d="$2" a=""
-    [ -r /dev/tty ] || { printf '%s' "$d"; return; }
+    have_tty || { printf '%s' "$d"; return; }
     printf '%s%s%s [%s] ' "$B" "$p" "$R" "$d" > /dev/tty
     read -r a < /dev/tty || a=""
     printf '%s' "${a:-$d}"
@@ -179,6 +197,8 @@ menu() {
         printf '   5  ROG laptop    full, plus asusctl and supergfxctl\n\n'
         printf '   n  Config name   %s%s%s\n' "$DIM" "$NAME" "$R"
         printf '   h  Hyprland      %s%s%s\n' "$DIM" "$([ "$DO_HYPR" = 1 ] && echo "write a starter config" || echo "leave mine alone")" "$R"
+        printf '   b  Browser       %s%s%s\n' "$DIM" "$(case "$TELA" in 1) echo "install Tela";; 0) echo "do not install Tela";; *) echo "install Tela on the full and ROG profiles";; esac)" "$R"
+        printf '   w  Wall search   %s%s%s\n' "$DIM" "$([ "$QUARRY" = 1 ] && echo "install quarry" || echo "scan ~/Pictures/Wallpapers only")" "$R"
         printf '   d  Dry run       %sshow what would happen, change nothing%s\n' "$DIM" "$R"
         printf '   q  Quit\n\n'
         choice=$(ask "  Choice, or Enter to install" "")
@@ -190,6 +210,8 @@ menu() {
             5) PROFILE=rog;         LOWEND=0; return ;;
             n) NAME=$(ask "  Config name" "$NAME") ;;
             h) DO_HYPR=$([ "$DO_HYPR" = 1 ] && echo 0 || echo 1) ;;
+            b) case "$TELA" in 1) TELA=0 ;; 0) TELA=auto ;; *) TELA=1 ;; esac ;;
+            w) case "$QUARRY" in 1) QUARRY=0 ;; *) QUARRY=1 ;; esac ;;
             d) DRY=1; return ;;
             q) warn "nothing done"; exit 0 ;;
             "") return ;;
@@ -198,7 +220,7 @@ menu() {
     done
 }
 
-if [ "$ASSUME_YES" != 1 ] && [ "$DRY" != 1 ] && [ "$CHOSE_PROFILE" != 1 ] && [ -r /dev/tty ]; then
+if [ "$ASSUME_YES" != 1 ] && [ "$DRY" != 1 ] && [ "$CHOSE_PROFILE" != 1 ] && have_tty; then
     menu
 fi
 
@@ -364,7 +386,7 @@ elif [ -n "$REPO_URL" ]; then
         run git clone --depth 1 -b "$BRANCH" "$REPO_URL" "$CLONE_DIR"
     fi
     SRC="$CLONE_DIR"
-elif [ -n "$(command -v git)" ] && [ -r /dev/tty ]; then
+elif [ -n "$(command -v git)" ] && have_tty; then
     # Piped from the web with no clone to work from: ask, rather than dying
     # with an instruction the user cannot act on mid-pipe.
     warn "no clone here and no --repo given."
@@ -381,6 +403,8 @@ fi
 
 INSTALL_ARGS=(-n "$NAME" -p "$PROFILE" -y)
 [ "$LOWEND" = 1 ] && INSTALL_ARGS+=(--low-end)
+case "$TELA" in 1) INSTALL_ARGS+=(--with-tela) ;; 0) INSTALL_ARGS+=(--no-tela) ;; esac
+case "$QUARRY" in 1) INSTALL_ARGS+=(--with-quarry) ;; 0) INSTALL_ARGS+=(--no-quarry) ;; esac
 [ "$DRY" = 1 ] && INSTALL_ARGS+=(--dry-run)
 info "handing over to install.sh ${INSTALL_ARGS[*]}"
 if [ "$DRY" = 1 ]; then

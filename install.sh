@@ -23,6 +23,11 @@ DO_POLKIT=0
 DO_UNINSTALL=0
 ASSUME_YES=0
 DO_LOWEND=0
+# auto: on for the `full` and `rog` profiles, off otherwise. --with-tela/--no-tela pin it.
+DO_TELA=auto
+# quarry is a real shell dependency (the wallpaper picker) but is not published
+# yet, so it stays opt-in until it is.
+DO_QUARRY=auto
 
 # ── Dependencies, by profile ────────────────────────────────────────────────
 # Arch package names. Split by what actually stops working without them, not
@@ -84,6 +89,15 @@ Options
       --polkit          Install the polkit rules for the net and ROG tools.
                         Needs root and grants the installing user passwordless
                         access to those specific actions. Off by default.
+      --with-tela       Also install Tela, the browser (github.com/SettDEF/tela-zen).
+                        On by default for the 'full' and 'rog' profiles. It is
+                        the slow part: qt6-webengine plus a Rust build.
+      --no-tela         Do not install Tela even if the profile would.
+      --with-quarry     Also install quarry, the wallpaper picker's search
+                        backend (github.com/SettDEF/quarry). Off by default
+                        until it is published; without it the picker scans
+                        ~/Pictures/Wallpapers instead.
+      --no-quarry       Never install quarry.
       --no-deps         Skip package installation entirely.
   -y, --yes             Do not ask before installing packages.
       --dry-run         Print every action, change nothing.
@@ -96,6 +110,7 @@ Examples
   ./install.sh -p rog --polkit           the lot, on an ASUS laptop
   ./install.sh -n ii-test --uninstall    remove that copy
   ./install.sh -p low-end                a 2013 laptop with integrated graphics
+  ./install.sh -p full --with-tela       the desktop and the browser
 EOF
 }
 
@@ -107,6 +122,10 @@ while [ $# -gt 0 ]; do
         --polkit)     DO_POLKIT=1; shift ;;
         --low-end)    DO_LOWEND=1; shift ;;
         --no-deps)    DO_DEPS=0; shift ;;
+        --with-tela)  DO_TELA=1; shift ;;
+        --no-tela)    DO_TELA=off; shift ;;
+        --with-quarry) DO_QUARRY=1; shift ;;
+        --no-quarry)  DO_QUARRY=off; shift ;;
         -y|--yes)     ASSUME_YES=1; shift ;;
         --dry-run)    DRY=1; shift ;;
         --uninstall)  DO_UNINSTALL=1; shift ;;
@@ -127,6 +146,11 @@ case "$PROFILE" in
     *) die "unknown profile: $PROFILE
        one of: minimal core recommended full rog low-end" ;;
 esac
+
+# Resolved after the profile, because the profile is what decides it.
+if [ "$DO_TELA" = auto ]; then
+    case "$PROFILE" in full|rog) DO_TELA=1 ;; *) DO_TELA=0 ;; esac
+fi
 
 CONF_HOME="${XDG_CONFIG_HOME:-$HOME/.config}"
 DATA_HOME="${XDG_DATA_HOME:-$HOME/.local/share}"
@@ -310,6 +334,87 @@ install_tinct() {
 # ── polkit ──────────────────────────────────────────────────────────────────
 # Rendered from .in templates: polkit does not expand $HOME or know who is
 # installing, so the paths and the username have to be written in.
+TELA_REPO="${QS_TELA_REPO:-SettDEF/tela-zen}"
+QUARRY_REPO="${QS_QUARRY_REPO:-SettDEF/quarry}"
+
+# ── The other two applications ──────────────────────────────────────────────
+# Each installs itself: its own installer knows its own dependencies, and that
+# list is exactly where the mistakes live -- `cargo` as a package name resolves
+# to rustup with no toolchain selected, for one. Duplicating it here would give
+# it somewhere to drift.
+#
+# Neither is required. The shell starts and runs without both; quarry only makes
+# the wallpaper picker better than its local-directory fallback. So a failure
+# here warns and carries on rather than taking the desktop install down.
+install_companion() {
+    local what="$1" repo="$2" binary="$3" note="$4"
+
+    command -v "$binary" >/dev/null 2>&1 && { info "$what already installed"; return; }
+
+    if ! command -v pacman >/dev/null 2>&1; then
+        warn "$what installs an Arch package; skipping on this system"
+        warn "  build it by hand: https://github.com/$repo"
+        return
+    fi
+
+    local url="https://raw.githubusercontent.com/$repo/main/install.sh"
+
+    if [ "$DRY" = 1 ]; then
+        printf '   would: install %s via %s\n' "$what" "$url"
+        return
+    fi
+
+    # Not published yet, or renamed: say which, rather than letting curl's
+    # silence read as a broken install.
+    if ! curl -fsS --head --max-time 10 "$url" >/dev/null 2>&1; then
+        warn "$what is not available at $repo yet; skipped"
+        return
+    fi
+
+    info "installing $what${note:+ ($note)}"
+    if [ "$ASSUME_YES" != 1 ]; then
+        local a; read -rp "   install it now? [y/N] " a </dev/tty || a=n
+        [[ "$a" =~ ^[Yy]$ ]] || { warn "skipping $what"; return; }
+    fi
+
+    # --yes: this script already asked.
+    if curl -fsSL "$url" | bash -s -- --yes; then
+        info "$what installed"
+    else
+        warn "$what did not install; the shell is unaffected"
+        warn "  try it on its own: curl -fsSL $url | bash"
+    fi
+}
+
+install_tela() {
+    case "$DO_TELA" in
+        1)   ;;
+        off) info "skipping tela (--no-tela)"; return ;;
+        *)   info "skipping tela (--with-tela installs it, as do profiles full and rog)"; return ;;
+    esac
+    install_companion "tela" "$TELA_REPO" "tela" \
+        "a browser: qt6-webengine plus a Rust build, so it is the slow part"
+}
+
+install_quarry() {
+    case "$DO_QUARRY" in
+        1)   ;;
+        off) info "skipping quarry (--no-quarry)"; return ;;
+        *)   info "skipping quarry (--with-quarry installs it)"; return ;;
+    esac
+    install_companion "quarry" "$QUARRY_REPO" "quarryd" \
+        "the wallpaper picker's search backend"
+
+    # The shell reaches quarryd over a unix socket, so the daemon has to be
+    # running -- an installed binary that nothing starts leaves the picker on
+    # its fallback path, looking exactly like a broken install.
+    if command -v quarryd >/dev/null 2>&1 \
+       && systemctl --user list-unit-files quarryd.service >/dev/null 2>&1; then
+        run systemctl --user enable --now quarryd.service || \
+            warn "could not start quarryd.service; the picker falls back to scanning the folder"
+    fi
+}
+
 install_polkit() {
     [ "$DO_POLKIT" = 1 ] || { info "skipping polkit rules (use --polkit)"; return; }
     local user; user="$(id -un)"
@@ -451,6 +556,8 @@ report_gaps() {
 
 install_packages
 install_config
+install_tela
+install_quarry
 install_polkit
 low_end_tuning
 report_gaps
