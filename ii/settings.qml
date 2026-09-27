@@ -105,6 +105,74 @@ ApplicationWindow {
         return null;
     }
 
+    // ── Find on page ────────────────────────────────────────────────────
+    /// What is being highlighted, and where we are in it.
+    property string findQuery: ""
+    property var findMatches: []
+    property int findIndex: 0
+    readonly property int findCount: root.findMatches.length
+
+    /// Every visible item whose text contains `q`. Invisible ones are skipped:
+    /// a match you cannot see is one you cannot be scrolled to.
+    function collectMatches(item, q, out) {
+        if (!item || item.visible === false) return out;
+        if (item.text !== undefined
+                && String(item.text).toLowerCase().indexOf(q) !== -1
+                && String(item.text).length > 0)
+            out.push(item);
+        const kids = item.children ?? [];
+        for (let i = 0; i < kids.length; ++i) root.collectMatches(kids[i], q, out);
+        return out;
+    }
+
+    function runFind(q) {
+        root.findQuery = String(q ?? "").trim();
+        root.findIndex = 0;
+        root.findMatches = [];
+        if (root.findQuery.length === 0) return;
+        findDebounce.restart();
+    }
+
+    function _rebuildFind() {
+        const flick = pageLoader.item;
+        if (!flick || root.findQuery.length === 0) { root.findMatches = []; return; }
+        root.findMatches = root.collectMatches(flick, root.findQuery.toLowerCase(), []);
+        if (root.findMatches.length > 0) root.scrollToMatch(0);
+    }
+
+    function stepFind(delta) {
+        if (root.findCount === 0) return;
+        root.scrollToMatch((root.findIndex + delta + root.findCount) % root.findCount);
+    }
+
+    function scrollToMatch(i) {
+        root.findIndex = i;
+        const target = root.findMatches[i];
+        const flick = pageLoader.item;
+        if (!target || !flick) return;
+        const pos = target.mapToItem(flick.contentItem, 0, 0);
+        const maxY = Math.max(0, flick.contentHeight - flick.height);
+        // A third down rather than flush to the top, so the match has context
+        // above it.
+        findScroll.to = Math.max(0, Math.min(pos.y - flick.height / 3, maxY));
+        findScroll.target = flick;
+        findScroll.restart();
+    }
+
+    Timer {
+        id: findDebounce
+        interval: 200          // let the page finish laying out before measuring
+        onTriggered: root._rebuildFind()
+    }
+
+    NumberAnimation {
+        id: findScroll
+        property: "contentY"
+        duration: 220
+        easing.type: Easing.BezierSpline
+        easing.bezierCurve: Appearance.animationCurves.emphasizedDecel
+    }
+
     function revealPending() {
         const txt = root.pendingReveal;
         root.pendingReveal = "";
@@ -131,6 +199,10 @@ ApplicationWindow {
         interval: 180          // let the page finish laying out before measuring
         onTriggered: root.revealPending()
     }
+
+    // A new page has different items, so the old match list points at things
+    // that are gone.
+    onCurrentPageChanged: if (root.findQuery.length > 0) findDebounce.restart()
 
     visible: true
     onClosing: Qt.quit()
@@ -202,6 +274,63 @@ ApplicationWindow {
                 }
             }
             // ── Search over every setting ───────────────────────────
+            // Find controls: the counter and the two steppers, shown only once
+            // a find is running. Left of the box, like a browser's.
+            Row {
+                id: findBar
+                visible: root.findQuery.length > 0
+                anchors.verticalCenter: parent.verticalCenter
+                anchors.right: searchWrapper.left
+                anchors.rightMargin: 6
+                spacing: 2
+
+                StyledText {
+                    anchors.verticalCenter: parent.verticalCenter
+                    rightPadding: 4
+                    text: root.findCount > 0
+                        ? `${root.findIndex + 1}/${root.findCount}`
+                        : Translation.tr("none")
+                    font.pixelSize: Appearance.font.pixelSize.smaller
+                    font.family: Appearance.font.family.numbers
+                    color: root.findCount > 0 ? Appearance.colors.colOnLayer0
+                                              : Appearance.colors.colSubtext
+                }
+
+                component FindStep: RippleButton {
+                    property string glyph: ""
+                    implicitWidth: 28
+                    implicitHeight: 28
+                    buttonRadius: Appearance.rounding.full
+                    enabled: root.findCount > 0
+                    contentItem: MaterialSymbol {
+                        anchors.fill: parent
+                        horizontalAlignment: Text.AlignHCenter
+                        verticalAlignment: Text.AlignVCenter
+                        text: glyph
+                        iconSize: 18
+                        color: enabled ? Appearance.colors.colOnLayer0
+                                       : Appearance.colors.colSubtext
+                    }
+                }
+
+                FindStep {
+                    glyph: "keyboard_arrow_up"
+                    onClicked: root.stepFind(-1)
+                    StyledToolTip { text: Translation.tr("Previous match (Shift+Enter)") }
+                }
+                FindStep {
+                    glyph: "keyboard_arrow_down"
+                    onClicked: root.stepFind(1)
+                    StyledToolTip { text: Translation.tr("Next match (Enter)") }
+                }
+                FindStep {
+                    glyph: "close"
+                    enabled: true
+                    onClicked: { root.runFind(""); searchField.text = "" }
+                    StyledToolTip { text: Translation.tr("Stop finding (Esc)") }
+                }
+            }
+
             Item {
                 id: searchWrapper
                 anchors.verticalCenter: parent.verticalCenter
@@ -209,6 +338,19 @@ ApplicationWindow {
                 anchors.rightMargin: 8
                 implicitWidth: 230
                 implicitHeight: 34
+
+                // Enter steps forward, Shift+Enter back, Esc stops — the keys a
+                // browser's find bar answers to.
+                Keys.onPressed: event => {
+                    if (root.findQuery.length === 0) return;
+                    if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) {
+                        root.stepFind((event.modifiers & Qt.ShiftModifier) ? -1 : 1);
+                        event.accepted = true;
+                    } else if (event.key === Qt.Key_Escape) {
+                        root.runFind(""); searchField.text = "";
+                        event.accepted = true;
+                    }
+                }
 
                 PillTextField {
                     id: searchField
@@ -316,7 +458,12 @@ ApplicationWindow {
                                             if (hit.pageIdx < 0) return;
                                             root.pendingReveal = hit.modelData.title;
                                             root.currentPage = hit.pageIdx;
-                                            searchField.text = "";
+                                            // The query stays, and becomes a
+                                            // find on the page it landed on —
+                                            // clearing it threw away the one
+                                            // thing that says what you came for.
+                                            root.runFind(searchField.text);
+                                            searchField.inputItem.focus = false;
                                         }
                                     }
                                     RowLayout {
@@ -581,6 +728,43 @@ ApplicationWindow {
                         NumberAnimation { target: revealFlash; property: "opacity"; to: 0.28; duration: 160 }
                         PauseAnimation { duration: 420 }
                         NumberAnimation { target: revealFlash; property: "opacity"; to: 0; duration: 520 }
+                    }
+                }
+
+                // Find-on-page highlights, over the content like a browser's.
+                // Positions are read from the items every frame the page can
+                // move, because a Flickable does not tell anyone when it has.
+                Repeater {
+                    model: root.findMatches
+                    delegate: Rectangle {
+                        required property var modelData
+                        required property int index
+                        readonly property bool isCurrent: index === root.findIndex
+
+                        z: 399
+                        radius: Appearance.rounding.verysmall
+                        color: isCurrent ? Appearance.colors.colPrimary
+                                         : Appearance.m3colors.m3tertiary
+                        opacity: visible ? (isCurrent ? 0.42 : 0.2) : 0
+                        Behavior on opacity { NumberAnimation { duration: 120 } }
+                        Behavior on color { ColorAnimation { duration: 120 } }
+
+                        // Recomputed off contentY so the box follows its item
+                        // while the page scrolls.
+                        readonly property var box: {
+                            void (pageLoader.item?.contentY ?? 0);
+                            void root.findIndex;
+                            const it = modelData;
+                            if (!it || !it.visible || !pageLoader.item) return null;
+                            const p = it.mapToItem(pageLoader, 0, 0);
+                            return { x: p.x, y: p.y, w: it.width, h: it.height };
+                        }
+                        visible: !!box && box.y > -40
+                            && box.y < pageLoader.height + 40
+                        x: (box?.x ?? 0) - 4
+                        y: (box?.y ?? 0) - 2
+                        width: (box?.w ?? 0) + 8
+                        height: (box?.h ?? 0) + 4
                     }
                 }
 
