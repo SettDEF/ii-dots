@@ -441,7 +441,13 @@ ApplicationWindow {
                         parent: navRailWrapper
                         flickable: railFlick
                         orientation: Qt.Vertical
-                        x: -hitWidth - 2
+                        hitWidth: 14
+
+                        // Only as far left as there is window to the left of
+                        // it, or it draws outside and gets clipped.
+                        readonly property real leftRoom:
+                            navRailWrapper.mapToItem(null, 0, 0).x
+                        x: -Math.min(hitWidth, leftRoom)
                         y: navRail.y + railFlick.y
                         height: railFlick.height
 
