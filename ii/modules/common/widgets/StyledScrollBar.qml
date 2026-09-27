@@ -22,12 +22,6 @@ ScrollBar {
     /// Pointer target, wider than the drawn bar. Also a dead strip down every
     /// list's edge, since an attached ScrollBar overlays rather than reserves.
     property real hitWidth: 18
-    /// Gap between the outer edge of the container and the drawn bar.
-    ///
-    /// The drawn bar sits at the outer edge rather than centred, so the extra
-    /// container width all falls on the content side — which is where the
-    /// pointer arrives from. Grabbing gets easier without the bar moving.
-    property real barInset: 3
     /// Shortest the thumb may become, in pixels.
     property real minimumThumbLength: 40
 
@@ -44,13 +38,21 @@ ScrollBar {
     property bool pointerNear: false
     readonly property bool engaged: root.pressed || root.hovered || root.pointerNear
 
-    readonly property real thickness:
-        root.engaged ? root.barWidthActive : root.barWidth
+    /// The one animated size. Everything — track, thumb, stripes, dots and the
+    /// positions derived from them — reads this, so nothing can animate at a
+    /// different rate from the thing it is centred on.
+    property real thickness: root.engaged ? root.barWidthActive : root.barWidth
+    Behavior on thickness {
+        NumberAnimation {
+            duration: Appearance.animation.elementMoveFast.duration
+            easing.type: Appearance.animation.elementMoveFast.type
+            easing.bezierCurve: Appearance.animation.elementMoveFast.bezierCurve
+        }
+    }
 
-    /// Cross-axis position for something `w` thick, hugging the outer edge.
+    /// Cross-axis position for something `w` thick, centred in the container.
     function laneOffset(containerThickness, w) {
-        return root.mirrored ? root.barInset
-                             : Math.max(0, containerThickness - root.barInset - w);
+        return (containerThickness - w) / 2;
     }
 
 
@@ -240,8 +242,6 @@ ScrollBar {
                     easing.bezierCurve: Appearance.animation.elementMoveFast.bezierCurve
                 }
             }
-            Behavior on width  { NumberAnimation { duration: Appearance.animation.elementMoveFast.duration } }
-            Behavior on height { NumberAnimation { duration: Appearance.animation.elementMoveFast.duration } }
         }
 
         // stripes: the track as countable rungs, with the thumb riding over.
@@ -325,13 +325,6 @@ ScrollBar {
                         + (root.engaged ? 0.25 : 0))
 
                 Behavior on opacity { NumberAnimation { duration: 140 } }
-                Behavior on width {
-                    NumberAnimation {
-                        duration: Appearance.animation.elementMoveFast.duration
-                        easing.type: Easing.BezierSpline
-                        easing.bezierCurve: Appearance.animationCurves.expressiveFastSpatial
-                    }
-                }
                 // Plain, not createObject(this): that is one animation object per dot.
                 Behavior on color {
                     ColorAnimation {
@@ -462,8 +455,6 @@ ScrollBar {
                     easing.bezierCurve: Appearance.animation.elementMoveFast.bezierCurve
                 }
             }
-            Behavior on width  { NumberAnimation { duration: Appearance.animation.elementMoveFast.duration } }
-            Behavior on height { NumberAnimation { duration: Appearance.animation.elementMoveFast.duration } }
             Behavior on color {
                 ColorAnimation {
                     duration: Appearance.animation.elementMoveFast.duration
