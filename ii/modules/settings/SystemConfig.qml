@@ -31,6 +31,77 @@ ContentPage {
     property string sessionLayouts: ""
 
     ContentSection {
+        icon: "system_update"
+        title: Translation.tr("Shell updates")
+
+        ConfigRow {
+            StyledText {
+                Layout.leftMargin: 8
+                Layout.fillWidth: true
+                wrapMode: Text.WordWrap
+                color: Appearance.colors.colSubtext
+                font.pixelSize: Appearance.font.pixelSize.smaller
+                text: !ShellUpdates.available
+                        ? Translation.tr("Not a git checkout with a remote, so there is nothing to update from.")
+                    : ShellUpdates.error.length > 0 ? ShellUpdates.error
+                    : ShellUpdates.checking ? Translation.tr("Checking…")
+                    : ShellUpdates.behind > 0
+                        ? (ShellUpdates.dirty
+                            ? Translation.tr("%1 behind — commit or stash your changes first.").arg(ShellUpdates.behind)
+                            : Translation.tr("%1 behind. Latest: %2").arg(ShellUpdates.behind).arg(ShellUpdates.latest))
+                    : Translation.tr("Up to date.")
+            }
+            RippleButtonWithIcon {
+                buttonRadius: Appearance.rounding.small
+                enabled: ShellUpdates.available && !ShellUpdates.checking
+                materialIcon: "refresh"
+                mainText: Translation.tr("Check now")
+                onClicked: ShellUpdates.check()
+            }
+            RippleButtonWithIcon {
+                buttonRadius: Appearance.rounding.small
+                visible: ShellUpdates.updateAvailable
+                enabled: ShellUpdates.canApply
+                materialIcon: "download"
+                mainText: ShellUpdates.applying ? Translation.tr("Updating…")
+                                                : Translation.tr("Update now")
+                onClicked: ShellUpdates.apply()
+            }
+        }
+
+        ConfigSwitch {
+            buttonIcon: "update"
+            text: Translation.tr("Check for updates")
+            checked: Config.options.updates.shell.enable
+            onCheckedChanged: Config.options.updates.shell.enable = checked
+        }
+        ConfigSwitch {
+            buttonIcon: "notifications"
+            text: Translation.tr("Notify when an update is found")
+            checked: Config.options.updates.shell.notify
+            onCheckedChanged: Config.options.updates.shell.notify = checked
+        }
+        ConfigSwitch {
+            buttonIcon: "bolt"
+            text: Translation.tr("Install updates automatically")
+            checked: Config.options.updates.shell.autoApply
+            onCheckedChanged: Config.options.updates.shell.autoApply = checked
+            StyledToolTip {
+                text: Translation.tr("Fast-forward only, and skipped while you have uncommitted changes. The shell reloads as soon as the files land, so it will change under you.")
+            }
+        }
+        ConfigSpinBox {
+            icon: "timer"
+            text: Translation.tr("Check every (hours)")
+            value: Config.options.updates.shell.checkIntervalHours
+            from: 1
+            to: 168
+            stepSize: 1
+            onValueChanged: Config.options.updates.shell.checkIntervalHours = value
+        }
+    }
+
+    ContentSection {
         icon: "schedule"
         title: Translation.tr("Time & place")
 

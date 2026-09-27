@@ -180,10 +180,10 @@ Singleton {
         // --list-devices` prose. That parse was wrong three ways at once and the
         // dialog rendered as an empty box because of it:
         //
-        //   - Xperia 1 IV: 5277af5b470e43149beac7b60bb3fc1a on 192.168.178.50 via LAN (reachable)
+        //   - Phone: <device-id> on <ip> via LAN (reachable)
         //
         //  * The id was read as everything between ": " and " (", i.e.
-        //    "5277af5b… on 192.168.178.50 via LAN". Every downstream call passes
+        //    "5277af5b… on <ip> via LAN". Every downstream call passes
         //    this id back to kdeconnect-cli/qdbus, so they all addressed a device
         //    that does not exist.
         //  * trusted was `index(flags,"paired")>0`, but this build prints only

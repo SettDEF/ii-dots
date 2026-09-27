@@ -27,6 +27,9 @@ Rectangle {
     /// colour does. They were interleaved — transition, parallax, effect,
     /// stack, then dark/light, extraction — so neither read as a group.
     component GroupHeading: RowLayout {
+        /// Set to appear in the section rail; the rail scrolls here.
+        property string sectionId: ""
+        property string sectionIcon: ""
         property alias text: groupText.text
         /// Trailing note — a count, a state. Keeps a group to ONE heading.
         property alias note: groupNote.text
@@ -60,6 +63,71 @@ Rectangle {
             implicitWidth: childrenRect.width
             implicitHeight: childrenRect.height
         }
+    }
+
+    /// Every GroupHeading that asked to be navigable, in column order. Some
+    /// sit inside a wrapper layout rather than directly in `col`, so this
+    /// descends — two levels is every case the panel actually has.
+    readonly property var sections: {
+        const out = [];
+        const walk = (item, depth) => {
+            for (const c of item.children) {
+                if (!c || !c.visible) continue;
+                if (c.sectionId !== undefined && c.sectionId.length > 0) out.push(c);
+                else if (depth > 0) walk(c, depth - 1);
+            }
+        };
+        void col.children.length;
+        walk(col, 1);
+        return out;
+    }
+    property int currentSection: 0
+
+    /// A heading's offset in the scrolled column, wherever it is nested.
+    function sectionY(h) {
+        return h.mapToItem(col, 0, 0).y;
+    }
+
+    function goToSection(i) {
+        const h = root.sections[i];
+        if (!h) return;
+        sectionScroll.to = Math.max(0, Math.min(root.sectionY(h) - 10,
+                                               scroll.contentHeight - scroll.height));
+        sectionScroll.restart();
+        root.currentSection = i;
+    }
+
+    // Follows the scroll, so the rail says where you are and not only where
+    // you last clicked.
+    Connections {
+        target: scroll
+        function onContentYChanged() {
+            if (sectionScroll.running) return;
+            // The last sections sit inside the final screenful and never reach
+            // the top, so a fixed reading line at the top would leave them
+            // permanently unhighlighted. The line instead sweeps from the top
+            // of the viewport to its bottom as the scroll runs its course.
+            const max = Math.max(1, scroll.contentHeight - scroll.height);
+            const t = Math.min(1, Math.max(0, scroll.contentY / max));
+            // Flat for the first half, so a heading at the top of the viewport
+            // reads as the current one; then it sweeps down to the foot of the
+            // content so the trailing sections become reachable at all.
+            const sweep = Math.max(0, (t - 0.5) * 2);
+            const line = scroll.contentY + 28 + (scroll.height - 28) * sweep;
+            let best = 0;
+            for (let i = 0; i < root.sections.length; ++i)
+                if (root.sectionY(root.sections[i]) <= line) best = i;
+            root.currentSection = best;
+        }
+    }
+
+    NumberAnimation {
+        id: sectionScroll
+        target: scroll
+        property: "contentY"
+        duration: 260
+        easing.type: Easing.BezierSpline
+        easing.bezierCurve: Appearance.animationCurves.emphasizedDecel
     }
 
     readonly property string home: `${Quickshell.env("HOME")}`
@@ -231,6 +299,7 @@ Rectangle {
     property bool parallaxOpen:  false
     property bool effectOpen:    false
     property bool extractOpen:   false
+    property bool mixOpen:       false
 
     // Section dropdowns (default closed)
     property bool theoryOpen:    false
@@ -1100,11 +1169,150 @@ Rectangle {
         }
     }
 
+    // ── Section rail ────────────────────────────────────────────────────
+    // The panel is long enough that the only way to reach the bottom was to
+    // scroll the whole way. The rail scrolls to a heading rather than swapping
+    // pages: the column is one continuous document and splitting it would mean
+    // the state at the top no longer sits next to what it affects.
+    Rectangle {
+        id: sectionRail
+        anchors {
+            top: headerBar.bottom
+            left: parent.left
+            bottom: parent.bottom
+            topMargin: 10
+            leftMargin: 10
+            bottomMargin: 12
+        }
+        width: 140
+        // A surface, not bare ground. The column is only ever a third full, and
+        // unfilled ground reads as a hole where unfilled chrome reads as room.
+        radius: Appearance.rounding.large
+        color: Appearance.colors.colLayer1
+        visible: root.sections.length > 1
+
+        ColumnLayout {
+            anchors {
+                left: parent.left; right: parent.right; top: parent.top
+                margins: 8
+            }
+            spacing: 2
+
+            Repeater {
+                model: root.sections
+
+                delegate: Rectangle {
+                    id: railItem
+                    required property var modelData
+                    required property int index
+                    readonly property bool active: root.currentSection === index
+
+                    Layout.fillWidth: true
+                    implicitHeight: 34
+                    radius: Appearance.rounding.full
+                    color: railItem.active ? Appearance.colors.colSecondaryContainer
+                         : railHov.hovered ? Appearance.colors.colLayer2
+                         : "transparent"
+                    Behavior on color { ColorAnimation { duration: 140 } }
+
+                    readonly property color fg: railItem.active
+                        ? Appearance.m3colors.m3onSecondaryContainer
+                        : Appearance.colors.colOnLayer1
+
+                    HoverHandler { id: railHov }
+                    TapHandler { onTapped: root.goToSection(railItem.index) }
+
+                    Row {
+                        anchors {
+                            left: parent.left
+                            leftMargin: 11
+                            right: parent.right
+                            rightMargin: 8
+                            verticalCenter: parent.verticalCenter
+                        }
+                        spacing: 8
+
+                        MaterialSymbol {
+                            anchors.verticalCenter: parent.verticalCenter
+                            text: railItem.modelData.sectionIcon
+                            iconSize: Appearance.font.pixelSize.normal
+                            color: railItem.fg
+                            opacity: railItem.active ? 1 : 0.65
+                        }
+                        StyledText {
+                            anchors.verticalCenter: parent.verticalCenter
+                            width: parent.width - 8 - Appearance.font.pixelSize.normal
+                            text: railItem.modelData.text
+                            font.pixelSize: Appearance.font.pixelSize.smaller
+                            font.weight: railItem.active ? Font.DemiBold : Font.Normal
+                            color: railItem.fg
+                            opacity: railItem.active ? 1 : 0.7
+                            elide: Text.ElideRight
+                        }
+                    }
+                }
+            }
+        }
+
+        /// Reset / shuffle / pick. Secondary to Reprocess, so they sit in the
+        /// rail's own column rather than crowding the primary button — which
+        /// also gives the rail something at both ends instead of a long drop.
+        component RailAction: Rectangle {
+            property string icon: ""
+            property var action
+            readonly property bool hovered: actHov.hovered
+
+            implicitWidth: 38; implicitHeight: 38; radius: 19
+            color: actHov.hovered ? Appearance.colors.colLayer2 : "transparent"
+            Behavior on color { ColorAnimation { duration: 100 } }
+            HoverHandler { margin: Appearance.sizes.touchSlop; id: actHov }
+            TapHandler { margin: Appearance.sizes.touchSlop; onTapped: action() }
+            MaterialSymbol {
+                anchors.centerIn: parent
+                text: parent.icon
+                iconSize: Appearance.font.pixelSize.normal
+                color: Appearance.colors.colOnLayer1
+                opacity: actHov.hovered ? 1 : 0.55
+            }
+        }
+
+        Row {
+            anchors {
+                horizontalCenter: parent.horizontalCenter
+                bottom: parent.bottom
+                // Centres these on the Reprocess button beside them: that bar
+                // is 48 tall on a 12 margin, these are 38 inside a rail that
+                // already carries its own 12.
+                bottomMargin: 5
+            }
+            spacing: 4
+
+            RailAction {
+                icon: "restart_alt"
+                action: () => root.resetSliders()
+                StyledToolTip { text: qsTr("Reset every slider") }
+            }
+            RailAction {
+                icon: "shuffle"
+                action: () => root.randomWall()
+                StyledToolTip { text: qsTr("Random wallpaper") }
+            }
+            RailAction {
+                icon: "wallpaper"
+                action: () => {
+                    GlobalStates.wallpaperSelectorOpen = true;
+                    GlobalStates.wallTuneOpen = false;
+                }
+                StyledToolTip { text: qsTr("Pick a wallpaper") }
+            }
+        }
+    }
+
     Flickable {
         id: scroll
         anchors {
             top: headerBar.bottom
-            left: parent.left
+            left: sectionRail.visible ? sectionRail.right : parent.left
             right: parent.right
             bottom: bottomBar.top
             margins: 12
@@ -1208,6 +1416,7 @@ Rectangle {
         // The count rides on the heading: "Recent" above "Recent Themes" was
         // the same word twice for one strip of thumbnails.
         GroupHeading {
+            sectionId: "recent"; sectionIcon: "history"
             text: qsTr("Recent")
             note: root.history.length + ""
             visible: root.history.length > 0
@@ -1386,186 +1595,77 @@ Rectangle {
                         TapHandler { margin: Appearance.sizes.touchSlop; onTapped: root.applyHistoryEntry(modelData) }
                     }
                 }
+
+                // Without this the strip ends on a chip sliced down the middle,
+                // which reads as a clipping bug rather than as more to scroll.
+                Rectangle {
+                    anchors { right: parent.right; top: parent.top; bottom: parent.bottom }
+                    width: 28
+                    opacity: walltuneHistList.atXEnd ? 0 : 1
+                    Behavior on opacity { NumberAnimation { duration: 140 } }
+                    gradient: Gradient {
+                        orientation: Gradient.Horizontal
+                        GradientStop { position: 0; color: "transparent" }
+                        GradientStop { position: 1; color: Appearance.colors.colLayer0 }
+                    }
+                }
             }
         }
 
-        // ── Active mix summary ─────────────────────────────────────────────
-        // Surfaces every currently-stacked section choice (Mode / Theory /
-        // Style / Practical / Remap / Curve) as a chip row. Click the chip
-        // to open its section dropdown; click the × to clear that one entry.
-        // Hidden entirely when nothing is active so the panel stays compact
-        // at rest.
-        ColumnLayout {
+        // ── Active mix ─────────────────────────────────────────────────────
+        // A row, not a block: the stack is set once and then read, so it costs
+        // the column 44px instead of a heading plus one card per stage.
+        RippleButton {
+            id: mixRow
             Layout.fillWidth: true
-            spacing: 4
+            implicitHeight: 44
+            buttonRadius: Appearance.rounding.small
+            colBackground: Appearance.colors.colLayer1
+            colBackgroundHover: Appearance.colors.colLayer1Hover
             visible: root.activeMix.length > 0
-            opacity: visible ? 1 : 0
-            Behavior on opacity { NumberAnimation { duration: 140 } }
+            onClicked: root.mixOpen = true
 
-            RowLayout {
-                Layout.fillWidth: true; spacing: 4
+            contentItem: RowLayout {
+                anchors.fill: parent
+                anchors.leftMargin: 12
+                anchors.rightMargin: 8
+                spacing: 10
+
                 MaterialSymbol {
                     text: "layers"
-                    iconSize: Appearance.font.pixelSize.smaller
-                    color: Appearance.colors.colOnLayer0; opacity: 0.45
+                    iconSize: Appearance.font.pixelSize.normal
+                    color: Appearance.colors.colOnLayer1
+                    opacity: 0.7
                 }
                 StyledText {
-                    text: qsTr("Active mix")
-                    font.pixelSize: Appearance.font.pixelSize.smaller - 1
-                    font.weight: Font.Medium
-                    color: Appearance.colors.colOnLayer0; opacity: 0.5
                     Layout.fillWidth: true
+                    text: qsTr("Active mix")
+                    font.pixelSize: Appearance.font.pixelSize.smaller
+                    color: Appearance.colors.colOnLayer1
                 }
-                Rectangle {
-                    implicitWidth: clrAllRow.implicitWidth + 12
-                    implicitHeight: 20
-                    radius: 10
-                    color: clrAllHov.hovered ? Appearance.colors.colLayer2 : "transparent"
-                    border.width: 1
-                    border.color: Qt.alpha(Appearance.colors.colOnLayer0, 0.18)
-                    Behavior on color { ColorAnimation { duration: 100 } }
-                    HoverHandler { id: clrAllHov }
-                    TapHandler { onTapped: {
-                        root.selectedMode = ""
-                        root.selectedTheory = ""
-                        root.selectedStyle = ""
-                        root.selectedPractical = ""
-                        root.remapPalette = ""
-                        root.resetCurve()
-                    } }
-                    Row { id: clrAllRow; anchors.centerIn: parent; spacing: 3
-                        MaterialSymbol {
-                            anchors.verticalCenter: parent.verticalCenter
-                            text: "clear_all"; iconSize: 12
-                            color: Appearance.colors.colOnLayer0; opacity: 0.55
-                        }
-                        StyledText {
-                            anchors.verticalCenter: parent.verticalCenter
-                            text: qsTr("Clear")
-                            font.pixelSize: Appearance.font.pixelSize.smaller - 3
-                            color: Appearance.colors.colOnLayer0; opacity: 0.6
+                // The stage colours, in run order: the row says what is in the
+                // stack without spelling any of it out.
+                Row {
+                    spacing: 3
+                    Repeater {
+                        model: root.activeMix
+                        delegate: Rectangle {
+                            required property var modelData
+                            implicitWidth: 8; implicitHeight: 8; radius: 4
+                            color: modelData.color
                         }
                     }
                 }
-            }
-
-            // A numbered column, not a chip cloud. These stages RUN IN THIS
-            // ORDER — mixOrder goes to switchwall.sh as --mix-order and the
-            // palette genuinely differs by it — and a row of tags says nothing
-            // about that. Drag a row to reorder; the number is the stage.
-            ColumnLayout {
-                id: mixStack
-                Layout.fillWidth: true
-                spacing: 3
-
-                Repeater {
-                    model: root.activeMix
-                    delegate: Rectangle {
-                        id: stage
-                        required property var modelData
-                        required property int index
-
-                        Layout.fillWidth: true
-                        implicitHeight: 30
-                        radius: Appearance.rounding.verysmall
-                        color: stageMa.containsMouse || stageDrag.active
-                            ? Qt.alpha(modelData.color, 0.22)
-                            : Qt.alpha(modelData.color, 0.10)
-                        border.width: 1
-                        border.color: Qt.alpha(modelData.color, stageDrag.active ? 0.9 : 0.35)
-                        Behavior on color { ColorAnimation { duration: 100 } }
-
-                        // Moved by transform, not y: the layout keeps owning
-                        // position, so the drag cannot fight it.
-                        z: stageDrag.active ? 50 : 0
-                        scale: stageDrag.active ? 1.02 : 1
-                        Behavior on scale { NumberAnimation { duration: 90 } }
-                        transform: Translate { y: stageDrag.active ? stageDrag.activeTranslation.y : 0 }
-
-                        DragHandler {
-                            id: stageDrag
-                            target: null
-                            yAxis.enabled: true
-                            xAxis.enabled: false
-                            property string dropKey: ""
-                            onActiveTranslationChanged: {
-                                if (!active) return;
-                                const cy = stage.y + activeTranslation.y + stage.height / 2;
-                                let best = null, bestD = Infinity;
-                                for (const c of mixStack.children) {
-                                    if (c === stage || !c.modelData) continue;
-                                    const d = Math.abs((c.y + c.height / 2) - cy);
-                                    if (d < bestD) { bestD = d; best = c; }
-                                }
-                                dropKey = best ? best.modelData.key : "";
-                            }
-                            onActiveChanged: {
-                                if (active) { dropKey = ""; return; }
-                                if (dropKey) root.moveMixBefore(stage.modelData.key, dropKey);
-                                dropKey = "";
-                            }
-                        }
-
-                        MouseArea {
-                            id: stageMa
-                            anchors.fill: parent
-                            hoverEnabled: true
-                            cursorShape: stageDrag.active ? Qt.ClosedHandCursor : Qt.PointingHandCursor
-                            onClicked: if (!stageDrag.active) root.openMixSection(stage.modelData.key)
-                        }
-
-                        RowLayout {
-                            anchors.fill: parent
-                            anchors.leftMargin: 8
-                            anchors.rightMargin: 4
-                            spacing: 8
-
-                            StyledText {
-                                text: stage.index + 1
-                                font.pixelSize: Appearance.font.pixelSize.smallest
-                                font.family: Appearance.font.family.numbers
-                                color: Appearance.colors.colOnLayer0
-                                opacity: 0.4
-                            }
-                            Rectangle {
-                                implicitWidth: 8; implicitHeight: 8; radius: 4
-                                color: stage.modelData.color
-                            }
-                            StyledText {
-                                text: stage.modelData.section
-                                font.pixelSize: Appearance.font.pixelSize.smaller
-                                color: Appearance.colors.colOnLayer0
-                                opacity: 0.55
-                            }
-                            StyledText {
-                                Layout.fillWidth: true
-                                text: stage.modelData.label
-                                font.pixelSize: Appearance.font.pixelSize.smaller
-                                font.weight: Font.Medium
-                                color: Appearance.colors.colOnLayer0
-                                elide: Text.ElideRight
-                            }
-                            MaterialSymbol {
-                                text: "drag_indicator"
-                                iconSize: Appearance.font.pixelSize.small
-                                color: Appearance.colors.colOnLayer0
-                                opacity: stageMa.containsMouse ? 0.45 : 0.2
-                            }
-                            RippleButton {
-                                implicitWidth: 22; implicitHeight: 22
-                                buttonRadius: Appearance.rounding.full
-                                onClicked: root.clearMix(stage.modelData.key)
-                                contentItem: MaterialSymbol {
-                                    anchors.fill: parent
-                                    horizontalAlignment: Text.AlignHCenter
-                                    verticalAlignment: Text.AlignVCenter
-                                    text: "close"
-                                    iconSize: Appearance.font.pixelSize.smaller
-                                    color: Appearance.colors.colOnLayer0
-                                }
-                            }
-                        }
-                    }
+                StyledText {
+                    text: root.activeMix.length + ""
+                    font.pixelSize: Appearance.font.pixelSize.smallest
+                    font.family: Appearance.font.family.numbers
+                    color: Appearance.colors.colPrimary
+                }
+                MaterialSymbol {
+                    text: "chevron_right"
+                    iconSize: Appearance.font.pixelSize.large
+                    color: Appearance.colors.colSubtext
                 }
             }
         }
@@ -1599,7 +1699,7 @@ Rectangle {
 
         ColumnLayout { Layout.fillWidth: true; spacing: 5
             opacity: root.sourceIsVideo ? 0.4 : 1.0
-        GroupHeading { text: qsTr("Wallpaper") }
+        GroupHeading { sectionId: "wallpaper"; sectionIcon: "wallpaper"; text: qsTr("Wallpaper") }
             SectionLabel { text: qsTr("Transition") }
             SegmentedButtons {
                 Layout.fillWidth: true
@@ -1610,12 +1710,21 @@ Rectangle {
             }
         }
 
-        SegmentedButtons {
+        // Unlabelled, this read as a second row of the transition picker
+        // above it rather than as the separate question it is.
+        ColumnLayout {
             Layout.fillWidth: true
-            showCheck: false
-            currentId: root.applyMode
-            onSelected: id => root.applyMode = id
-            model: root.applyModes.map(m => ({ id: m.id, label: m.label, icon: m.icon }))
+            spacing: 5
+            opacity: root.sourceIsVideo ? 0.4 : 1.0
+
+            SectionLabel { text: qsTr("Applies to") }
+            SegmentedButtons {
+                Layout.fillWidth: true
+                showCheck: false
+                currentId: root.applyMode
+                onSelected: id => root.applyMode = id
+                model: root.applyModes.map(m => ({ id: m.id, label: m.label, icon: m.icon }))
+            }
         }
 
         // ── Parallax zoom on workspace scroll ──────────────────────────
@@ -1794,16 +1903,24 @@ Rectangle {
             }
         }
 
-        GroupHeading { text: qsTr("Colour") }
-        SegmentedButtons {
+        GroupHeading { sectionId: "colour"; sectionIcon: "palette"; text: qsTr("Colour") }
+        // Staged, not applied: Reprocess is what commits it, so these only
+        // set root.darkMode.
+        RowLayout {
             Layout.fillWidth: true
-            showCheck: false
-            currentId: root.darkMode ? "dark" : "light"
-            onSelected: id => root.darkMode = (id === "dark")
-            model: [
-                { id: "dark",  label: qsTr("Dark"),  icon: "dark_mode" },
-                { id: "light", label: qsTr("Light"), icon: "light_mode" }
-            ]
+            spacing: 6
+            uniformCellSizes: true
+
+            LightDarkPreferenceButton {
+                dark: false
+                toggled: !root.darkMode
+                apply: () => root.darkMode = false
+            }
+            LightDarkPreferenceButton {
+                dark: true
+                toggled: root.darkMode
+                apply: () => root.darkMode = true
+            }
         }
 
         // Extraction mode
@@ -1847,19 +1964,13 @@ Rectangle {
             }
         }
 
-        // Divider — separates the live editing controls above from the
-        // saved-history section below, giving the panel a clear two-zone
-        // hierarchy instead of one long undifferentiated scroll.
-        Rectangle {
-            Layout.fillWidth: true
-            Layout.topMargin: 2
-            Layout.bottomMargin: 2
-            implicitHeight: 1
-            color: Appearance.colors.colOutline
-            opacity: 0.15
-            visible: root.history.length > 0
+        // Everything below shapes the palette after extraction, so it is its
+        // own zone rather than a divider in the middle of "Colour".
+        GroupHeading {
+            sectionId: "grading"; sectionIcon: "tune"
+            text: qsTr("Grading")
+            note: qsTr("Theory, style, curve, remap")
         }
-
 
         // ── Per-app colours ──────────────────────────────────────────────
         // Everything below shapes the one palette every app receives. This
@@ -2764,9 +2875,12 @@ Rectangle {
             }
         }
 
-        // Blueprints
+        GroupHeading {
+            sectionId: "blueprints"; sectionIcon: "auto_awesome"
+            text: qsTr("Blueprints")
+            visible: root.blueprints.length > 0
+        }
         ColumnLayout { Layout.fillWidth: true; spacing: 4; visible: root.blueprints.length > 0
-            SectionLabel { text: qsTr("Blueprints") }
             Flow { Layout.fillWidth: true; spacing: 4
                 Repeater {
                     model: root.blueprints
@@ -2793,7 +2907,7 @@ Rectangle {
     Item {
         id: bottomBar
         anchors {
-            left: parent.left
+            left: sectionRail.visible ? sectionRail.right : parent.left
             right: parent.right
             bottom: parent.bottom
             leftMargin: 12
@@ -2807,36 +2921,6 @@ Rectangle {
         RowLayout {
             anchors.fill: parent
             spacing: 6
-
-            // Reset
-            Rectangle {
-                implicitWidth: 48; implicitHeight: 48; radius: 24
-                color: rstHov.hovered ? Appearance.colors.colLayer2 : Appearance.colors.colLayer1
-                Behavior on color { ColorAnimation { duration: 100 } }
-                HoverHandler { margin: Appearance.sizes.touchSlop; id: rstHov }
-                TapHandler { margin: Appearance.sizes.touchSlop; onTapped: root.resetSliders() }
-                MaterialSymbol { anchors.centerIn: parent; text: "restart_alt"; iconSize: Appearance.font.pixelSize.normal; color: Appearance.colors.colOnLayer0; opacity: 0.5 }
-            }
-
-            // Random
-            Rectangle {
-                implicitWidth: 48; implicitHeight: 48; radius: 24
-                color: rndHov.hovered ? Appearance.colors.colLayer2 : Appearance.colors.colLayer1
-                Behavior on color { ColorAnimation { duration: 100 } }
-                HoverHandler { margin: Appearance.sizes.touchSlop; id: rndHov }
-                TapHandler { margin: Appearance.sizes.touchSlop; onTapped: root.randomWall() }
-                MaterialSymbol { anchors.centerIn: parent; text: "shuffle"; iconSize: Appearance.font.pixelSize.normal; color: Appearance.colors.colOnLayer0; opacity: 0.5 }
-            }
-
-            // Open wallpaper selector
-            Rectangle {
-                implicitWidth: 48; implicitHeight: 48; radius: 24
-                color: wsHov.hovered ? Appearance.colors.colLayer2 : Appearance.colors.colLayer1
-                Behavior on color { ColorAnimation { duration: 100 } }
-                HoverHandler { margin: Appearance.sizes.touchSlop; id: wsHov }
-                TapHandler { margin: Appearance.sizes.touchSlop; onTapped: { GlobalStates.wallpaperSelectorOpen = true; GlobalStates.wallTuneOpen = false } }
-                MaterialSymbol { anchors.centerIn: parent; text: "wallpaper"; iconSize: Appearance.font.pixelSize.normal; color: Appearance.colors.colOnLayer0; opacity: 0.5 }
-            }
 
             // Reprocess
             Rectangle {
@@ -2863,6 +2947,174 @@ Rectangle {
                         Behavior on color { ColorAnimation { duration: 150 } }
                     }
                 }
+            }
+        }
+    }
+
+    // The mix, on demand. A grid rather than a list: six stages down the
+    // column was most of a screenful for six short words.
+    PanelSheet {
+        id: mixSheet
+        open: root.mixOpen
+        title: qsTr("Active mix")
+        subtitle: qsTr("Runs top to bottom. Drag to reorder.")
+        onClosed: root.mixOpen = false
+
+        GridLayout {
+            id: mixStack
+            Layout.fillWidth: true
+            columns: 2
+            rowSpacing: 5
+            columnSpacing: 5
+
+            Repeater {
+                model: root.activeMix
+
+                delegate: Rectangle {
+                    id: stage
+                    required property var modelData
+                    required property int index
+
+                    Layout.fillWidth: true
+                    // An odd last card spans both columns, so the block ends
+                    // square instead of on a half-width orphan.
+                    Layout.columnSpan: (index === root.activeMix.length - 1
+                                        && root.activeMix.length % 2 === 1) ? 2 : 1
+                    implicitHeight: 54
+                    radius: Appearance.rounding.small
+                    color: stageMa.containsMouse || stageDrag.active
+                        ? Appearance.colors.colLayer2
+                        : Appearance.colors.colLayer1
+                    border.width: 1
+                    border.color: stageDrag.active
+                        ? Qt.alpha(modelData.color, 0.8)
+                        : Appearance.colors.colLayer0Border
+                    Behavior on color { ColorAnimation { duration: 100 } }
+                    Behavior on border.color { ColorAnimation { duration: 100 } }
+
+                    // Moved by transform, not x/y: the layout keeps owning
+                    // position, so the drag cannot fight it.
+                    z: stageDrag.active ? 50 : 0
+                    scale: stageDrag.active ? 1.03 : 1
+                    Behavior on scale { NumberAnimation { duration: 90 } }
+                    transform: Translate {
+                        x: stageDrag.active ? stageDrag.activeTranslation.x : 0
+                        y: stageDrag.active ? stageDrag.activeTranslation.y : 0
+                    }
+
+                    DragHandler {
+                        id: stageDrag
+                        target: null
+                        property string dropKey: ""
+                        onActiveTranslationChanged: {
+                            if (!active) return;
+                            // Nearest centre in both axes now that the cards
+                            // sit in a grid rather than a single column.
+                            const cx = stage.x + activeTranslation.x + stage.width / 2;
+                            const cy = stage.y + activeTranslation.y + stage.height / 2;
+                            let best = null, bestD = Infinity;
+                            for (const c of mixStack.children) {
+                                if (c === stage || !c.modelData) continue;
+                                const dx = (c.x + c.width / 2) - cx;
+                                const dy = (c.y + c.height / 2) - cy;
+                                const d = dx * dx + dy * dy;
+                                if (d < bestD) { bestD = d; best = c; }
+                            }
+                            dropKey = best ? best.modelData.key : "";
+                        }
+                        onActiveChanged: {
+                            if (active) { dropKey = ""; return; }
+                            if (dropKey) root.moveMixBefore(stage.modelData.key, dropKey);
+                            dropKey = "";
+                        }
+                    }
+
+                    MouseArea {
+                        id: stageMa
+                        anchors.fill: parent
+                        hoverEnabled: true
+                        cursorShape: stageDrag.active ? Qt.ClosedHandCursor : Qt.PointingHandCursor
+                        onClicked: if (!stageDrag.active) {
+                            root.mixOpen = false;
+                            root.openMixSection(stage.modelData.key);
+                        }
+                    }
+
+                    ColumnLayout {
+                        anchors {
+                            left: parent.left; right: parent.right
+                            verticalCenter: parent.verticalCenter
+                            leftMargin: 10; rightMargin: 6
+                        }
+                        spacing: 1
+
+                        RowLayout {
+                            Layout.fillWidth: true
+                            spacing: 7
+
+                            // One marker, two jobs: the disc is the stage
+                            // colour and the number is its place in the run.
+                            Rectangle {
+                                implicitWidth: 18; implicitHeight: 18; radius: 9
+                                color: Qt.alpha(stage.modelData.color, 0.22)
+                                StyledText {
+                                    anchors.centerIn: parent
+                                    text: stage.index + 1
+                                    font.pixelSize: Appearance.font.pixelSize.smallest
+                                    font.family: Appearance.font.family.numbers
+                                    font.weight: Font.Medium
+                                    color: stage.modelData.color
+                                }
+                            }
+                            StyledText {
+                                Layout.fillWidth: true
+                                text: stage.modelData.section
+                                font.pixelSize: Appearance.font.pixelSize.smallest
+                                color: Appearance.colors.colSubtext
+                                elide: Text.ElideRight
+                            }
+                            RippleButton {
+                                implicitWidth: 22; implicitHeight: 22
+                                buttonRadius: Appearance.rounding.full
+                                onClicked: root.clearMix(stage.modelData.key)
+                                contentItem: MaterialSymbol {
+                                    anchors.fill: parent
+                                    horizontalAlignment: Text.AlignHCenter
+                                    verticalAlignment: Text.AlignVCenter
+                                    text: "close"
+                                    iconSize: Appearance.font.pixelSize.smaller
+                                    color: Appearance.colors.colOnLayer1
+                                }
+                            }
+                        }
+                        StyledText {
+                            Layout.fillWidth: true
+                            Layout.leftMargin: 25
+                            text: stage.modelData.label
+                            font.pixelSize: Appearance.font.pixelSize.smaller
+                            font.weight: Font.Medium
+                            color: Appearance.colors.colOnLayer1
+                            elide: Text.ElideRight
+                        }
+                    }
+                }
+            }
+        }
+
+        RippleButtonWithIcon {
+            Layout.fillWidth: true
+            Layout.topMargin: 4
+            buttonRadius: Appearance.rounding.small
+            materialIcon: "clear_all"
+            mainText: qsTr("Clear all")
+            onClicked: {
+                root.selectedMode = "";
+                root.selectedTheory = "";
+                root.selectedStyle = "";
+                root.selectedPractical = "";
+                root.remapPalette = "";
+                root.resetCurve();
+                root.mixOpen = false;
             }
         }
     }

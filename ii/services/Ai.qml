@@ -41,7 +41,9 @@ Singleton {
     // property var messages: []
     property var messageIDs: []
     property var messageByID: ({})
-    readonly property var apiKeys: (function(){ var a = KeyringStorage.keyringData?.apiKeys ?? {}; if (!a.gemini) a.gemini = "REDACTED"; return a; })();
+    // Keys come from the keyring only. A default baked in here is a key that
+    // ships to everyone who clones the repo and bills whoever owns it.
+    readonly property var apiKeys: KeyringStorage.keyringData?.apiKeys ?? ({})
     readonly property var apiKeysLoaded: KeyringStorage.loaded
     readonly property bool currentModelHasApiKey: {
         const model = models[currentModelId];

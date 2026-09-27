@@ -122,8 +122,13 @@ Item {
         // true, which re-showed the popup over the icon, which made the icon
         // fire onExited, which cleared buttonHovered — measured as a 2ms
         // flip-flop between the two on every hover after the first.
+        // The context menu takes the pointer off the icon, so the icon's own
+        // MouseArea fires onExited and the preview used to vanish the instant
+        // you right-clicked. The menu is about the app you are previewing, so
+        // the preview stays for as long as it is up.
         property bool hovered: (previewPopup.show && popupMouseArea.containsMouse)
             || root.buttonHovered
+            || appMenu.visible
         // A file manager is worth hovering even with nothing open.
         property bool shouldShow: previewPopup.hovered
             && (previewPopup.previewCount > 0 || root.showFolderGrid)
@@ -157,7 +162,12 @@ Item {
         // whether it exists.
         property real panelOpacity: previewPopup.show ? 1 : 0
         Behavior on panelOpacity {
-            animation: Appearance.animation.elementMoveFast.numberAnimation.createObject(this)
+            enabled: (Config.options.dock.previewAnimation ?? "grow") !== "none"
+            NumberAnimation {
+                duration: 200
+                easing.type: Easing.BezierSpline
+                easing.bezierCurve: Appearance.animationCurves.standardDecel
+            }
         }
         visible: previewPopup.panelOpacity > 0
         // Input only where the panel actually is.
@@ -202,10 +212,30 @@ Item {
                 // Rises and settles rather than only fading: a panel that
                 // appears at full size reads as a different surface arriving,
                 // one that grows from the dock reads as the icon's own.
+                // Transforms, never implicitWidth/implicitHeight. The popup's
+                // window follows this item, so animating its size resized the
+                // Wayland surface on every frame of the open — a relayout and
+                // a reallocation per frame with live captures inside it. That
+                // is the version that stuttered; a transform costs the GPU
+                // nothing and runs on the render thread.
+                readonly property string anim: Config.options.dock.previewAnimation ?? "grow"
+                transformOrigin: Item.Bottom
+                scale: (previewPopup.show || popupBackground.anim !== "grow") ? 1 : 0.9
+                Behavior on scale {
+                    NumberAnimation {
+                        duration: 220
+                        easing.type: Easing.BezierSpline
+                        easing.bezierCurve: Appearance.animationCurves.emphasizedDecel
+                    }
+                }
                 transform: Translate {
-                    y: previewPopup.show ? 0 : 8
+                    y: (previewPopup.show || popupBackground.anim !== "rise") ? 0 : 14
                     Behavior on y {
-                        animation: Appearance.animation.elementMoveFast.numberAnimation.createObject(this)
+                        NumberAnimation {
+                            duration: 220
+                            easing.type: Easing.BezierSpline
+                            easing.bezierCurve: Appearance.animationCurves.emphasizedDecel
+                        }
                     }
                 }
                 clip: true
@@ -219,12 +249,7 @@ Item {
                 anchors.horizontalCenter: parent.horizontalCenter
                 implicitHeight: previewColumn.implicitHeight + padding * 2
                 implicitWidth: previewColumn.implicitWidth + padding * 2
-                Behavior on implicitWidth {
-                    animation: Appearance.animation.elementMoveFast.numberAnimation.createObject(this)
-                }
-                Behavior on implicitHeight {
-                    animation: Appearance.animation.elementMoveFast.numberAnimation.createObject(this)
-                }
+
 
                 ColumnLayout {
                     id: previewColumn
@@ -297,7 +322,16 @@ Item {
                                         }
                                     }
                                 }
-                                ScreencopyView {
+                                // Rounded by the scene graph, not by an
+                                // offscreen layer. layer.enabled + OpacityMask
+                                // cost an FBO render and a mask pass PER
+                                // PREVIEW PER FRAME, and a live capture
+                                // changes every frame, so both ran flat out
+                                // the whole time the popup was up.
+                                ClippingWrapperRectangle {
+                                  color: "transparent"
+                                  radius: Appearance.rounding.small
+                                  ScreencopyView {
                                     id: screencopyView
                                     // Both gated on the popup being up. live:true
                                     // captured every previewed window every
@@ -325,14 +359,7 @@ Item {
                                         && (Config.options.dock.livePreviews ?? true)
                                     paintCursor: true
                                     constraintSize: Qt.size(root.maxWindowPreviewWidth, root.maxWindowPreviewHeight)
-                                    layer.enabled: true
-                                    layer.effect: OpacityMask {
-                                        maskSource: Rectangle {
-                                            width: screencopyView.width
-                                            height: screencopyView.height
-                                            radius: Appearance.rounding.small
-                                        }
-                                    }
+                                  }
                                 }
                             }
                         }

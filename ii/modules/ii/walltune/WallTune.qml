@@ -54,7 +54,11 @@ Scope {
             // tall next to 889px neighbours, and a row of panels at different
             // heights reads as broken rather than as compact — the same reason
             // StackedSettingsPanel takes the full available height.
-            implicitWidth: ScreenFit.panelWidth
+            // Wider than a standard panel: this one carries a section rail as
+            // well as its content. PanelStack is told the real width, so it
+            // still works out how many panels fit beside each other.
+            implicitWidth: Math.min(ScreenFit.panelWidth + 190,
+                                    Math.max(ScreenFit.panelWidth, win.screen.width * 0.42))
             implicitHeight: ScreenFit.maxHeight(win)
 
             mask: Region { item: panel }

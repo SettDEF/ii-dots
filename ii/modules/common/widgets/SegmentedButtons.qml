@@ -21,7 +21,7 @@ Rectangle {
     property var model: []
     property var currentId
     property bool showCheck: false
-    property real segmentHeight: 38
+    property real segmentHeight: 36
 
     signal selected(var id)
 
@@ -89,7 +89,7 @@ Rectangle {
                         iconSize: Appearance.font.pixelSize.small
                         color: segment.active ? Appearance.m3colors.m3onSecondaryContainer
                                               : Appearance.colors.colOnLayer1
-                        opacity: segment.active ? 1 : 0.6
+                        opacity: segment.active ? 1 : 0.8
                         Behavior on color { ColorAnimation { duration: 140 } }
                     }
                     StyledText {
@@ -100,7 +100,7 @@ Rectangle {
                         font.weight: segment.active ? Font.Medium : Font.Normal
                         color: segment.active ? Appearance.m3colors.m3onSecondaryContainer
                                               : Appearance.colors.colOnLayer1
-                        opacity: segment.active ? 1 : 0.7
+                        opacity: segment.active ? 1 : 0.85
                         Behavior on color { ColorAnimation { duration: 140 } }
                     }
                 }

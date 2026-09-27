@@ -21,9 +21,15 @@ GroupButton {
     // the neighbour it sits against.
     leftRadius: leftmost ? (height / 2) : Appearance.rounding.unsharpenmore
     rightRadius: rightmost ? (height / 2) : Appearance.rounding.unsharpenmore
-    colBackground: Appearance.colors.colSecondaryContainer
-    colBackgroundHover: Appearance.colors.colSecondaryContainerHover
-    colBackgroundActive: Appearance.colors.colSecondaryContainerActive
+    // M3 segmented button: the selected chip carries the colour and the rest
+    // stay quiet. It was the other way round, so a row of eleven options read
+    // as a wall of accent with one hole punched in it.
+    colBackground: Appearance.colors.colLayer2
+    colBackgroundHover: Appearance.colors.colLayer2Hover
+    colBackgroundActive: Appearance.colors.colLayer2Active
+    colBackgroundToggled: Appearance.colors.colSecondaryContainer
+    colBackgroundToggledHover: Appearance.colors.colSecondaryContainerHover
+    colBackgroundToggledActive: Appearance.colors.colSecondaryContainerActive
 
     contentItem: RowLayout {
         spacing: 4 * (root.buttonText?.length > 0)
@@ -39,7 +45,8 @@ GroupButton {
                     anchors.centerIn: parent
                     text: root.buttonIcon
                     iconSize: Appearance.font.pixelSize.larger
-                    color: root.toggled ? Appearance.colors.colOnPrimary : Appearance.colors.colOnSecondaryContainer
+                    color: root.toggled ? Appearance.colors.colOnSecondaryContainer
+                                        : Appearance.colors.colOnLayer2
                 }
             }
         }
@@ -57,7 +64,8 @@ GroupButton {
             StyledText {
                 id: textItem
                 anchors.centerIn: parent
-                color: root.toggled ? Appearance.colors.colOnPrimary : Appearance.colors.colOnSecondaryContainer
+                color: root.toggled ? Appearance.colors.colOnSecondaryContainer
+                                    : Appearance.colors.colOnLayer2
                 text: root.buttonText
             }
         }

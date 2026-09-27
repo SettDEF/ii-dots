@@ -10,7 +10,11 @@ Rectangle {
     default property alias data: buttonRow.data
 
     radius: Appearance.rounding.normal
-    color: Appearance.colors.colPrimaryContainer
+    // A note, not an alert. Filled with the accent it out-shouted every
+    // control above it; the tinted icon carries the same meaning.
+    color: Appearance.colors.colLayer2
+    border.width: 1
+    border.color: Appearance.colors.colLayer0Border
     implicitWidth: mainRowLayout.implicitWidth + mainRowLayout.anchors.margins * 2
     implicitHeight: mainRowLayout.implicitHeight + mainRowLayout.anchors.margins * 2
 
@@ -26,7 +30,7 @@ Rectangle {
             Layout.alignment: Qt.AlignTop
             text: "info"
             iconSize: Appearance.font.pixelSize.huge
-            color: Appearance.colors.colOnPrimaryContainer
+            color: Appearance.colors.colPrimary
         }
 
         ColumnLayout {
@@ -37,7 +41,7 @@ Rectangle {
                 id: noticeText
                 Layout.fillWidth: true
                 text: "Notice message"
-                color: Appearance.colors.colOnPrimaryContainer
+                color: Appearance.colors.colOnLayer2
                 wrapMode: Text.WordWrap
             }
 

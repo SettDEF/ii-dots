@@ -13,3 +13,6 @@ target/
 
 # A df --output typo lands this at the root.
 target,size,avail,pcent
+
+*.bak
+*.orig

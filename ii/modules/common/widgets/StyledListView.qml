@@ -29,7 +29,14 @@ ListView {
 
     maximumFlickVelocity: 3500
     boundsBehavior: Flickable.DragOverBounds
-    ScrollBar.vertical: StyledScrollBar {}
+    // Only for a list that actually scrolls vertically. Attached to a
+    // horizontal one — the dock's app row — it appeared on hover as a stray
+    // pill standing on end at the right of the last icon.
+    ScrollBar.vertical: StyledScrollBar {
+        visible: root.orientation === ListView.Vertical
+        policy: root.orientation === ListView.Vertical ? ScrollBar.AsNeeded
+                                                       : ScrollBar.AlwaysOff
+    }
 
     MouseArea {
         visible: Config?.options.interactions.scrolling.fasterTouchpadScroll

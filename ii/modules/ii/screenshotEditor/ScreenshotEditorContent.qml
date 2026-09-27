@@ -106,7 +106,8 @@ Item {
             const saveDir  = `${Quickshell.env("HOME")}/Pictures/Screenshots`
             const savePath = saveDir + "/screenshot-" + stamp + ".png"
 
-            const shortPath = savePath.replace(/^\/home\/caesar\//, "~/")
+            const home = Quickshell.env("HOME")
+            const shortPath = home ? savePath.replace(home + "/", "~/") : savePath
             const cmd = ["bash", "-c", `
                 LOG=/tmp/quickshell-snip-debug.log
                 exec 2>"$LOG"

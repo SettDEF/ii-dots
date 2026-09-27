@@ -213,6 +213,21 @@ ContentPage {
                 text: Translation.tr("On, every previewed window is copied off the GPU every frame the popup is up. Off, the preview is a single frame grabbed when the hover starts.")
             }
         }
+        ContentSubsection {
+            title: Translation.tr("Dock preview animation")
+            tooltip: Translation.tr("All four are transforms on a surface allocated once, so none of them resizes the window while it opens.")
+            ConfigSelectionArray {
+                currentValue: Config.options.dock.previewAnimation
+                onSelected: newValue => Config.options.dock.previewAnimation = newValue
+                options: [
+                    { value: "grow", displayName: Translation.tr("Grow"),  icon: "zoom_out_map" },
+                    { value: "rise", displayName: Translation.tr("Rise"),  icon: "arrow_upward" },
+                    { value: "fade", displayName: Translation.tr("Fade"),  icon: "opacity" },
+                    { value: "none", displayName: Translation.tr("None"),  icon: "block" }
+                ]
+            }
+        }
+
         ConfigSpinBox {
             icon: "grid_view"
             text: Translation.tr("Overview thumbnail size (%)")
