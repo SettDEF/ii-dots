@@ -65,7 +65,47 @@ Item {
         anchors.horizontalCenter: parent.horizontalCenter
         spacing: root.slotSpacing
 
+        // The active indicator SLIDES between slots rather than each slot
+        // colouring itself in place — the same thing the horizontal bar does,
+        // and the reason switching workspace there reads as one object moving
+        // instead of two lights blinking.
+        //
+        // Drawn behind the slots, so their numbers sit on top of it.
+        Rectangle {
+            id: activeIndicator
+            z: -1
+            parent: slotColumn
+
+            // itemAt() is not itself reactive, so both of these are named to
+            // force a re-read when the list or the selection changes.
+            readonly property int shownIdx: {
+                void root.shownIndices;
+                return root.shownIndices.indexOf(WorkspaceSlots.activeIndex);
+            }
+            readonly property Item target: shownIdx >= 0 ? slotRepeater.itemAt(shownIdx) : null
+
+            visible: activeIndicator.target !== null
+            width: root.slotSize
+            height: root.slotSize
+            radius: width / 2
+            color: Appearance.colors.colPrimary
+
+            x: activeIndicator.target ? activeIndicator.target.x : 0
+            y: activeIndicator.target ? activeIndicator.target.y : 0
+
+            // No Behavior on x: the column is one slot wide, so x never moves
+            // and an animation on it could only ever add a frame of lag.
+            Behavior on y {
+                NumberAnimation {
+                    duration: Appearance.animationCurves.expressiveFastSpatialDuration
+                    easing.type: Easing.BezierSpline
+                    easing.bezierCurve: Appearance.animationCurves.expressiveFastSpatial
+                }
+            }
+        }
+
         Repeater {
+            id: slotRepeater
             model: root.shownIndices
 
             delegate: Rectangle {
@@ -81,7 +121,10 @@ Item {
                 implicitHeight: root.slotSize
                 radius: width / 2
 
-                color: slot.active ? Appearance.colors.colPrimary
+                // Transparent when active: the sliding indicator behind
+                // supplies that fill. Colouring it here as well would make the
+                // destination light up before the indicator arrived.
+                color: slot.active ? "transparent"
                     : slot.occupied ? Appearance.colors.colLayer2
                     : slotHov.hovered ? Appearance.colors.colLayer1Hover
                     : "transparent"

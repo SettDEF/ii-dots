@@ -142,7 +142,12 @@ ScrollBar {
         implicitWidth: root.hitWidth
 
         Rectangle {
-            anchors.horizontalCenter: parent.horizontalCenter
+            // x, not anchors.horizontalCenter. A centring anchor is resolved in
+            // a later pass than the width that feeds it, so an animated width
+            // leaves the shape trailing its own size by a frame — which is
+            // exactly the position lag you see while it grows. A plain binding
+            // is evaluated with the width itself.
+            x: (parent.width - width) / 2
             anchors.top: parent.top
             anchors.bottom: parent.bottom
             anchors.topMargin: root.topPadding
@@ -192,7 +197,7 @@ ScrollBar {
 
                 readonly property bool hovered: root.hoveredMarker === index
 
-                anchors.horizontalCenter: parent.horizontalCenter
+                x: (parent.width - width) / 2
                 y: root.topPadding + trackLength * (modelData.at ?? 0) - height / 2
                 // Grows when it is where you are, again when the magnet has
                 // hold of it — so the pull is visible before you let go — and
@@ -234,7 +239,8 @@ ScrollBar {
                 // you notice afterwards.
                 Rectangle {
                     id: catchRing
-                    anchors.centerIn: parent
+                    x: (dot.width - width) / 2
+                    y: (dot.height - height) / 2
                     // Not bound to the dot: the animation drives this, and a
                     // binding would be dropped on the first frame anyway.
                     width: dot.width
@@ -359,10 +365,11 @@ ScrollBar {
 
         Rectangle {
             id: thumb
-            // The thumb is centred in the wider hit area rather than filling
-            // it, so the target grows without the bar looking heavier.
-            anchors.horizontalCenter: parent.horizontalCenter
-            anchors.verticalCenter: parent.verticalCenter
+            // Centred in the wider hit area rather than filling it, so the
+            // target grows without the bar looking heavier. Bound, not
+            // anchored — see the track above for why.
+            x: (parent.width - width) / 2
+            y: 0
             width: (root.pressed || root.hovered) ? root.barWidthActive : root.barWidth
             height: parent.height
             radius: width / 2
