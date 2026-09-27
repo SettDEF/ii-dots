@@ -51,8 +51,14 @@ ask() {
     printf '%s\n' "${reply:-$default}"
 }
 ask_secret() {
-    local prompt="$1" a="" b=""
+    local prompt="$1" a="" b="" tries=0
+    # Never a flag: an argv is readable by every process on the machine.
+    [ -n "${QS_PASSWORD:-}" ] && { printf '%s\n' "$QS_PASSWORD"; return; }
+    [ -r /dev/tty ] || die "no terminal to ask for a password on.
+       Pipe it in as QS_PASSWORD=... instead."
     while :; do
+        tries=$((tries + 1))
+        [ "$tries" -gt 5 ] && die "too many attempts."
         printf '\033[36m?\033[0m %s: ' "$prompt" > /dev/tty; read -rs a < /dev/tty; echo > /dev/tty
         printf '\033[36m?\033[0m %s (again): ' "$prompt" > /dev/tty; read -rs b < /dev/tty; echo > /dev/tty
         [ -n "$a" ] && [ "$a" = "$b" ] && { printf '%s\n' "$a"; return; }

@@ -15,7 +15,14 @@ curl -fsSL https://github.com/SettDEF/ii-dots/raw/master/iso-install.sh | bash
 It **erases the disk you point it at**, and makes you type the path back before
 it does. `--dry-run` prints the whole plan and changes nothing — worth running
 first, and it works from any machine, not just the ISO. `--disk` and `--yes`
-together skip every prompt. UEFI and BIOS, ext4 or `--fs btrfs` (with @/@home/
+together skip every prompt, with `QS_PASSWORD` for the account password —
+an env var and not a flag, since an argv is readable by every process on the
+machine. Arguments over a pipe need `bash -s --`:
+
+```sh
+curl -fsSL .../iso-install.sh | QS_PASSWORD=hunter2 bash -s -- --disk /dev/nvme0n1 --yes
+```
+ UEFI and BIOS, ext4 or `--fs btrfs` (with @/@home/
 @log/@cache subvolumes), zram instead of a swap partition.
 
 > Built on `pacstrap`/`genfstab`/`arch-chroot`, not archinstall, whose config
