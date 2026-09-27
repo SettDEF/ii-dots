@@ -22,8 +22,26 @@ machine. Arguments over a pipe need `bash -s --`:
 ```sh
 curl -fsSL .../iso-install.sh | QS_PASSWORD=hunter2 bash -s -- --disk /dev/nvme0n1 --yes
 ```
- UEFI and BIOS, ext4 or `--fs btrfs` (with @/@home/
-@log/@cache subvolumes), zram instead of a swap partition.
+ UEFI (systemd-boot) and BIOS (GRUB), ext4 or `--fs btrfs`.
+
+Partitioning, if the defaults do not suit:
+
+| | |
+|---|---|
+| `--esp 512M` | EFI partition size (default 1G) |
+| `--swap 8G` | a real swap partition; without it you get zram at half RAM |
+| `--home 200G` | separate `/home`; without it, one root (or an `@home` subvolume on btrfs) |
+
+**Dual boot** — point it at partitions that already exist and it never touches
+the partition table, so Windows or another Linux on the same disk survives:
+
+```sh
+./iso-install.sh --root-part /dev/sda3 --esp-part /dev/sda1
+```
+
+The ESP is mounted, never reformatted: it is shared with the other OS, and
+reformatting it is how a dual boot loses its other bootloader. A `--home-part`
+keeps its contents too, unless you pass `--format-home`.
 
 > Built on `pacstrap`/`genfstab`/`arch-chroot`, not archinstall, whose config
 > schema changes between releases. **Not yet tested on real hardware or in a

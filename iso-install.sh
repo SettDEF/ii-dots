@@ -14,7 +14,17 @@
 # THIS ERASES A DISK. It names the disk and waits for you to type it back,
 # unless you pass both --disk and --yes.
 #
-#   --disk /dev/nvme0n1   target (no prompt)
+#   --disk /dev/nvme0n1   target (no prompt). ERASED.
+#   --esp SIZE            EFI partition, default 1G
+#   --swap SIZE           swap partition, e.g. 8G. Default: none, zram instead
+#   --home SIZE           separate /home, e.g. 200G. Default: none, one root
+#
+# Or install into partitions that already exist, touching no partition table --
+# this is the dual-boot path, and it leaves every other OS on the disk alone:
+#
+#   --root-part /dev/sda3 format and install here
+#   --esp-part  /dev/sda1 reuse this ESP (NOT formatted; shared with Windows)
+#   --home-part /dev/sda4 mount as /home (NOT formatted unless --format-home)
 #   --user NAME           account to create
 #   --host NAME           hostname
 #   --fs ext4|btrfs       root filesystem (default ext4)
@@ -28,6 +38,8 @@ set -euo pipefail
 REPO="${QS_REPO_URL:-https://github.com/SettDEF/ii-dots}"
 BRANCH="${QS_BRANCH:-master}"
 DISK=""; USERNAME=""; HOSTNAME_NEW="arch"; FS="ext4"; PROFILE="recommended"
+ESP_SIZE="1G"; SWAP_SIZE=""; HOME_SIZE=""
+ROOTPART=""; BOOTPART=""; HOMEPART=""; FORMAT_HOME=0
 DO_SHELL=1; ASSUME_YES=0; DRY=0
 TIMEZONE=""; LOCALE="en_US.UTF-8"; KEYMAP=""
 
@@ -72,6 +84,13 @@ while [ $# -gt 0 ]; do
         --user)      USERNAME="${2:?--user needs a value}"; shift 2 ;;
         --host)      HOSTNAME_NEW="${2:?--host needs a value}"; shift 2 ;;
         --fs)        FS="${2:?--fs needs a value}"; shift 2 ;;
+        --esp)       ESP_SIZE="${2:?--esp needs a value}"; shift 2 ;;
+        --swap)      SWAP_SIZE="${2:?--swap needs a value}"; shift 2 ;;
+        --home)      HOME_SIZE="${2:?--home needs a value}"; shift 2 ;;
+        --root-part) ROOTPART="${2:?--root-part needs a value}"; shift 2 ;;
+        --esp-part)  BOOTPART="${2:?--esp-part needs a value}"; shift 2 ;;
+        --home-part) HOMEPART="${2:?--home-part needs a value}"; shift 2 ;;
+        --format-home) FORMAT_HOME=1; shift ;;
         --profile)   PROFILE="${2:?--profile needs a value}"; shift 2 ;;
         --repo)      REPO="${2:?--repo needs a value}"; shift 2 ;;
         --no-shell)  DO_SHELL=0; shift ;;
@@ -102,13 +121,20 @@ ok "$( [ "$UEFI" = 1 ] && echo 'UEFI' || echo 'BIOS' ) boot, network up"
 
 # ── What to install onto, and as whom ──────────────────────────────────────
 
-if [ -z "$DISK" ]; then
+USE_EXISTING=0
+[ -n "$ROOTPART" ] && USE_EXISTING=1
+
+if [ "$USE_EXISTING" = 1 ]; then
+    [ -b "$ROOTPART" ] || [ "$DRY" = 1 ] || die "not a block device: $ROOTPART"
+    [ "$UEFI" = 0 ] || [ -n "$BOOTPART" ] || die "--root-part on a UEFI machine needs --esp-part too."
+elif [ -z "$DISK" ]; then
     echo; info "disks on this machine:"
-    lsblk -dpno NAME,SIZE,MODEL | grep -vE "loop|/dev/sr" | sed 's/^/   /'
+    lsblk -po NAME,SIZE,FSTYPE,MOUNTPOINTS,LABEL | grep -vE "loop|/dev/sr" | sed 's/^/   /'
+    echo; info "to keep another OS on the disk, quit and pass --root-part instead"
     echo
     DISK=$(ask "  Install to which disk" "")
 fi
-[ -b "$DISK" ] || [ "$DRY" = 1 ] || die "not a block device: $DISK"
+[ "$USE_EXISTING" = 1 ] || [ -b "$DISK" ] || [ "$DRY" = 1 ] || die "not a block device: $DISK"
 
 [ -n "$USERNAME" ] || USERNAME=$(ask "  Username" "$(whoami 2>/dev/null || echo user)")
 [ "$HOSTNAME_NEW" = arch ] && HOSTNAME_NEW=$(ask "  Hostname" "arch")
@@ -124,8 +150,15 @@ fi
 if [ "$DRY" = 1 ]; then PASSWORD="(not asked in dry-run)"; else PASSWORD=$(ask_secret "  Password for $USERNAME and root"); fi
 
 echo
-c '1;31' "  This ERASES ${DISK} completely."
-printf '   %-12s %s\n' "disk"    "$DISK" \
+if [ "$USE_EXISTING" = 1 ]; then
+    c '1;33' "  This formats ${ROOTPART}. The partition table is not touched."
+else
+    c '1;31' "  This ERASES ${DISK} completely."
+fi
+printf '   %-12s %s\n' "target"  "$( [ "$USE_EXISTING" = 1 ] && echo "$ROOTPART (existing)" || echo "$DISK (whole disk)" )" \
+                       "esp"     "$( [ "$USE_EXISTING" = 1 ] && echo "${BOOTPART:-none} (kept)" || echo "$ESP_SIZE" )" \
+                       "swap"    "$( [ -n "$SWAP_SIZE" ] && echo "$SWAP_SIZE" || echo 'zram' )" \
+                       "home"    "$( [ -n "$HOMEPART" ] && echo "$HOMEPART" || { [ -n "$HOME_SIZE" ] && echo "$HOME_SIZE" || echo 'in root'; } )" \
                        "user"    "$USERNAME" \
                        "host"    "$HOSTNAME_NEW" \
                        "fs"      "$FS" \
@@ -135,45 +168,78 @@ printf '   %-12s %s\n' "disk"    "$DISK" \
 echo
 if [ "$ASSUME_YES" != 1 ] && [ "$DRY" != 1 ]; then
     # Typing the path back, not "y": a stray keystroke should not wipe a disk.
-    confirm=$(ask "  Type the disk path to confirm" "")
-    [ "$confirm" = "$DISK" ] || die "that did not match. Nothing was changed."
+    want=$( [ "$USE_EXISTING" = 1 ] && echo "$ROOTPART" || echo "$DISK" )
+    confirm=$(ask "  Type the path to confirm" "")
+    [ "$confirm" = "$want" ] || die "that did not match. Nothing was changed."
 fi
 
 # ── Partition, format, mount ───────────────────────────────────────────────
 
-info "partitioning $DISK"
-run sgdisk --zap-all "$DISK"
-if [ "$UEFI" = 1 ]; then
-    run sgdisk -n1:0:+1G  -t1:ef00 -c1:EFI  "$DISK"
-    run sgdisk -n2:0:0    -t2:8304 -c2:root "$DISK"
+if [ "$USE_EXISTING" = 1 ]; then
+    info "using partitions that already exist; the partition table is untouched"
 else
-    run sgdisk -n1:0:+1M  -t1:ef02 -c1:BIOS "$DISK"
-    run sgdisk -n2:0:0    -t2:8304 -c2:root "$DISK"
-fi
-run partprobe "$DISK" || true
-sleep 2
+    info "partitioning $DISK"
+    run sgdisk --zap-all "$DISK"
 
-# nvme0n1 partitions are nvme0n1p1; sda partitions are sda1.
-case "$DISK" in *[0-9]) P="${DISK}p" ;; *) P="$DISK" ;; esac
-BOOTPART="${P}1"; ROOTPART="${P}2"
+    # Built in order, so the numbers follow whatever was asked for.
+    n=1
+    if [ "$UEFI" = 1 ]; then
+        run sgdisk "-n${n}:0:+${ESP_SIZE}" "-t${n}:ef00" "-c${n}:EFI" "$DISK"; ESP_N=$n; n=$((n+1))
+    else
+        run sgdisk "-n${n}:0:+1M" "-t${n}:ef02" "-c${n}:BIOS" "$DISK"; ESP_N=$n; n=$((n+1))
+    fi
+    if [ -n "$SWAP_SIZE" ]; then
+        run sgdisk "-n${n}:0:+${SWAP_SIZE}" "-t${n}:8200" "-c${n}:swap" "$DISK"; SWAP_N=$n; n=$((n+1))
+    fi
+    # Root takes the rest, unless /home is carved out after it.
+    if [ -n "$HOME_SIZE" ]; then
+        run sgdisk "-n${n}:0:-${HOME_SIZE}" "-t${n}:8304" "-c${n}:root" "$DISK"; ROOT_N=$n; n=$((n+1))
+        run sgdisk "-n${n}:0:0" "-t${n}:8302" "-c${n}:home" "$DISK"; HOME_N=$n
+    else
+        run sgdisk "-n${n}:0:0" "-t${n}:8304" "-c${n}:root" "$DISK"; ROOT_N=$n
+    fi
+    run partprobe "$DISK" || true
+    sleep 2
+
+    # nvme0n1 partitions are nvme0n1p1; sda partitions are sda1.
+    case "$DISK" in *[0-9]) P="${DISK}p" ;; *) P="$DISK" ;; esac
+    BOOTPART="${P}${ESP_N}"
+    ROOTPART="${P}${ROOT_N}"
+    [ -n "${SWAP_N:-}" ] && SWAPPART="${P}${SWAP_N}"
+    [ -n "${HOME_N:-}" ] && HOMEPART="${P}${HOME_N}"
+fi
 
 info "formatting"
-[ "$UEFI" = 1 ] && run mkfs.fat -F32 "$BOOTPART"
+# An existing ESP is never formatted: it is probably shared with another OS,
+# and reformatting it is how a dual boot loses its other bootloader.
+if [ "$UEFI" = 1 ] && [ "$USE_EXISTING" != 1 ]; then run mkfs.fat -F32 "$BOOTPART"; fi
+if [ -n "${SWAPPART:-}" ]; then run mkswap "$SWAPPART"; run swapon "$SWAPPART"; fi
+
 if [ "$FS" = btrfs ]; then
     run mkfs.btrfs -f "$ROOTPART"
     run mount "$ROOTPART" /mnt
-    for sub in @ @home @log @cache; do run btrfs subvolume create "/mnt/$sub"; done
+    SUBVOLS="@ @log @cache"
+    [ -n "$HOMEPART" ] || SUBVOLS="$SUBVOLS @home"
+    for sub in $SUBVOLS; do run btrfs subvolume create "/mnt/$sub"; done
     run umount /mnt
     OPTS="noatime,compress=zstd,space_cache=v2"
     run mount -o "$OPTS,subvol=@" "$ROOTPART" /mnt
     run mkdir -p /mnt/home /mnt/var/log /mnt/var/cache
-    run mount -o "$OPTS,subvol=@home"  "$ROOTPART" /mnt/home
+    [ -n "$HOMEPART" ] || run mount -o "$OPTS,subvol=@home" "$ROOTPART" /mnt/home
     run mount -o "$OPTS,subvol=@log"   "$ROOTPART" /mnt/var/log
     run mount -o "$OPTS,subvol=@cache" "$ROOTPART" /mnt/var/cache
 else
     run mkfs.ext4 -F "$ROOTPART"
     run mount "$ROOTPART" /mnt
+    run mkdir -p /mnt/home
 fi
+
+if [ -n "$HOMEPART" ]; then
+    # A home partition passed in by hand keeps its data unless asked otherwise.
+    if [ "$USE_EXISTING" != 1 ] || [ "$FORMAT_HOME" = 1 ]; then run mkfs.ext4 -F "$HOMEPART"; fi
+    run mount "$HOMEPART" /mnt/home
+fi
+
 if [ "$UEFI" = 1 ]; then run mkdir -p /mnt/boot; run mount "$BOOTPART" /mnt/boot; fi
 ok "mounted"
 
@@ -185,7 +251,7 @@ BASE=(base base-devel linux linux-firmware sudo networkmanager git nano
 [ "$UEFI" = 1 ] || BASE+=(grub)
 # No swap partition: zram is faster, needs no sizing guess, and survives a
 # resize of the root filesystem later.
-BASE+=(zram-generator)
+[ -n "${SWAPPART:-}" ] || BASE+=(zram-generator)
 
 info "installing the base system (this is the slow part)"
 run pacstrap -K /mnt "${BASE[@]}"
@@ -201,7 +267,7 @@ inchroot "echo 'LANG=$LOCALE' > /etc/locale.conf"
 inchroot "echo 'KEYMAP=$KEYMAP' > /etc/vconsole.conf"
 inchroot "echo '$HOSTNAME_NEW' > /etc/hostname"
 inchroot "printf '127.0.0.1 localhost\n::1 localhost\n127.0.1.1 %s\n' '$HOSTNAME_NEW' > /etc/hosts"
-inchroot "printf '[zram0]\nzram-size = min(ram / 2, 8192)\n' > /etc/systemd/zram-generator.conf"
+[ -n "${SWAPPART:-}" ] || inchroot "printf '[zram0]\nzram-size = min(ram / 2, 8192)\n' > /etc/systemd/zram-generator.conf"
 
 # Wheel gets sudo; the user goes in wheel. Both halves, or sudo does nothing.
 inchroot "echo '%wheel ALL=(ALL:ALL) ALL' > /etc/sudoers.d/10-wheel && chmod 440 /etc/sudoers.d/10-wheel"
