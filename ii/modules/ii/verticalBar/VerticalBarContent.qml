@@ -120,9 +120,9 @@ Item { // Bar content region
             vertical: true
             padding: 6
 
-            VerticalWorkspaces {
+            Bar.Workspaces {
                 id: workspacesWidget
-                Layout.alignment: Qt.AlignHCenter
+                vertical: true
                 MouseArea {
                     // Right-click to toggle overview
                     anchors.fill: parent

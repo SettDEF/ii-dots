@@ -15,10 +15,15 @@ import Qt5Compat.GraphicalEffects
 
 Item {
     id: root
-    // Declared and never read: every anchor below is horizontal. The vertical
-    // bar uses VerticalWorkspaces instead — passing vertical: true here only
-    // ever produced a full-width widget spilling out of a 40px bar. Kept so
-    // any caller still setting it is not a hard error.
+    // Lay the slots out in a column instead of a row, for the vertical bar.
+    //
+    // This used to be declared and never read, so passing it produced a
+    // full-width widget spilling out of a 40px strip. Everything that has a
+    // long axis below now asks this which axis that is.
+    //
+    // The context slot — media marquee, window title, spectrum — stays hidden
+    // when vertical. There is nowhere for a marquee to run in 40px, and it is
+    // the one part of this widget that genuinely cannot be turned on its side.
     property bool vertical: false
     property bool borderless: Config.options.bar.borderless
     property int widgetPadding: 0 // kept for BarContent.qml compatibility
@@ -269,6 +274,10 @@ Item {
         || TimerService.pomodoroSecondsLeft !== TimerService.pomodoroLapDuration
 
     property string contextMode: {
+        // Nothing to show it in. A 40px strip has no room for a marquee, a
+        // window title or a spectrum, and every width below is measured along
+        // an axis the vertical bar does not have to spare.
+        if (root.vertical) return "none"
         if (Notifications.popupList.length > 0 && !Notifications.popupInhibited) return "notification"
         // Hovering still gets you the media controls, so music is never more
         // than a pointer away even mid-session.
@@ -385,8 +394,12 @@ Item {
     // padH * 2 supplies one padH on each side of the island. ctx hugs
     // the slots with a 2 px gap; no extra trailing padding beyond the
     // base padH on the right.
-    implicitWidth:  slotsWidth + padH * 2 + recordingExtra + (ctxTotalW > 0 ? ctxTotalW + 2 : 0)
-    implicitHeight: Appearance.sizes.barHeight
+    // The long axis carries the slots; the short one is the bar's thickness.
+    readonly property real slotsExtent: slotsWidth + padH * 2 + recordingExtra
+        + (root.vertical ? 0 : (ctxTotalW > 0 ? ctxTotalW + 2 : 0))
+
+    implicitWidth:  root.vertical ? Appearance.sizes.verticalBarWidth : root.slotsExtent
+    implicitHeight: root.vertical ? root.slotsExtent : Appearance.sizes.barHeight
 
     Behavior on implicitWidth {
         // Must match contextSlot's `Behavior on width` (300 ms) — when
@@ -451,7 +464,13 @@ Item {
     // ── Island background ─────────────────────────────────────────────────────
     Rectangle {
         id: islandBg
-        anchors { fill: parent; topMargin: 4; bottomMargin: 4 }
+        anchors {
+            fill: parent
+            topMargin:    root.vertical ? 0 : 4
+            bottomMargin: root.vertical ? 0 : 4
+            leftMargin:   root.vertical ? 4 : 0
+            rightMargin:  root.vertical ? 4 : 0
+        }
         radius: Appearance.rounding.full
         color: Appearance.colors.colBarIsland
         border.width: 1
@@ -887,10 +906,12 @@ Item {
     // ── Recording indicator ───────────────────────────────────────────────────
     Item {
         id: recIndicator
-        anchors.left: islandBg.left
-        anchors.verticalCenter: parent.verticalCenter
-        width: root.recordingExtra
-        height: islandBg.height
+        anchors.left: root.vertical ? undefined : islandBg.left
+        anchors.top: root.vertical ? islandBg.top : undefined
+        anchors.verticalCenter: root.vertical ? undefined : parent.verticalCenter
+        anchors.horizontalCenter: root.vertical ? parent.horizontalCenter : undefined
+        width: root.vertical ? islandBg.width : root.recordingExtra
+        height: root.vertical ? root.recordingExtra : islandBg.height
         clip: true
         visible: root.isRecording
 
@@ -950,20 +971,28 @@ Item {
         id: activeIndicator
         color: Appearance.colors.colPrimary
 
-        property real computedX: {
-            let x = root.recordingExtra
-            x += root.padH   // matches slotsRow anchors.leftMargin
+        // Distance along the slot axis to the active slot. Identical in both
+        // orientations — only which coordinate it becomes changes.
+        property real computedOffset: {
+            let d = root.recordingExtra
+            d += root.padH   // matches slotsRow's margin
             for (let i = 0; i < root.activeIdxInGroup; i++) {
                 const vis = (root.workspaceOccupied[i] ?? false) || root.isHovered
-                x += vis ? root.btnW : 0
+                d += vis ? root.btnW : 0
             }
-            return x + root.indMargin
+            return d + root.indMargin
         }
 
-        // Square blob sized to the slot; centered in the bar's island.
+        // Square blob sized to the slot; centred on the island's short axis.
         implicitSize: root.btnW - root.indMargin * 2
-        x: computedX + ((root.btnW - root.indMargin * 2 - implicitSize) / 2)
-        y: islandBg.y + (islandBg.height - implicitSize) / 2
+        readonly property real centreOffset: (root.btnW - root.indMargin * 2 - implicitSize) / 2
+
+        x: root.vertical
+            ? islandBg.x + (islandBg.width - implicitSize) / 2
+            : computedOffset + centreOffset
+        y: root.vertical
+            ? computedOffset + centreOffset
+            : islandBg.y + (islandBg.height - implicitSize) / 2
 
         // Rest: shape-dependent (see root.cookieSides / cookieAmpDivisor).
         // On switch: doubles to 8 lobes + spin (the "celebration" flash is the
@@ -974,16 +1003,28 @@ Item {
         constantlyRotate: root.switchFlashActive
 
         Behavior on x         { NumberAnimation { duration: 300; easing.type: Easing.OutCubic } }
+        Behavior on y         { NumberAnimation { duration: 300; easing.type: Easing.OutCubic } }
         Behavior on amplitude { NumberAnimation { duration: 220; easing.type: Easing.OutCubic } }
         Behavior on sides     { NumberAnimation { duration: 260; easing.type: Easing.OutCubic } }
     }
 
     // ── Workspace slots ───────────────────────────────────────────────────────
-    Row {
+    // A Grid rather than a Row, because QML has no orientation on Row and this
+    // has to be able to be either. flow + an explicit rows/columns pair, not a
+    // 0 sentinel: Grid's columns defaults to 4, and leaving it to be inferred
+    // wraps the slots into a block the moment there are more than four.
+    Grid {
         id: slotsRow
-        anchors.left: recIndicator.right
-        anchors.leftMargin: root.padH   // keeps slots aligned with indicator computedX
-        anchors.verticalCenter: parent.verticalCenter
+        flow: root.vertical ? Grid.TopToBottom : Grid.LeftToRight
+        rows:    root.vertical ? root.slotCount : 1
+        columns: root.vertical ? 1 : root.slotCount
+
+        anchors.left: root.vertical ? undefined : recIndicator.right
+        anchors.leftMargin: root.vertical ? 0 : root.padH   // aligns slots with indicator computedX
+        anchors.top: root.vertical ? recIndicator.bottom : undefined
+        anchors.topMargin: root.vertical ? root.padH : 0
+        anchors.verticalCenter: root.vertical ? undefined : parent.verticalCenter
+        anchors.horizontalCenter: root.vertical ? parent.horizontalCenter : undefined
         spacing: 0
 
         Repeater {
@@ -1047,8 +1088,9 @@ Item {
                         || iconGuess === "application-x-executable"
                         || Quickshell.iconPath(iconGuess, true) === "")
 
-                implicitWidth:  slotVis ? root.btnW : 0
-                implicitHeight: root.btnW
+                // Collapsing happens along whichever axis the slots run on.
+                implicitWidth:  root.vertical ? root.btnW : (slotVis ? root.btnW : 0)
+                implicitHeight: root.vertical ? (slotVis ? root.btnW : 0) : root.btnW
                 clip: true
 
                 // Fade in step with the width.
