@@ -115,6 +115,10 @@ ScrollBar {
         MouseArea {
             anchors.fill: parent
             preventStealing: false
+            // Nothing to scroll means nothing to intercept. Without this the
+            // strip keeps eating presses down the edge of every list that
+            // happens to fit, and opacity 0 does not stop a MouseArea.
+            enabled: root.size < 1.0
             onPressed: mouse => {
                 const track = root.height - root.topPadding - root.bottomPadding;
                 if (track <= 0) { mouse.accepted = false; return; }
