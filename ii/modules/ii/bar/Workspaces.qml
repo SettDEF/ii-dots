@@ -118,6 +118,9 @@ Item {
     // hover and islandBg never sees it — which silently killed the row's
     // expand-to-10 entirely. One handler, and the slots do the arithmetic.
     readonly property real hoverX: islandHover.point.position.x
+    readonly property real hoverY: islandHover.point.position.y
+    /// Pointer position along whichever axis the slots are laid out on.
+    readonly property real hoverAlong: root.vertical ? root.hoverY : root.hoverX
 
     // ── Recording detection ───────────────────────────────────────────────────
     property bool micRecording: false
@@ -405,6 +408,11 @@ Item {
         // Must match contextSlot's `Behavior on width` (300 ms) — when
         // the durations differ, the inner slot's edge briefly outruns
         // the island background, producing the "rectangle wobble".
+        NumberAnimation { duration: 300; easing.type: Easing.OutCubic }
+    }
+    // The same, for the axis the vertical bar grows along. Without it the
+    // island simply jumped to its new size while the slots inside animated.
+    Behavior on implicitHeight {
         NumberAnimation { duration: 300; easing.type: Easing.OutCubic }
     }
 
@@ -1061,9 +1069,15 @@ Item {
 
                 // islandBg fills root, so its pointer x shares root's x axis;
                 // the slot's own left edge in that space is slotsRow.x + x.
+                // Measured along the slot axis, so this finds the right slot
+                // in either orientation. Keyed off hoverX it always resolved
+                // against a row that, vertically, does not exist.
+                readonly property real slotStart: root.vertical
+                    ? slotsRow.y + y : slotsRow.x + x
+                readonly property real slotExtent: root.vertical ? height : width
                 readonly property bool pointerOver: root.isHovered
-                    && root.hoverX >= slotsRow.x + x
-                    && root.hoverX <  slotsRow.x + x + width
+                    && root.hoverAlong >= slotStart
+                    && root.hoverAlong <  slotStart + slotExtent
 
                 property var    biggestWindow: HyprlandData.biggestWindowForWorkspace(wsId)
                 // Only resolve icon when class is known — avoids showing the image-missing fallback
@@ -1101,9 +1115,16 @@ Item {
                 // shows up between elements while the row expands. Tying
                 // opacity to how open the slot is turns that into a fade, so
                 // there is never a crisp partial edge on screen.
-                opacity: Math.min(1, implicitWidth / root.btnW)
+                // Fade in step with whichever dimension is collapsing.
+                opacity: Math.min(1, (root.vertical ? implicitHeight : implicitWidth) / root.btnW)
 
                 Behavior on implicitWidth {
+                    NumberAnimation { duration: 300; easing.type: Easing.OutCubic }
+                }
+                // Vertically it is the HEIGHT that animates from 0, and a
+                // Behavior on width cannot animate it — which is why the slots
+                // appeared instantly instead of expanding.
+                Behavior on implicitHeight {
                     NumberAnimation { duration: 300; easing.type: Easing.OutCubic }
                 }
 
