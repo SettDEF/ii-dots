@@ -21,7 +21,7 @@ ScrollBar {
     property bool alwaysVisible: Config.options?.appearance?.scrollbar?.alwaysVisible ?? false
     /// Pointer target, wider than the drawn bar. Also a dead strip down every
     /// list's edge, since an attached ScrollBar overlays rather than reserves.
-    property real hitWidth: 22
+    property real hitWidth: 18
     /// Gap between the outer edge of the container and the drawn bar.
     ///
     /// The drawn bar sits at the outer edge rather than centred, so the extra
@@ -53,18 +53,6 @@ ScrollBar {
                              : Math.max(0, containerThickness - root.barInset - w);
     }
 
-    /// Gap between the bar's lane and the map's, measured centre to centre.
-    property real mapLaneGap: 7
-
-    /// Cross-axis position for a dot `w` across, in its own lane INBOARD of the
-    /// bar. On the bar's own lane a landmark reads as a bead threaded onto it.
-    function mapLaneOffset(containerThickness, w) {
-        const barCentre = root.mirrored
-            ? root.barInset + root.barWidth / 2
-            : containerThickness - root.barInset - root.barWidth / 2;
-        const centre = barCentre + (root.mirrored ? root.mapLaneGap : -root.mapLaneGap);
-        return Math.max(0, Math.min(containerThickness - w, centre - w / 2));
-    }
 
     /// Landmarks: [{ at, label, major }]. `at` is a fraction of the scrollable
     /// range; `major` draws the bigger dot. Empty = a plain scroll bar.
@@ -292,7 +280,9 @@ ScrollBar {
                 readonly property bool current: root.currentMarker === index
                 readonly property bool pulled: root.nearestMarker === index
                 readonly property bool hovered: root.hoveredMarker === index
-                readonly property real baseSize: major ? 6 : 3
+                // Derived from the bar, not fixed: a dot wider than the line it
+                // sits on reads as a pin head on a stick.
+                readonly property real baseSize: root.thickness + (major ? 2 : 0)
                 readonly property real at: modelData.at ?? 0
 
                 // Inside the span the thumb is showing: this is what makes the
@@ -311,13 +301,16 @@ ScrollBar {
                 readonly property bool lit: dot.current || dot.pulled || dot.underThumb
                 readonly property real along: root.padLead + root.trackLength * dot.at
 
-                x: root.isVertical ? root.mapLaneOffset(parent.width, width)
-                                   : along - width / 2
-                y: root.isVertical ? along - height / 2
-                                   : root.mapLaneOffset(parent.height, height)
-                // Grows where you are, under the magnet, the pointer, and the thumb.
-                width: baseSize + (current ? 2 : 0) + (pulled ? 3 : 0) + (hovered ? 3 : 0)
-                    + dot.nearness * 2
+                // On the bar's own line, centred in its lane.
+                x: root.isVertical
+                    ? root.laneOffset(parent.width, root.thickness) + (root.thickness - width) / 2
+                    : along - width / 2
+                y: root.isVertical
+                    ? along - height / 2
+                    : root.laneOffset(parent.height, root.thickness) + (root.thickness - height) / 2
+                // State shows in colour and opacity; only hover adds size, and
+                // only a little.
+                width: baseSize + (hovered ? 2 : 0)
                 height: width
                 radius: width / 2
 
