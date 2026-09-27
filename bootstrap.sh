@@ -279,6 +279,7 @@ SESSION_PKGS=(
     hyprland quickshell                      # the compositor and the shell
     qt6-declarative qt6-5compat qt6-imageformats
     qt6-multimedia qt6-positioning           # QtMultimedia / QtPositioning imports
+    kirigami syntax-highlighting             # org.kde.* imports, both load eagerly
     ttf-material-symbols-variable ttf-jetbrains-mono-nerd
     xdg-desktop-portal-hyprland xdg-desktop-portal-gtk
     polkit-gnome                             # so anything needing root can ask

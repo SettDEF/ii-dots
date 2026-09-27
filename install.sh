@@ -34,15 +34,14 @@ DO_LOWEND=0
 CORE_PKGS=(quickshell hyprland
            qt6-declarative qt6-5compat qt6-imageformats
            qt6-multimedia qt6-positioning
+           kirigami                      # WaffleFamily loads at startup
            ttf-material-symbols-variable)
 RECOMMENDED_PKGS=(libnotify wl-clipboard networkmanager pipewire pipewire-pulse
                   wireplumber brightnessctl grim slurp cliphist hyprpicker
                   polkit-gnome xdg-utils jq curl
                   matugen ddcutil
                   syntax-highlighting)      # code blocks in the AI chat
-# kirigami only matters if you switch the panel family to "waffle"; it is not
-# the default, and it pulls in KF6.
-EXTRA_PKGS=(ffmpeg zenity udisks2 translate-shell timew solaar kirigami)
+EXTRA_PKGS=(ffmpeg zenity udisks2 translate-shell timew solaar)
 ROG_PKGS=(asusctl supergfxctl)
 
 die()  { printf '\033[31merror\033[0m: %s\n' "$*" >&2; exit 1; }
