@@ -336,12 +336,13 @@ ScrollBar {
                 /// Where you are is the one thing the map must never hide, so it
                 /// is drawn proud of the bar. Minor landmarks never change size
                 /// at all: they sit inside the line and are read by contrast.
+                // All proud of the bar. A dot narrower than the line it sits on
+                // is invisible once the thumb covers it, whatever its colour.
                 readonly property real baseSize: {
-                    if (dot.current) return 9;
-                    if (dot.isEnd) return dot.nearness > 0.66 ? 9
-                        : dot.nearness > 0.25 ? 6
-                        : 3;
-                    return dot.major ? 6 : 3;
+                    if (dot.current) return root.thickness + 6;
+                    if (dot.isEnd) return root.thickness
+                        + (dot.nearness > 0.66 ? 6 : dot.nearness > 0.25 ? 4 : 2);
+                    return root.thickness + (dot.major ? 4 : 2);
                 }
                 readonly property real at: modelData.at ?? 0
 
