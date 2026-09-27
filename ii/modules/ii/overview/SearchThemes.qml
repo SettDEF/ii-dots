@@ -4,6 +4,7 @@ import qs.modules.common
 import qs.modules.common.functions
 import qs.modules.common.widgets
 import QtQuick
+import QtQuick.Controls
 import QtQuick.Layouts
 import Qt5Compat.GraphicalEffects
 import Quickshell
@@ -232,6 +233,7 @@ Item {
             cacheBuffer: cellHeight * 2
             boundsBehavior: Flickable.StopAtBounds
             interactive: contentHeight > height
+            ScrollBar.vertical: StyledScrollBar {}
 
             delegate: Item {
                 required property string modelData

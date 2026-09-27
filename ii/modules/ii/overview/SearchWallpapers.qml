@@ -1,6 +1,7 @@
 pragma ComponentBehavior: Bound
 
 import QtQuick
+import QtQuick.Controls
 import QtQuick.Layouts
 import Quickshell
 import Quickshell.Io
@@ -310,6 +311,7 @@ Item {
         model: root.completions
         boundsBehavior: Flickable.StopAtBounds
         spacing: 2
+        ScrollBar.vertical: StyledScrollBar {}
         currentIndex: WallpaperHub.completionIndex
         // Keep the keyboard-selected row scrolled into view.
         onCurrentIndexChanged: positionViewAtIndex(currentIndex, ListView.Contain)
