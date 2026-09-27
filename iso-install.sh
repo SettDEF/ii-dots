@@ -117,6 +117,70 @@ while [ $# -gt 0 ]; do
     esac
 done
 
+# ── Submenus ───────────────────────────────────────────────────────────────
+# Every setting whose answers can be enumerated gets a numbered list rather
+# than a blank prompt: a free-text field asks you to already know the answer.
+
+# choose <title> <current> <value> <description> [<value> <description>]...
+# Enter keeps the current value; a number picks; typing a value also works, so
+# anything not listed is still reachable.
+choose() {
+    local title="$1" current="$2"; shift 2
+    have_tty || { printf '%s' "$current"; return; }
+    local -a vals=() descs=()
+    while [ $# -gt 0 ]; do vals+=("$1"); descs+=("${2:-}"); shift 2; done
+
+    printf '\n  %s%s%s\n\n' "$B" "$title" "$R" > /dev/tty
+    local i mark
+    for i in "${!vals[@]}"; do
+        mark=' '; [ "${vals[$i]}" = "$current" ] && mark='*'
+        printf '   %s%s %-2s %-16s %s%s%s\n' \
+            "$( [ "$mark" = '*' ] && printf '%s' "$GRN" )" "$mark" "$((i+1))" \
+            "${vals[$i]}" "$DIM" "${descs[$i]}" "$R" > /dev/tty
+    done
+    echo > /dev/tty
+    local answer; answer=$(ask "  Number, value, or Enter to keep ${current:-none}" "")
+    [ -n "$answer" ] || { printf '%s' "$current"; return; }
+    case "$answer" in
+        ''|*[!0-9]*) printf '%s' "$answer" ;;                 # typed a value
+        *) if [ "$answer" -ge 1 ] && [ "$answer" -le "${#vals[@]}" ]; then
+               printf '%s' "${vals[$((answer-1))]}"
+           else printf '%s' "$current"; fi ;;
+    esac
+}
+
+# choose_long <title> <current> <command producing one value per line>
+# For lists in the hundreds. Filter first, then pick from what matched.
+choose_long() {
+    local title="$1" current="$2" lister="$3"
+    have_tty || { printf '%s' "$current"; return; }
+    local filter matches answer
+    while true; do
+        printf '\n  %s%s%s   %scurrently %s%s\n' "$B" "$title" "$R" "$DIM" "${current:-none}" "$R" > /dev/tty
+        filter=$(ask "  Type part of it to search, or Enter to keep" "")
+        [ -n "$filter" ] || { printf '%s' "$current"; return; }
+        mapfile -t matches < <(eval "$lister" 2>/dev/null | grep -i -- "$filter" | head -30)
+        if [ "${#matches[@]}" -eq 0 ]; then warn "nothing matched '$filter'"; continue; fi
+        if [ "${#matches[@]}" -eq 1 ]; then printf '%s' "${matches[0]}"; return; fi
+        echo > /dev/tty
+        local i; for i in "${!matches[@]}"; do printf '   %-3s %s\n' "$((i+1))" "${matches[$i]}" > /dev/tty; done
+        echo > /dev/tty
+        answer=$(ask "  Number, or Enter to search again" "")
+        [ -n "$answer" ] || continue
+        case "$answer" in
+            ''|*[!0-9]*) ;;
+            *) if [ "$answer" -ge 1 ] && [ "$answer" -le "${#matches[@]}" ]; then
+                   printf '%s' "${matches[$((answer-1))]}"; return; fi ;;
+        esac
+    done
+}
+
+# Size prompts share a shape: a few sensible presets, or type your own.
+choose_size() {
+    local title="$1" current="$2"; shift 2
+    choose "$title" "$current" "$@"
+}
+
 # ── Guards ─────────────────────────────────────────────────────────────────
 
 # --dry-run changes nothing, so it is inspectable from anywhere.
@@ -142,30 +206,45 @@ USE_EXISTING=0
 PASSWORD=""
 
 pick_disk() {
-    echo; info "disks on this machine:"
-    lsblk -po NAME,SIZE,FSTYPE,MOUNTPOINTS,LABEL 2>/dev/null | grep -vE "loop|/dev/sr" | sed 's/^/   /'
-    echo; printf '   %sto keep another OS, give a partition here instead of a disk%s\n' "$DIM" "$R"
-    local answer; answer=$(ask "  Disk or partition" "$DISK")
+    local -a args=() line name size type fstype label
+    while read -r name size type fstype label; do
+        case "$type" in
+            disk) args+=("$name" "$size  whole disk — ERASED") ;;
+            part) args+=("$name" "$size  ${fstype:-unformatted} ${label:+· $label}  — keeps the table") ;;
+        esac
+    done < <(lsblk -pnro NAME,SIZE,TYPE,FSTYPE,LABEL 2>/dev/null | grep -vE "loop|/dev/sr|zram")
+
+    [ "${#args[@]}" -gt 0 ] || { warn "no disks found"; return; }
+    local answer
+    answer=$(choose "Install where" "${ROOTPART:-$DISK}" "${args[@]}")
     [ -n "$answer" ] || return
-    # A partition rather than a whole disk means the table is left alone.
-    if [ -b "$answer" ] && [ "$(lsblk -dno TYPE "$answer" 2>/dev/null)" = part ]; then
+
+    # A partition means an install into what is already there; a disk means the
+    # table gets rewritten.
+    if [ "$(lsblk -dno TYPE "$answer" 2>/dev/null)" = part ]; then
         ROOTPART="$answer"; USE_EXISTING=1; DISK=""
-        BOOTPART=$(ask "  EFI partition (kept, not formatted)" "$BOOTPART")
+        if [ "$UEFI" = 1 ]; then
+            local -a esps=()
+            while read -r name size fstype; do
+                esps+=("$name" "$size  $fstype")
+            done < <(lsblk -pnro NAME,SIZE,FSTYPE 2>/dev/null | awk '$3=="vfat"')
+            [ "${#esps[@]}" -gt 0 ] \
+                && BOOTPART=$(choose "Which EFI partition (kept, never formatted)" "$BOOTPART" "${esps[@]}") \
+                || BOOTPART=$(ask "  EFI partition" "$BOOTPART")
+        fi
     else
         DISK="$answer"; USE_EXISTING=0; ROOTPART=""
     fi
 }
 
 pick_desktop() {
-    echo; printf '   %-10s %s\n' \
-        "ii"       "Hyprland + this quickshell desktop" \
-        "hyprland" "Hyprland on its own, nothing else" \
-        "gnome"    "GNOME" \
-        "plasma"   "KDE Plasma" \
-        "xfce"     "Xfce" \
-        "none"     "no desktop, base system only"
-    echo
-    DESKTOP=$(ask "  Desktop" "$DESKTOP")
+    DESKTOP=$(choose "Desktop" "$DESKTOP" \
+        ii       "Hyprland + this quickshell desktop" \
+        hyprland "Hyprland on its own, nothing else" \
+        gnome    "GNOME, with gdm" \
+        plasma   "KDE Plasma, with sddm" \
+        xfce     "Xfce, with lightdm" \
+        none     "base system, no desktop")
 }
 
 # Everything on one screen with its current value, the way archinstall does it:
@@ -198,15 +277,41 @@ menu() {
         choice=$(ask "  Choice" "")
         case "$choice" in
             d) pick_disk ;;
-            D) pick_desktop; [ "$DESKTOP" = ii ] && PROFILE=$(ask "  Profile" "$PROFILE") ;;
-            f) FS=$(ask "  Filesystem (ext4 or btrfs)" "$FS") ;;
-            e) ESP_SIZE=$(ask "  EFI partition size" "$ESP_SIZE") ;;
-            s) SWAP_SIZE=$(ask "  Swap size, empty for zram" "$SWAP_SIZE") ;;
-            H) HOME_SIZE=$(ask "  Separate /home size, empty for none" "$HOME_SIZE") ;;
+            D) pick_desktop
+               [ "$DESKTOP" = ii ] && PROFILE=$(choose "Profile" "$PROFILE" \
+                    recommended "the shell and the tools most panels need" \
+                    minimal     "the shell only, no packages" \
+                    full        "everything, media and translation included" \
+                    low-end     "recommended, effects off — for old hardware" \
+                    rog         "full, plus asusctl and supergfxctl")
+               ;;
+            f) FS=$(choose "Root filesystem" "$FS" \
+                    ext4  "plain and predictable" \
+                    btrfs "subvolumes and zstd compression, snapshot-ready")
+               ;;
+            e) ESP_SIZE=$(choose_size "EFI partition size" "$ESP_SIZE" \
+                    512M "enough for one kernel" \
+                    1G   "room for a few kernels — the default" \
+                    2G   "plenty, if you keep several")
+               ;;
+            s) SWAP_SIZE=$(choose_size "Swap" "$SWAP_SIZE" \
+                    ""    "zram, half of RAM — no partition, no sizing" \
+                    4G    "a small partition" \
+                    8G    "a partition" \
+                    16G   "enough to hibernate with 16G of RAM")
+               ;;
+            H) HOME_SIZE=$(choose_size "Separate /home" "$HOME_SIZE" \
+                    ""     "none — /home lives inside root" \
+                    100G   "a partition of its own" \
+                    200G   "a partition of its own" \
+                    500G   "a partition of its own")
+               ;;
             u) USERNAME=$(ask "  Username" "$USERNAME") ;;
             n) HOSTNAME_NEW=$(ask "  Hostname" "$HOSTNAME_NEW") ;;
-            t) TIMEZONE=$(ask "  Time zone" "$TIMEZONE") ;;
-            k) KEYMAP=$(ask "  Console keymap" "$KEYMAP") ;;
+            t) TIMEZONE=$(choose_long "Time zone" "$TIMEZONE" \
+                    "find /usr/share/zoneinfo -mindepth 2 -maxdepth 2 -type f -printf '%P\\n' | sort") ;;
+            k) KEYMAP=$(choose_long "Console keymap" "$KEYMAP" \
+                    "localectl list-keymaps") ;;
             p) PASSWORD=$(ask_secret "  Password for $USERNAME and root") ;;
             r) DRY=1; return ;;
             i|"") return ;;

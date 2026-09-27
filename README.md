@@ -33,8 +33,22 @@ its current value, change any of them in any order, then **i** to install:
    q   Quit
 ```
 
-Give the target a partition instead of a disk and it switches to the dual-boot
-path on its own, leaving the partition table alone.
+Each line opens a list rather than a blank prompt — a free-text field asks you
+to already know the answer. The target lists every disk *and* every partition,
+with size, filesystem and label, saying which choice erases and which keeps the
+table:
+
+```
+     1  /dev/nvme0n1     3.6T  whole disk — ERASED
+     6  /dev/nvme0n1p2   3.6T  ntfs · NUKE-9100  — keeps the table
+     8  /dev/nvme1n1p1   512M  vfat   — keeps the table
+```
+
+Pick a partition and it switches to the dual-boot path by itself, then offers
+the vfat partitions as the ESP to reuse. Filesystem, desktop, profile, EFI size,
+swap and /home are all short lists with the current value marked. Time zone and
+keymap are search-then-pick, since there are hundreds of each — type `Berlin`,
+get `Europe/Berlin`.
 
 It **erases the disk you point it at**, and makes you type the path back before
 it does. `--dry-run` prints the whole plan and changes nothing — worth running
