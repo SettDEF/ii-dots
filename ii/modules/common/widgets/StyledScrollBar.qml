@@ -388,13 +388,18 @@ ScrollBar {
 
                 // Inverted where the thumb is behind it, so a landmark stays
                 // legible whichever it lands on.
-                readonly property color tint: modelData.color ?? ""
+                // Tested with a flag, not by inspecting the colour: an absent
+                // one coerced to "" is an INVALID colour that paints black at
+                // full alpha, so every untinted dot came out black.
+                readonly property bool tinted: modelData.color !== undefined
+                readonly property color tint: dot.tinted ? modelData.color
+                                                         : Appearance.colors.colOnSurfaceVariant
 
-                color: dot.tint.a > 0 ? dot.tint
+                color: dot.tinted ? dot.tint
                     : (dot.current || dot.pulled) ? Appearance.colors.colPrimary
                     : Appearance.colors.colOnSurfaceVariant
                 opacity: root.size >= 1.0 ? 0
-                    : dot.tint.a > 0 ? 0.95
+                    : dot.tinted ? 0.95
                     : (dot.current || dot.pulled) ? 1
                     : Math.min(1, (major ? 0.55 : 0.4)
                         + dot.nearness * 0.25
