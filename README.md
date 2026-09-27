@@ -237,6 +237,11 @@ hidden rather than erroring:
 Wallpaper theming expects [`matugen`](https://github.com/InioX/matugen) if you
 want colours to follow the wallpaper.
 
+[`tinct`](https://github.com/SettDEF/tinct-rs) is the theming engine: palette
+extraction, image transforms, thumbnails and the screenshot editor's crop and
+composite all go through it. `install.sh` fetches the static binary from its
+releases into `~/.local/bin`, so there is no Rust toolchain involved.
+
 ## Layout
 
 ```

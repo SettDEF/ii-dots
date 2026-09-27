@@ -259,7 +259,52 @@ install_config() {
         printf '   would: create ~/Pictures/Wallpapers and seed the default wallpaper\n'
     fi
 
+    # tinct: the theming engine. Screenshot crop and composite, wallpaper
+    # thumbnails, per-app colours and the palette pipeline all shell out to it,
+    # and every one of them fails quietly without it. It is a static musl
+    # binary from its own releases, so no Rust toolchain is needed here.
+    install_tinct
+
     info "installed"
+}
+
+
+# ── tinct ───────────────────────────────────────────────────────────────────
+TINCT_REPO="${QS_TINCT_REPO:-SettDEF/tinct-rs}"
+install_tinct() {
+    command -v tinct >/dev/null 2>&1 && { info "tinct already installed"; return; }
+    [ -x "$HOME/.local/bin/tinct" ] && { info "tinct already at ~/.local/bin"; return; }
+
+    case "$(uname -m)" in
+        x86_64)  arch=x86_64-unknown-linux-musl ;;
+        aarch64) arch=aarch64-unknown-linux-musl ;;
+        *) warn "no tinct build for $(uname -m); theming will be limited"; return ;;
+    esac
+
+    if [ "$DRY" = 1 ]; then
+        printf '   would: download tinct (%s) to ~/.local/bin\n' "$arch"
+        return
+    fi
+
+    local url tmp
+    url="https://github.com/$TINCT_REPO/releases/latest/download/tinct-$arch.tar.gz"
+    tmp="$(mktemp -d)"
+    if curl -fsSL "$url" -o "$tmp/tinct.tar.gz" && tar xzf "$tmp/tinct.tar.gz" -C "$tmp"; then
+        mkdir -p "$HOME/.local/bin"
+        # The archive layout is not guaranteed, so find the binary rather than
+        # assuming it sits at the top.
+        local bin; bin="$(find "$tmp" -type f -name tinct -perm -u+x | head -1)"
+        if [ -n "$bin" ]; then
+            install -m755 "$bin" "$HOME/.local/bin/tinct"
+            info "tinct installed to ~/.local/bin"
+        else
+            warn "tinct archive had no binary in it; theming will be limited"
+        fi
+    else
+        warn "could not download tinct; theming will be limited"
+        warn "  $url"
+    fi
+    rm -rf "$tmp"
 }
 
 # ── polkit ──────────────────────────────────────────────────────────────────
