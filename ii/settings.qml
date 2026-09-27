@@ -446,28 +446,43 @@ ApplicationWindow {
                         }
                     }
 
-                    NavigationRailTabArray {
-                        currentIndex: root.currentPage
-                        expanded: navRail.expanded
-                        Repeater {
-                            model: root.pages
-                            NavigationRailButton {
-                                required property var index
-                                required property var modelData
-                                toggled: root.currentPage === index
-                                onPressed: root.currentPage = index;
-                                expanded: navRail.expanded
-                                buttonIcon: modelData.icon
-                                buttonIconRotation: modelData.iconRotation || 0
-                                buttonText: modelData.name
-                                groupLabel: modelData.group ?? ""
-                                showToggledHighlight: false
+                    // Scrollable, because the rail can be taller than the
+                    // window: eleven pages at 56px plus four group headings
+                    // comes to about 840px, and the content area of a
+                    // default-sized window is around 690. It used to fit, and
+                    // then it quietly did not — the last entries simply had
+                    // nowhere to draw and the window has a 500px minimum.
+                    StyledFlickable {
+                        Layout.fillHeight: true
+                        Layout.fillWidth: true
+                        implicitWidth: railTabs.implicitWidth
+                        contentHeight: railTabs.implicitHeight
+                        contentWidth: width
+                        // Only actually scrolls when it has to.
+                        interactive: contentHeight > height
+                        clip: true
+
+                        NavigationRailTabArray {
+                            id: railTabs
+                            width: parent.width
+                            currentIndex: root.currentPage
+                            expanded: navRail.expanded
+                            Repeater {
+                                model: root.pages
+                                NavigationRailButton {
+                                    required property var index
+                                    required property var modelData
+                                    toggled: root.currentPage === index
+                                    onPressed: root.currentPage = index;
+                                    expanded: navRail.expanded
+                                    buttonIcon: modelData.icon
+                                    buttonIconRotation: modelData.iconRotation || 0
+                                    buttonText: modelData.name
+                                    groupLabel: modelData.group ?? ""
+                                    showToggledHighlight: false
+                                }
                             }
                         }
-                    }
-
-                    Item {
-                        Layout.fillHeight: true
                     }
                 }
             }
