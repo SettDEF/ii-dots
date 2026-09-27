@@ -136,6 +136,53 @@ apply_qt() {
   python "$CONFIG_DIR/scripts/kvantum/changeAdwColors.py" # apply config colors
 }
 
+# The OSC sequences above retheme every terminal that is ALREADY OPEN. A
+# terminal launched afterwards reads its own config instead, and those files
+# are rendered from colors.json — which carries the Material roles but not
+# term0..15. So kitty's `color2` was `tertiary` and wezterm's ANSI green was
+# whatever hue the wallpaper happened to rotate it to: a new window got a
+# different, unreadable palette from every window already on screen.
+#
+# Patched here rather than in the templates because this is the only step that
+# has both the rendered files and the term values, and it runs last.
+apply_term_configs() {
+  local kitty_theme="$STATE_DIR/user/generated/terminal/kitty-theme.conf"
+  local wezterm_colors="$XDG_CONFIG_HOME/wezterm/matugen_colors.lua"
+
+  # term0..15 out of the same SCSS the sequences came from. The array is `tc`,
+  # not `term`: a literal "$term0" has to survive the shell, and writing it
+  # inside double quotes next to an array called `term` expands the array.
+  local -a tc=()
+  local i
+  for i in $(seq 0 15); do
+    # awk, not grep+cut: the pattern has to carry a literal "$", which is one
+    # quoting mistake away from expanding, and this machine's grep is ugrep.
+    tc[$i]=$(awk -v n="$i" 'index($0, "$term" n ":") == 1 { gsub(/[ ;]/, "", $2); print $2; exit }' FS='[:;]' "$scss_path")
+    [ -n "${tc[$i]}" ] || { echo "term$i missing from $scss_path; leaving terminal configs alone"; return; }
+  done
+
+  if [ -f "$kitty_theme" ]; then
+    for i in $(seq 0 15); do
+      sed -i "s|^color${i}[[:space:]].*|color${i}  ${tc[$i]}|" "$kitty_theme"
+    done
+  fi
+
+  if [ -f "$wezterm_colors" ]; then
+    # Rewrite the two arrays in place, keeping everything else the template said.
+    python3 - "$wezterm_colors" "${tc[@]}" <<'EOPY'
+import re, sys
+path, cols = sys.argv[1], sys.argv[2:18]
+text = open(path).read()
+def block(name, values):
+    rows = ",\n".join(f'        "{v}"' for v in values)
+    return f"{name} = {{\n{rows},\n    }}"
+text = re.sub(r'ansi\s*=\s*\{.*?\}', block("ansi", cols[0:8]), text, count=1, flags=re.S)
+text = re.sub(r'brights\s*=\s*\{.*?\}', block("brights", cols[8:16]), text, count=1, flags=re.S)
+open(path, "w").write(text)
+EOPY
+  fi
+}
+
 # Check if terminal theming is enabled in config
 CONFIG_FILE="$XDG_CONFIG_HOME/illogical-impulse/config.json"
 if [ -f "$CONFIG_FILE" ]; then
@@ -174,6 +221,11 @@ if [[ "${TINCT:-1}" == "1" ]] && command -v tinct >/dev/null 2>&1; then
 else
     echo "applycolor: tinct not available — templates not rendered" >&2
 fi
+
+# MUST run after the render above, for the same reason the nvim patch below
+# does: the render rewrites kitty's and wezterm's colour files from templates
+# that can only see colors.json, and term0..15 are not in it.
+apply_term_configs
 
 # Substitute $term0 into nvim's matugen palette and live-reload running nvims.
 # Runs here (not as matugen post_hook) because $term0 is only written into
