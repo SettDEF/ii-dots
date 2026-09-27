@@ -21,7 +21,13 @@ ScrollBar {
     property bool alwaysVisible: Config.options?.appearance?.scrollbar?.alwaysVisible ?? false
     /// Pointer target, wider than the drawn bar. Also a dead strip down every
     /// list's edge, since an attached ScrollBar overlays rather than reserves.
-    property real hitWidth: 12
+    property real hitWidth: 18
+    /// Gap between the outer edge of the container and the drawn bar.
+    ///
+    /// The drawn bar sits at the outer edge rather than centred, so the extra
+    /// container width all falls on the content side — which is where the
+    /// pointer arrives from. Grabbing gets easier without the bar moving.
+    property real barInset: 3
     /// Shortest the thumb may become, in pixels.
     property real minimumThumbLength: 40
 
@@ -34,6 +40,12 @@ ScrollBar {
         (root.isVertical ? root.height : root.width) - root.padLead - root.padTrail)
     readonly property real thickness:
         (root.pressed || root.hovered) ? root.barWidthActive : root.barWidth
+
+    /// Cross-axis position for something `w` thick, hugging the outer edge.
+    function laneOffset(containerThickness, w) {
+        return root.mirrored ? root.barInset
+                             : Math.max(0, containerThickness - root.barInset - w);
+    }
 
     /// Landmarks: [{ at, label, major }]. `at` is a fraction of the scrollable
     /// range; `major` draws the bigger dot. Empty = a plain scroll bar.
@@ -194,8 +206,8 @@ ScrollBar {
         Rectangle {
             // Bound, not anchored: a centring anchor resolves a pass later than
             // the thickness feeding it, so an animated thickness trails a frame.
-            x: root.isVertical ? (parent.width - width) / 2 : root.padLead
-            y: root.isVertical ? root.padLead : (parent.height - height) / 2
+            x: root.isVertical ? root.laneOffset(parent.width, width) : root.padLead
+            y: root.isVertical ? root.padLead : root.laneOffset(parent.height, height)
             width:  root.isVertical ? root.thickness : root.trackLength
             height: root.isVertical ? root.trackLength : root.thickness
             radius: Math.min(width, height) / 2
@@ -228,8 +240,8 @@ ScrollBar {
                 required property int index
                 readonly property real along: root.padLead + index * 9
 
-                x: root.isVertical ? (parent.width - width) / 2 : along
-                y: root.isVertical ? along : (parent.height - height) / 2
+                x: root.isVertical ? root.laneOffset(parent.width, width) : along
+                y: root.isVertical ? along : root.laneOffset(parent.height, height)
                 width:  root.isVertical ? root.thickness : 2
                 height: root.isVertical ? 2 : root.thickness
                 radius: 1
@@ -272,8 +284,14 @@ ScrollBar {
                 readonly property bool lit: dot.current || dot.pulled || dot.underThumb
                 readonly property real along: root.padLead + root.trackLength * dot.at
 
-                x: root.isVertical ? (parent.width - width) / 2 : along - width / 2
-                y: root.isVertical ? along - height / 2 : (parent.height - height) / 2
+                // Centred on the LANE, not the container, so the dots stay on
+                // the same line as the bar however wide the container gets.
+                x: root.isVertical
+                    ? root.laneOffset(parent.width, root.thickness) + (root.thickness - width) / 2
+                    : along - width / 2
+                y: root.isVertical
+                    ? along - height / 2
+                    : root.laneOffset(parent.height, root.thickness) + (root.thickness - height) / 2
                 // Grows where you are, under the magnet, the pointer, and the thumb.
                 width: baseSize + (current ? 2 : 0) + (pulled ? 3 : 0) + (hovered ? 3 : 0)
                     + dot.nearness * 2
@@ -407,8 +425,8 @@ ScrollBar {
             id: thumb
             // Centred across the hit area, not filling it, so the target grows
             // without the bar looking heavier.
-            x: root.isVertical ? (parent.width - width) / 2 : 0
-            y: root.isVertical ? 0 : (parent.height - height) / 2
+            x: root.isVertical ? root.laneOffset(parent.width, width) : 0
+            y: root.isVertical ? 0 : root.laneOffset(parent.height, height)
             width:  root.isVertical ? root.thickness : parent.width
             height: root.isVertical ? parent.height : root.thickness
             radius: Math.min(width, height) / 2
