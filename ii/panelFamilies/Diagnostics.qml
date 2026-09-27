@@ -28,6 +28,7 @@ Scope {
     IpcHandler {
         target: "diag"
 
+
         // Which LAZY-loaded panels are open (and therefore loaded into
         // memory) at this instant. Eager panels are always loaded and
         // not interesting here.

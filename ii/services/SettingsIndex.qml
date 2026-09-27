@@ -140,11 +140,11 @@ Singleton {
                 const m = titleRe.exec(s);
                 if (m) {
                     section = m[1];
-                    // A heading is findable in its own right: some rows are
-                    // plain labels next to a control and are indexed by nothing
-                    // else, so "time zone" had no way of reaching its page.
-                    out.push({ section: section, title: section, desc: "",
-                               kind: "section" });
+                    // A heading is findable in its own right. `file` matters:
+                    // without it pageIndexOf returns -1 and the result is inert
+                    // — found, ranked first, and dead on click.
+                    out.push({ file: fileName, section: section, title: section,
+                               desc: "", kind: "section" });
                 }
             }
 
