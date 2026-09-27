@@ -6,9 +6,19 @@
 # No desktop, no AUR helper, possibly no git. install.sh assumes all of that
 # already exists; this is the step before it.
 #
+#   curl -fsSL <raw url>/bootstrap.sh | bash
+#
+# Piped like that, stdin is the script itself, so every prompt is read from
+# /dev/tty instead — a plain `read` there swallows the rest of the program and
+# the installer dies halfway through. Downloading first works too, and is the
+# honest way to read it before running it:
+#
 #   curl -fsSL <raw url>/bootstrap.sh -o bootstrap.sh
-#   bash bootstrap.sh --dry-run        # read what it will do first
+#   bash bootstrap.sh --dry-run        # see everything it would do
 #   bash bootstrap.sh
+#
+# Do NOT run it with sudo. It installs into your home directory; it asks for
+# sudo only where a package or a systemd unit genuinely needs root.
 #
 # It is safe to re-run: every step checks whether it has already been done.
 # Nothing is removed, and an existing ~/.config/hypr is never overwritten.
@@ -16,19 +26,44 @@ set -euo pipefail
 
 REPO_URL="${QS_REPO_URL:-}"       # set by --repo, or detected from a clone
 BRANCH="${QS_BRANCH:-main}"
+# Filled in when the repo is published; until then the prompt asks for it.
+DEFAULT_REPO="${QS_DEFAULT_REPO:-}"
 CLONE_DIR="${QS_CLONE_DIR:-$HOME/.local/share/quickshell-ii-src}"
 PROFILE="recommended"
+CHOSE_PROFILE=0
 NAME="ii"
 DRY=0
 ASSUME_YES=0
 DO_HYPR=1
 LOWEND=0
 
-die()  { printf '\033[31merror\033[0m: %s\n' "$*" >&2; exit 1; }
-info() { printf '\033[36m::\033[0m %s\n' "$*"; }
-warn() { printf '\033[33mwarn\033[0m: %s\n' "$*" >&2; }
-ok()   { printf '\033[32m ok\033[0m %s\n' "$*"; }
-step() { printf '\n\033[1m── %s\033[0m\n' "$*"; }
+# ── Presentation ────────────────────────────────────────────────────────────
+# Plain ANSI, no dialog/whiptail: neither is in the Arch base install, and a
+# first-run installer that must install its own UI first is not a first-run
+# installer. Degrades to unstyled text when stdout is not a terminal.
+if [ -t 1 ]; then
+    B=$'\033[1m'; DIM=$'\033[2m'; R=$'\033[0m'
+    RED=$'\033[31m'; GRN=$'\033[32m'; YEL=$'\033[33m'; CYN=$'\033[36m'
+else
+    B=""; DIM=""; R=""; RED=""; GRN=""; YEL=""; CYN=""
+fi
+
+banner() {
+    # One width, one padding calculation: hand-counted box drawing drifts the
+    # moment the text changes, and the escape codes are not printable width.
+    local text="ii — a quickshell desktop for Hyprland"
+    local w=52 pad
+    pad=$(( w - ${#text} - 3 ))
+    printf '\n%s╭%s╮%s\n' "$CYN" "$(printf '─%.0s' $(seq 1 $w))" "$R"
+    printf '%s│%s  %s%s%s%*s%s│%s\n' "$CYN" "$R" "$B" "$text" "$R" "$pad" "" "$CYN" "$R"
+    printf '%s╰%s╯%s\n' "$CYN" "$(printf '─%.0s' $(seq 1 $w))" "$R"
+}
+
+die()  { printf '%serror%s: %s\n' "$RED" "$R" "$*" >&2; exit 1; }
+info() { printf '%s::%s %s\n' "$CYN" "$R" "$*"; }
+warn() { printf '%swarn%s: %s\n' "$YEL" "$R" "$*" >&2; }
+ok()   { printf '%s  ok%s %s\n' "$GRN" "$R" "$*"; }
+step() { printf '\n%s── %s%s\n' "$B" "$*" "$R"; }
 run()  { if [ "$DRY" = 1 ]; then printf '   would: %s\n' "$*"; else "$@"; fi; }
 
 usage() {
@@ -69,7 +104,7 @@ while [ $# -gt 0 ]; do
         --repo)       REPO_URL="${2:?--repo needs a value}"; shift 2 ;;
         --branch)     BRANCH="${2:?--branch needs a value}"; shift 2 ;;
         -n|--name)    NAME="${2:?--name needs a value}"; shift 2 ;;
-        -p|--profile) PROFILE="${2:?--profile needs a value}"; shift 2 ;;
+        -p|--profile) PROFILE="${2:?--profile needs a value}"; CHOSE_PROFILE=1; shift 2 ;;
         --low-end)    LOWEND=1; shift ;;
         --no-hypr)    DO_HYPR=0; shift ;;
         -y|--yes)     ASSUME_YES=1; shift ;;
@@ -78,6 +113,8 @@ while [ $# -gt 0 ]; do
         *)            die "unknown option: $1 (try --help)" ;;
     esac
 done
+
+banner
 
 # ── 1. Is this the machine we think it is? ──────────────────────────────────
 step "Checks"
@@ -111,10 +148,56 @@ ok "Arch, non-root, sudo available"
 
 if [ "$DRY" = 1 ]; then warn "dry run — nothing will be changed"; fi
 
+# ── The menu ────────────────────────────────────────────────────────────────
+# Shown when nothing was chosen on the command line and there is a terminal to
+# read from. Piped from curl, stdin is the SCRIPT, so the prompts are read from
+# /dev/tty instead — otherwise the first read swallows the rest of the program.
+ask() {                 # ask <prompt> <default>
+    local p="$1" d="$2" a=""
+    [ -r /dev/tty ] || { printf '%s' "$d"; return; }
+    printf '%s%s%s [%s] ' "$B" "$p" "$R" "$d" > /dev/tty
+    read -r a < /dev/tty || a=""
+    printf '%s' "${a:-$d}"
+}
+
+menu() {
+    local choice
+    while true; do
+        printf '\n  %sWhat to install%s\n\n' "$B" "$R"
+        printf '   1  %sRecommended%s   the shell, and the tools most panels need\n' "$GRN" "$R"
+        printf '   2  Minimal       the shell only, no extra packages\n'
+        printf '   3  Full          everything, including media and translation tools\n'
+        printf '   4  Low-end       recommended, with the effects turned off\n'
+        printf '   5  ROG laptop    full, plus asusctl and supergfxctl\n\n'
+        printf '   n  Config name   %s%s%s\n' "$DIM" "$NAME" "$R"
+        printf '   h  Hyprland      %s%s%s\n' "$DIM" "$([ "$DO_HYPR" = 1 ] && echo "write a starter config" || echo "leave mine alone")" "$R"
+        printf '   d  Dry run       %sshow what would happen, change nothing%s\n' "$DIM" "$R"
+        printf '   q  Quit\n\n'
+        choice=$(ask "  Choice, or Enter to install" "")
+        case "$choice" in
+            1) PROFILE=recommended; LOWEND=0; return ;;
+            2) PROFILE=minimal;     LOWEND=0; return ;;
+            3) PROFILE=full;        LOWEND=0; return ;;
+            4) PROFILE=recommended; LOWEND=1; return ;;
+            5) PROFILE=rog;         LOWEND=0; return ;;
+            n) NAME=$(ask "  Config name" "$NAME") ;;
+            h) DO_HYPR=$([ "$DO_HYPR" = 1 ] && echo 0 || echo 1) ;;
+            d) DRY=1; return ;;
+            q) warn "nothing done"; exit 0 ;;
+            "") return ;;
+            *) warn "not an option: $choice" ;;
+        esac
+    done
+}
+
+if [ "$ASSUME_YES" != 1 ] && [ "$DRY" != 1 ] && [ "$CHOSE_PROFILE" != 1 ] && [ -r /dev/tty ]; then
+    menu
+fi
+
+printf '\n'
+info "profile: ${B}$PROFILE${R}$([ "$LOWEND" = 1 ] && printf ' (low-end)')   name: ${B}$NAME${R}"
 if [ "$ASSUME_YES" != 1 ] && [ "$DRY" != 1 ]; then
-    echo
-    info "About to install a desktop onto this machine, as profile '$PROFILE'."
-    read -rp "   continue? [y/N] " a
+    a=$(ask "  Install now?" "y")
     [[ "$a" =~ ^[Yy]$ ]] || { warn "nothing done"; exit 0; }
 fi
 
@@ -196,6 +279,15 @@ elif [ -n "$REPO_URL" ]; then
         info "cloning $REPO_URL -> $CLONE_DIR"
         run git clone --depth 1 -b "$BRANCH" "$REPO_URL" "$CLONE_DIR"
     fi
+    SRC="$CLONE_DIR"
+elif [ -n "$(command -v git)" ] && [ -r /dev/tty ]; then
+    # Piped from the web with no clone to work from: ask, rather than dying
+    # with an instruction the user cannot act on mid-pipe.
+    warn "no clone here and no --repo given."
+    REPO_URL=$(ask "  Repository to install from" "$DEFAULT_REPO")
+    [ -n "$REPO_URL" ] || die "no repository; nothing to install"
+    info "cloning $REPO_URL -> $CLONE_DIR"
+    run git clone --depth 1 -b "$BRANCH" "$REPO_URL" "$CLONE_DIR"
     SRC="$CLONE_DIR"
 else
     die "nothing to install from.
