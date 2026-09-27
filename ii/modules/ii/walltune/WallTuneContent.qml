@@ -215,6 +215,8 @@ Rectangle {
     }
 
     property bool parallaxOpen:  false
+    property bool effectOpen:    false
+    property bool extractOpen:   false
 
     // Section dropdowns (default closed)
     property bool theoryOpen:    false
@@ -1674,82 +1676,47 @@ Rectangle {
         // sliders, and warps sample the wallpaper directly with no capture.
         // Effects using theme roles (@primary) recolour with the palette this
         // panel generates, which is the point of putting it here.
-        Rectangle {
+        RippleButton {
+            id: effectRow
+            readonly property bool on: (Config.options.background.effect ?? "").length > 0
+
             Layout.fillWidth: true
-            implicitHeight: wallFxCol.implicitHeight + 24
-            // Matches the parallax card above: same radius, same border.
-            radius: Appearance.rounding.normal
-            color: Appearance.colors.colLayer1
-            border.width: 1
-            border.color: Appearance.colors.colLayer0Border
+            implicitHeight: 44
+            buttonRadius: Appearance.rounding.small
+            colBackground: Appearance.colors.colLayer1
+            colBackgroundHover: Appearance.colors.colLayer1Hover
+            onClicked: root.effectOpen = true
 
-            ColumnLayout {
-                id: wallFxCol
-                anchors.left: parent.left
-                anchors.right: parent.right
-                anchors.top: parent.top
-                anchors.margins: 12
-                spacing: 8
+            contentItem: RowLayout {
+                anchors.fill: parent
+                anchors.leftMargin: 12
+                anchors.rightMargin: 8
+                spacing: 10
 
-                RowLayout {
-                    Layout.fillWidth: true
-                    spacing: 7
-                    MaterialSymbol {
-                        text: "animation"; iconSize: 17
-                        color: (Config.options.background.effect ?? "").length > 0
-                            ? Appearance.colors.colPrimary : Appearance.colors.colSubtext
-                    }
-                    StyledText {
-                        Layout.fillWidth: true
-                        text: "Wallpaper Effect"
-                        font.pixelSize: Appearance.font.pixelSize.small
-                        font.bold: true
-                        color: Appearance.colors.colOnLayer1
-                    }
-                    StyledText {
-                        text: (Config.options.background.effect ?? "").length > 0
-                            ? AppDisplay.effectName(Config.options.background.effect) : "off"
-                        font.pixelSize: Appearance.font.pixelSize.smallest
-                        color: (Config.options.background.effect ?? "").length > 0
-                            ? Appearance.colors.colPrimary : Appearance.colors.colSubtext
-                    }
+                MaterialSymbol {
+                    text: "animation"
+                    iconSize: Appearance.font.pixelSize.larger
+                    color: effectRow.on ? Appearance.colors.colPrimary
+                                        : Appearance.colors.colSubtext
                 }
-
-                // Effect picker — a dropdown rather than a wall of chips,
-                // and the SELECTED effect's variables shown below it. This is
-                // the display-settings shader-list treatment, on the wallpaper
-                // layer: pick one, then tune what it exposes.
-                //
-                // Full width on its own row, at StyledComboBox's own 40px
-                // height. Squeezing it onto the title row shrank it in both
-                // directions and it no longer read as the card's main control.
-                StyledComboBox {
+                StyledText {
                     Layout.fillWidth: true
-                    // colLayer2, not secondaryContainer: filled with the accent
-                    // it was the loudest element here, for a control that is
-                    // off most of the time.
-                    colBackground: Appearance.colors.colLayer2
-                    colBackgroundHover: Appearance.colors.colLayer2Hover
-                    readonly property var opts: [{ name: "Off", path: "" }]
-                        .concat(AppDisplay.effects.map(e => ({ name: e.name, path: e.path })))
-                    model: opts
-                    textRole: "name"
-                    currentIndex: Math.max(0, opts.findIndex(
-                        o => o.path === (Config.options.background.effect ?? "")))
-                    onActivated: idx => Config.options.background.effect = opts[idx].path
+                    text: qsTr("Wallpaper effect")
+                    font.pixelSize: Appearance.font.pixelSize.smaller
+                    color: Appearance.colors.colOnLayer1
                 }
-
-                // The effect's variables live in their own popup (opened
-                // beside this panel) rather than inline — a stack of sliders
-                // and swatch rows made WallTune enormous. Button only shows
-                // when the selected effect actually exposes variables.
-                // The shared panel-action element (same as DisplaySettings' shader "Browse…").
-                PanelActionButton {
-                    Layout.fillWidth: true
-                    visible: WallEffect.hasVariables
-                    iconName: "tune"
-                    buttonLabel: "Variables…"
-                    onClicked: GlobalStates.wallEffectVarsOpen = !GlobalStates.wallEffectVarsOpen
+                StyledText {
+                    text: effectRow.on
+                        ? AppDisplay.effectName(Config.options.background.effect)
+                        : qsTr("Off")
+                    font.pixelSize: Appearance.font.pixelSize.smallest
+                    color: effectRow.on ? Appearance.colors.colPrimary
+                                        : Appearance.colors.colSubtext
+                }
+                MaterialSymbol {
+                    text: "chevron_right"
+                    iconSize: Appearance.font.pixelSize.large
+                    color: Appearance.colors.colSubtext
                 }
             }
         }
@@ -1839,66 +1806,42 @@ Rectangle {
         }
 
         // Extraction mode
-        SectionLabel { text: qsTr("Extraction mode") }
-        // M3 filter chips: outlined at rest, secondaryContainer with a check
-        // when chosen — the same thing "selected" means everywhere else here.
-        // They used to fill with each mode's own colour, so the selection was a
-        // different hue every time and read as a warning rather than a choice.
-        // The colour survives as the identity dot.
-        Flow {
+        RippleButton {
+            id: extractRow
+            readonly property var mode: root.extractModes.find(m => m.id === root.selectedMode)
+
             Layout.fillWidth: true
-            spacing: 5
+            implicitHeight: 44
+            buttonRadius: Appearance.rounding.small
+            colBackground: Appearance.colors.colLayer1
+            colBackgroundHover: Appearance.colors.colLayer1Hover
+            onClicked: root.extractOpen = true
 
-            Repeater {
-                model: root.extractModes
+            contentItem: RowLayout {
+                anchors.fill: parent
+                anchors.leftMargin: 12
+                anchors.rightMargin: 8
+                spacing: 10
 
-                delegate: Rectangle {
-                    id: modeChip
-                    required property var modelData
-                    readonly property bool active: root.selectedMode === modelData.id
-
-                    implicitWidth: mRow.implicitWidth + 20
-                    implicitHeight: 32
-                    radius: Appearance.rounding.full
-                    color: modeChip.active ? Appearance.colors.colSecondaryContainer
-                        : mHov.hovered ? Appearance.colors.colLayer1Hover
-                        : "transparent"
-                    border.width: modeChip.active ? 0 : 1
-                    border.color: Appearance.colors.colLayer0Border
-                    Behavior on color { ColorAnimation { duration: 120 } }
-
-                    HoverHandler { id: mHov }
-                    TapHandler { onTapped: root.selectedMode = modelData.id }
-
-                    Row {
-                        id: mRow
-                        anchors.centerIn: parent
-                        spacing: 6
-
-                        MaterialSymbol {
-                            anchors.verticalCenter: parent.verticalCenter
-                            visible: modeChip.active
-                            text: "check"
-                            iconSize: Appearance.font.pixelSize.small
-                            color: Appearance.m3colors.m3onSecondaryContainer
-                        }
-                        Rectangle {
-                            anchors.verticalCenter: parent.verticalCenter
-                            visible: !modeChip.active
-                            width: 7; height: 7; radius: 3.5
-                            color: modeChip.modelData.color
-                        }
-                        StyledText {
-                            anchors.verticalCenter: parent.verticalCenter
-                            text: modeChip.modelData.label
-                            font.pixelSize: Appearance.font.pixelSize.smaller
-                            font.weight: modeChip.active ? Font.Medium : Font.Normal
-                            color: modeChip.active ? Appearance.m3colors.m3onSecondaryContainer
-                                                   : Appearance.colors.colOnLayer1
-                            opacity: modeChip.active ? 1 : 0.8
-                            Behavior on color { ColorAnimation { duration: 120 } }
-                        }
-                    }
+                Rectangle {
+                    implicitWidth: 9; implicitHeight: 9; radius: 4.5
+                    color: extractRow.mode ? extractRow.mode.color : Appearance.colors.colSubtext
+                }
+                StyledText {
+                    Layout.fillWidth: true
+                    text: qsTr("Extraction mode")
+                    font.pixelSize: Appearance.font.pixelSize.smaller
+                    color: Appearance.colors.colOnLayer1
+                }
+                StyledText {
+                    text: extractRow.mode ? extractRow.mode.label : qsTr("Auto")
+                    font.pixelSize: Appearance.font.pixelSize.smallest
+                    color: Appearance.colors.colPrimary
+                }
+                MaterialSymbol {
+                    text: "chevron_right"
+                    iconSize: Appearance.font.pixelSize.large
+                    color: Appearance.colors.colSubtext
                 }
             }
         }
@@ -3049,6 +2992,162 @@ Rectangle {
                             color: Appearance.colors.colOnLayer0
                             Layout.preferredWidth: 38
                             horizontalAlignment: Text.AlignRight
+                        }
+                    }
+                }
+            }
+    }
+
+    PanelSheet {
+        id: effectSheet
+        open: root.effectOpen
+        title: qsTr("Wallpaper effect")
+        onClosed: root.effectOpen = false
+
+            Rectangle {
+                Layout.fillWidth: true
+                implicitHeight: wallFxCol.implicitHeight + 24
+                // Matches the parallax card above: same radius, same border.
+                radius: Appearance.rounding.normal
+                color: Appearance.colors.colLayer1
+                border.width: 1
+                border.color: Appearance.colors.colLayer0Border
+    
+                ColumnLayout {
+                    id: wallFxCol
+                    anchors.left: parent.left
+                    anchors.right: parent.right
+                    anchors.top: parent.top
+                    anchors.margins: 12
+                    spacing: 8
+    
+                    RowLayout {
+                        Layout.fillWidth: true
+                        spacing: 7
+                        MaterialSymbol {
+                            text: "animation"; iconSize: 17
+                            color: (Config.options.background.effect ?? "").length > 0
+                                ? Appearance.colors.colPrimary : Appearance.colors.colSubtext
+                        }
+                        StyledText {
+                            Layout.fillWidth: true
+                            text: "Wallpaper Effect"
+                            font.pixelSize: Appearance.font.pixelSize.small
+                            font.bold: true
+                            color: Appearance.colors.colOnLayer1
+                        }
+                        StyledText {
+                            text: (Config.options.background.effect ?? "").length > 0
+                                ? AppDisplay.effectName(Config.options.background.effect) : "off"
+                            font.pixelSize: Appearance.font.pixelSize.smallest
+                            color: (Config.options.background.effect ?? "").length > 0
+                                ? Appearance.colors.colPrimary : Appearance.colors.colSubtext
+                        }
+                    }
+    
+                    // Effect picker — a dropdown rather than a wall of chips,
+                    // and the SELECTED effect's variables shown below it. This is
+                    // the display-settings shader-list treatment, on the wallpaper
+                    // layer: pick one, then tune what it exposes.
+                    //
+                    // Full width on its own row, at StyledComboBox's own 40px
+                    // height. Squeezing it onto the title row shrank it in both
+                    // directions and it no longer read as the card's main control.
+                    StyledComboBox {
+                        Layout.fillWidth: true
+                        // colLayer2, not secondaryContainer: filled with the accent
+                        // it was the loudest element here, for a control that is
+                        // off most of the time.
+                        colBackground: Appearance.colors.colLayer2
+                        colBackgroundHover: Appearance.colors.colLayer2Hover
+                        readonly property var opts: [{ name: "Off", path: "" }]
+                            .concat(AppDisplay.effects.map(e => ({ name: e.name, path: e.path })))
+                        model: opts
+                        textRole: "name"
+                        currentIndex: Math.max(0, opts.findIndex(
+                            o => o.path === (Config.options.background.effect ?? "")))
+                        onActivated: idx => Config.options.background.effect = opts[idx].path
+                    }
+    
+                    // The effect's variables live in their own popup (opened
+                    // beside this panel) rather than inline — a stack of sliders
+                    // and swatch rows made WallTune enormous. Button only shows
+                    // when the selected effect actually exposes variables.
+                    // The shared panel-action element (same as DisplaySettings' shader "Browse…").
+                    PanelActionButton {
+                        Layout.fillWidth: true
+                        visible: WallEffect.hasVariables
+                        iconName: "tune"
+                        buttonLabel: "Variables…"
+                        onClicked: GlobalStates.wallEffectVarsOpen = !GlobalStates.wallEffectVarsOpen
+                    }
+                }
+            }
+    }
+
+    PanelSheet {
+        open: root.extractOpen
+        title: qsTr("Extraction mode")
+        onClosed: root.extractOpen = false
+
+            // M3 filter chips: outlined at rest, secondaryContainer with a check
+            // when chosen — the same thing "selected" means everywhere else here.
+            // They used to fill with each mode's own colour, so the selection was a
+            // different hue every time and read as a warning rather than a choice.
+            // The colour survives as the identity dot.
+            Flow {
+                Layout.fillWidth: true
+                spacing: 5
+    
+                Repeater {
+                    model: root.extractModes
+    
+                    delegate: Rectangle {
+                        id: modeChip
+                        required property var modelData
+                        readonly property bool active: root.selectedMode === modelData.id
+    
+                        implicitWidth: mRow.implicitWidth + 20
+                        implicitHeight: 32
+                        radius: Appearance.rounding.full
+                        color: modeChip.active ? Appearance.colors.colSecondaryContainer
+                            : mHov.hovered ? Appearance.colors.colLayer1Hover
+                            : "transparent"
+                        border.width: modeChip.active ? 0 : 1
+                        border.color: Appearance.colors.colLayer0Border
+                        Behavior on color { ColorAnimation { duration: 120 } }
+    
+                        HoverHandler { id: mHov }
+                        TapHandler { onTapped: root.selectedMode = modelData.id }
+    
+                        Row {
+                            id: mRow
+                            anchors.centerIn: parent
+                            spacing: 6
+    
+                            MaterialSymbol {
+                                anchors.verticalCenter: parent.verticalCenter
+                                visible: modeChip.active
+                                text: "check"
+                                iconSize: Appearance.font.pixelSize.small
+                                color: Appearance.m3colors.m3onSecondaryContainer
+                            }
+                            Rectangle {
+                                anchors.verticalCenter: parent.verticalCenter
+                                visible: !modeChip.active
+                                width: 7; height: 7; radius: 3.5
+                                color: modeChip.modelData.color
+                            }
+                            StyledText {
+                                anchors.verticalCenter: parent.verticalCenter
+                                text: modeChip.modelData.label
+                                font.pixelSize: Appearance.font.pixelSize.smaller
+                                font.weight: modeChip.active ? Font.Medium : Font.Normal
+                                color: modeChip.active ? Appearance.m3colors.m3onSecondaryContainer
+                                                       : Appearance.colors.colOnLayer1
+                                opacity: modeChip.active ? 1 : 0.8
+                                Behavior on color { ColorAnimation { duration: 120 } }
+                            }
                         }
                     }
                 }
