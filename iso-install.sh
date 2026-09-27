@@ -471,6 +471,18 @@ BASE+=(grub os-prober)
 # CPU microcode. Not optional on older hardware: a Haswell without it prints
 # "TSC_DEADLINE disabled due to Errata" at every boot and runs with known
 # silicon bugs unpatched. GRUB picks the image up by itself at grub-mkconfig.
+# Broadcom wireless needs the out-of-tree broadcom-wl. It is not in the kernel
+# and not on the ISO, so the card is invisible during install and stays
+# invisible after it unless something installs the driver. BCM43142 in
+# particular is standard in this era of Lenovo laptop.
+BROADCOM_WL=0
+if lspci 2>/dev/null | grep -qiE "Network controller.*Broadcom.*(BCM43|BCM4)"; then
+    BROADCOM_WL=1
+    BASE+=(linux-headers)          # dkms builds against these
+    warn "Broadcom wireless found; it has no in-kernel driver"
+    warn "  -> broadcom-wl-dkms will be installed. Use ethernet for now."
+fi
+
 case "$(grep -m1 '^vendor_id' /proc/cpuinfo 2>/dev/null)" in
     *GenuineIntel*) BASE+=(intel-ucode); UCODE=intel ;;
     *AuthenticAMD*) BASE+=(amd-ucode);   UCODE=amd ;;
@@ -571,6 +583,22 @@ if [ "$DESKTOP" = "ii" ]; then
 
     cleanup_nopasswd
     trap - EXIT
+fi
+
+if [ "$BROADCOM_WL" = 1 ]; then
+    info "installing the Broadcom wireless driver"
+    # AUR, so pacstrap cannot take it and it needs a helper and a network.
+    # Ethernet is the only way in at this point, which is exactly the bind the
+    # driver is there to get you out of.
+    NOPASSWD=/mnt/etc/sudoers.d/00-installer
+    if [ "$DRY" = 1 ]; then
+        printf '   would: install broadcom-wl-dkms via paru in the chroot\n'
+    else
+        printf '%%wheel ALL=(ALL:ALL) NOPASSWD: ALL\n' > "$NOPASSWD"; chmod 440 "$NOPASSWD"
+        arch-chroot /mnt bash -c "su - '$USERNAME' -c 'paru -S --needed --noconfirm broadcom-wl-dkms'" \
+            || warn "broadcom-wl-dkms failed; install it by hand once you are up."
+        rm -f "$NOPASSWD"
+    fi
 fi
 
 echo
