@@ -345,11 +345,13 @@ ScrollBar {
                 /// Where you are is the one thing the map must never hide, so it
                 /// is drawn proud of the bar. Minor landmarks never change size
                 /// at all: they sit inside the line and are read by contrast.
+                // Fixed, not derived from the bar: tied to thickness they grew
+                // with it on hover and the track became a row of beads.
                 readonly property real baseSize: {
-                    if (dot.current) return root.thickness + 6;
-                    if (dot.isEnd) return root.thickness
-                        + (dot.nearness > 0.66 ? 6 : dot.nearness > 0.25 ? 4 : 2);
-                    return root.thickness + (dot.major ? 4 : 2);
+                    if (dot.current) return 9;
+                    if (dot.isEnd) return dot.nearness > 0.66 ? 9
+                        : dot.nearness > 0.25 ? 6 : 4;
+                    return dot.major ? 6 : 4;
                 }
                 readonly property real at: modelData.at ?? 0
 
@@ -383,14 +385,15 @@ ScrollBar {
                 height: width
                 radius: width / 2
 
-                color: (dot.current || dot.pulled) ? Appearance.colors.colPrimary
-                                                   : Appearance.colors.colOnSurfaceVariant
-                // Only what is OFF screen is marked. A landmark inside the
-                // thumb is a section you can already see, and drawing those
-                // turned the bar into a perforated strip.
+                // Inverted where the thumb is behind it, so a landmark stays
+                // legible whichever it lands on.
+                color: dot.current ? Appearance.colors.colPrimary
+                    : dot.underThumb ? Appearance.m3colors.m3surface
+                    : dot.pulled ? Appearance.colors.colPrimary
+                    : Appearance.colors.colOnSurfaceVariant
                 opacity: root.size >= 1.0 ? 0
-                    : dot.current ? 1
-                    : dot.underThumb ? 0
+                    : (dot.current || dot.pulled) ? 1
+                    : dot.underThumb ? 0.6
                     : Math.min(1, (major ? 0.55 : 0.4)
                         + dot.nearness * 0.25
                         + (root.engaged ? 0.2 : 0))
