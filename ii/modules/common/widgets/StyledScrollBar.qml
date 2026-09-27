@@ -280,12 +280,22 @@ ScrollBar {
                 readonly property bool current: root.currentMarker === index
                 readonly property bool pulled: root.nearestMarker === index
                 readonly property bool hovered: root.hoveredMarker === index
+                /// The first and last landmark are destinations — the ends of the
+                /// content — so they answer to how close you are in three steps
+                /// rather than only on arrival.
+                readonly property bool isEnd:
+                    index === 0 || index === (root.markers.length - 1)
+
                 /// Where you are is the one thing the map must never hide, so it
-                /// is drawn proud of the bar. Section starts sit a little proud;
-                /// minor landmarks stay small inside the line, read by contrast.
-                readonly property real baseSize: current ? 9
-                    : major ? Math.max(6, root.thickness + 2)
-                    : 3
+                /// is drawn proud of the bar. Minor landmarks never change size
+                /// at all: they sit inside the line and are read by contrast.
+                readonly property real baseSize: {
+                    if (dot.current) return 9;
+                    if (dot.isEnd) return dot.nearness > 0.66 ? 9
+                        : dot.nearness > 0.25 ? 6
+                        : 3;
+                    return dot.major ? 6 : 3;
+                }
                 readonly property real at: modelData.at ?? 0
 
                 // Inside the span the thumb is showing: this is what makes the
@@ -311,9 +321,10 @@ ScrollBar {
                 y: root.isVertical
                     ? along - height / 2
                     : root.laneOffset(parent.height, root.thickness) + (root.thickness - height) / 2
-                // State shows in colour and opacity; only hover adds size, and
-                // only a little.
-                width: baseSize + (hovered ? 2 : 0)
+                // Hover grows only what is already big enough to notice; a minor
+                // landmark keeps its size whatever the pointer does.
+                width: baseSize + ((dot.major || dot.current || dot.isEnd)
+                    && dot.hovered ? 2 : 0)
                 height: width
                 radius: width / 2
 
@@ -336,6 +347,15 @@ ScrollBar {
                         + dot.nearness * 0.3
                         + (root.engaged ? 0.25 : 0))
 
+                // The three steps have to be visibly stepped, not a slide
+                // between them, or they read as one continuous grow.
+                Behavior on width {
+                    NumberAnimation {
+                        duration: 130
+                        easing.type: Easing.BezierSpline
+                        easing.bezierCurve: Appearance.animationCurves.emphasizedDecel
+                    }
+                }
                 Behavior on opacity { NumberAnimation { duration: 140 } }
                 // Plain, not createObject(this): that is one animation object per dot.
                 Behavior on color {
