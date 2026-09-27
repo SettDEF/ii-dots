@@ -40,6 +40,17 @@ Scope {
         function next(): void { WallpaperRotation.next() }
     }
 
+    // The settings and welcome apps are separate processes, so they cannot set
+    // GlobalStates themselves. This is how they reach the XKB layout picker,
+    // which until now could only be opened from the on-screen keyboard's chips
+    // — a path nobody finds who is not already using the OSK.
+    IpcHandler {
+        target: "keyboardLayout"
+        function pick(): void { GlobalStates.kbPickerOpen = true }
+        function current(): string { return KeyboardLayout.effectiveLayout }
+        function configured(): string { return (KeyboardLayout.availableLayouts ?? []).join(",") }
+    }
+
     IpcHandler {
         target: "gameMode"
         function toggle(): void { GameMode.toggle() }

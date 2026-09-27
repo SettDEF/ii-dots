@@ -22,18 +22,28 @@ ApplicationWindow {
     property string firstRunFileContent: "This file is just here to confirm you've been greeted :>"
     property real contentPadding: 8
     property bool showNextTime: false
+    // Grouped, and ordered by how often somebody actually needs them rather
+    // than alphabetically. `group` is the heading the rail draws ABOVE a page,
+    // so only the first page of each group carries one — see
+    // NavigationRailButton.groupLabel.
+    //
+    // The grouping is the point: a flat list is why Interface grew to a
+    // thousand lines with twenty sections in it. New settings now have an
+    // obvious page to land on instead of the nearest one that already exists.
     property var pages: [
         {
+            group: Translation.tr("Setup"),
             name: Translation.tr("Quick"),
             icon: "instant_mix",
             component: "modules/settings/QuickConfig.qml"
         },
         {
-            name: Translation.tr("General"),
-            icon: "browse",
-            component: "modules/settings/GeneralConfig.qml"
+            name: Translation.tr("System"),
+            icon: "tune",
+            component: "modules/settings/SystemConfig.qml"
         },
         {
+            group: Translation.tr("Look"),
             name: Translation.tr("Bar"),
             icon: "toast",
             iconRotation: 180,
@@ -50,6 +60,12 @@ ApplicationWindow {
             component: "modules/settings/InterfaceConfig.qml"
         },
         {
+            group: Translation.tr("Behaviour"),
+            name: Translation.tr("General"),
+            icon: "browse",
+            component: "modules/settings/GeneralConfig.qml"
+        },
+        {
             name: Translation.tr("Pointer"),
             icon: "mouse",
             component: "modules/settings/PointerConfig.qml"
@@ -60,6 +76,7 @@ ApplicationWindow {
             component: "modules/settings/ServicesConfig.qml"
         },
         {
+            group: Translation.tr("Machine"),
             name: Translation.tr("Performance"),
             icon: "speed",
             component: "modules/settings/PerformanceConfig.qml"
@@ -443,6 +460,7 @@ ApplicationWindow {
                                 buttonIcon: modelData.icon
                                 buttonIconRotation: modelData.iconRotation || 0
                                 buttonText: modelData.name
+                                groupLabel: modelData.group ?? ""
                                 showToggledHighlight: false
                             }
                         }

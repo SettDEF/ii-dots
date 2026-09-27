@@ -22,8 +22,22 @@ TabButton {
     property real labelSize: 14
     property real baseHighlightHeight: 32
     property real highlightCollapsedTopMargin: 6
+
+    // Optional heading drawn above this button, marking the start of a group
+    // in the rail. Carried by the button rather than inserted as a separate
+    // item in the column because NavigationRailTabArray finds its buttons by
+    // `baseSize !== undefined` and indexes the highlight off that list — a
+    // bare Item between them would slip into the wrong position.
+    //
+    // Collapsed, there is no room for a word, so the group becomes a rule.
+    property string groupLabel: ""
+    readonly property bool hasGroupLabel: root.groupLabel.length > 0
+    readonly property real groupLabelHeight: !root.hasGroupLabel ? 0
+        : (root.expanded ? groupText.implicitHeight + 14 : 13)
+
     // Where the highlight pill starts inside the button.
-    readonly property real highlightY: root.expanded ? 0 : root.highlightCollapsedTopMargin
+    readonly property real highlightY: root.groupLabelHeight
+        + (root.expanded ? 0 : root.highlightCollapsedTopMargin)
     padding: 0
 
     // The navigation item’s target area always spans the full width of the
@@ -32,17 +46,47 @@ TabButton {
     // implicitWidth: contentItem.implicitWidth
     // Collapsed, the label sits under the icon and needs its own room, or it
     // runs into the next item.
-    implicitHeight: root.expanded ? baseSize
-        : highlightCollapsedTopMargin + baseHighlightHeight + 2 + itemText.implicitHeight + 6
+    implicitHeight: root.groupLabelHeight + (root.expanded ? baseSize
+        : highlightCollapsedTopMargin + baseHighlightHeight + 2 + itemText.implicitHeight + 6)
 
     background: null
     PointingHandInteraction {}
+
+    StyledText {
+        id: groupText
+        visible: root.hasGroupLabel && root.expanded
+        anchors {
+            left: parent.left
+            leftMargin: 16
+            top: parent.top
+            topMargin: 9
+        }
+        text: root.groupLabel.toUpperCase()
+        font.pixelSize: Appearance.font.pixelSize.smallest
+        font.weight: Font.DemiBold
+        font.letterSpacing: 0.8
+        color: Appearance.colors.colSubtext
+    }
+
+    Rectangle {
+        visible: root.hasGroupLabel && !root.expanded
+        anchors {
+            horizontalCenter: parent.horizontalCenter
+            top: parent.top
+            topMargin: 6
+        }
+        implicitWidth: root.baseSize - 24
+        implicitHeight: 1
+        color: Appearance.colors.colOnLayer1
+        opacity: 0.18
+    }
 
     // Real stuff
     contentItem: Item {
         id: buttonContent
         anchors {
             top: parent.top
+            topMargin: root.groupLabelHeight
             bottom: parent.bottom
             left: parent.left
             right: undefined
