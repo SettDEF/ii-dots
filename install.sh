@@ -27,10 +27,18 @@ DO_LOWEND=0
 # ── Dependencies, by profile ────────────────────────────────────────────────
 # Arch package names. Split by what actually stops working without them, not
 # by category — "optional" here means the shell starts and the rest still runs.
-CORE_PKGS=(quickshell hyprland qt6-declarative qt6-5compat ttf-material-symbols-variable)
+# Qt modules the QML actually imports. Missing one is not a degraded feature:
+# quickshell fails to load the service that imports it, and because the
+# services directory is auto-discovered, every other service then reports
+# "unavailable" too. One absent module reads as the whole shell being broken.
+CORE_PKGS=(quickshell hyprland
+           qt6-declarative qt6-5compat qt6-imageformats
+           qt6-multimedia qt6-positioning
+           ttf-material-symbols-variable)
 RECOMMENDED_PKGS=(libnotify wl-clipboard networkmanager pipewire pipewire-pulse
                   wireplumber brightnessctl grim slurp cliphist hyprpicker
-                  polkit-gnome xdg-utils jq curl)
+                  polkit-gnome xdg-utils jq curl
+                  matugen ddcutil)
 EXTRA_PKGS=(ffmpeg zenity udisks2 translate-shell timew solaar)
 ROG_PKGS=(asusctl supergfxctl)
 
