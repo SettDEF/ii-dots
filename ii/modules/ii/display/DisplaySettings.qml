@@ -37,7 +37,6 @@ Scope {
     property bool invert: false
     property bool grayscale: false
 
-    readonly property string shaderPath: "/dev/shm/qs-display-shader.frag"
     readonly property bool gradingNeutral: saturation === 1.0 && contrast === 1.0
         && gain === 1.0 && gamma === 1.0 && !invert && !grayscale
 
@@ -55,48 +54,30 @@ Scope {
     }
 
     function applyGrading() {
-        if (root.gradingNeutral) {
-            // No-op grading → drop the shader entirely rather than run a
-            // pass-through pass over every frame.
-            AppDisplay.setBase("", false);
-            return;
-        }
-        // MUST be GLES3 (#version 300 es) with in/out/texture(): Hyprland's own
-        // vertex shader is versioned, and mixing it with legacy GLES2 syntax
-        // (varying/texture2D/gl_FragColor, which defaults to #version 100)
-        // fails to link — "all shaders must use same shading language version".
-        const frag = "#version 300 es\n"
-            + "precision highp float;\n"
-            + "in vec2 v_texcoord;\n"
-            + "uniform sampler2D tex;\n"
-            + "out vec4 fragColor;\n"
-            + "void main() {\n"
-            + "    vec4 c = texture(tex, v_texcoord);\n"
-            + "    vec3 col = c.rgb;\n"
-            + "    col = pow(max(col, vec3(0.0)), vec3(1.0 / " + root.gamma.toFixed(4) + "));\n"
-            + "    col *= " + root.gain.toFixed(4) + ";\n"
-            + "    col = (col - 0.5) * " + root.contrast.toFixed(4) + " + 0.5;\n"
-            + "    float luma = dot(col, vec3(0.2126, 0.7152, 0.0722));\n"
-            + "    col = mix(vec3(luma), col, " + root.effSaturation.toFixed(4) + ");\n"
-            + "    col = mix(col, vec3(1.0) - col, " + (root.invert ? "1.0" : "0.0") + ");\n"
-            + "    fragColor = vec4(clamp(col, 0.0, 1.0), c.a);\n"
-            + "}\n";
-        // Write first, THEN hand the path to AppDisplay — the apply has to wait
-        // for the file to exist, so this can't be execDetached-and-hope.
-        gradingWriter.command = ["bash", "-c",
-            "cat > '" + root.shaderPath + "' <<'QSEOF'\n" + frag + "QSEOF"];
-        gradingWriter.running = true;
+        // The service owns generation and persistence: it keeps these six
+        // values, writes the .frag and applies it. That is what lets the
+        // grading come back after a reboot, when /dev/shm has been emptied and
+        // this panel has not been instantiated at all.
+        AppDisplay.setBaseGrading({
+            saturation: root.saturation, contrast: root.contrast,
+            gain: root.gain, gamma: root.gamma,
+            invert: root.invert, grayscale: root.grayscale,
+        });
     }
 
-    Process {
-        id: gradingWriter
-        // force: the path is unchanged but its contents just changed, and
-        // Hyprland only re-reads the file when the keyword is re-set.
-        onExited: (code) => {
-            if (code === 0)
-                AppDisplay.setBase(root.shaderPath, true);
-        }
+    // Show what is actually on screen, rather than neutral sliders over a
+    // graded display.
+    function adoptSavedGrading() {
+        const g = AppDisplay.baseGrading;
+        if (!g) return;
+        root.saturation = g.saturation ?? 1.0;
+        root.contrast = g.contrast ?? 1.0;
+        root.gain = g.gain ?? 1.0;
+        root.gamma = g.gamma ?? 1.0;
+        root.invert = g.invert === true;
+        root.grayscale = g.grayscale === true;
     }
+    Component.onCompleted: root.adoptSavedGrading()
 
     // Values typed into the launcher (`/display --saturation=1.4`) land here.
     // The panel remains the owner; this just copies them in and re-grades.

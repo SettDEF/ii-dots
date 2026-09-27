@@ -28,6 +28,19 @@ Singleton {
 
     // Global shader when no profile governs. Owned by DisplaySettings.
     property string baseShader: ""
+    /*
+     * The VALUES behind a generated base shader, not just its path.
+     *
+     * `baseShader` used to be saved on its own, and the file it named lives in
+     * /dev/shm — which is emptied on reboot. So the path came back and the file
+     * did not: Hyprland was handed a shader that was not there, and the global
+     * grading was silently gone besides. Keeping the six numbers means the file
+     * can simply be written again at startup.
+     *
+     * Null when the base shader is a real file of your own rather than one
+     * generated from the sliders.
+     */
+    property var baseGrading: null
 
     readonly property var defaults: ({
         scope: "screen",        // "screen" | "window"
@@ -142,6 +155,7 @@ Singleton {
         store.setText(JSON.stringify({ enabled: root.enabled,
                                        livePreview: root.livePreview,
                                        baseShader: root.baseShader,
+                                       baseGrading: root.baseGrading,
                                        profiles: root.profiles }, null, 1));
     }
 
@@ -529,7 +543,46 @@ Singleton {
         root.push(want);
     }
 
+    /// Point Hyprland at a shader file, but never at one that is not there.
+    ///
+    /// Hyprland answers a missing path with "screen shader parser failed to
+    /// check screen shader path: No such file or directory" and then has BOTH
+    /// no shader and an error — and it is reachable without anyone doing
+    /// anything wrong, because the generated shaders live in /dev/shm and
+    /// /dev/shm is emptied on reboot. The saved path outlived the file.
     function push(path) {
+        if (path.length === 0) {
+            root.pushNow("");
+            return;
+        }
+        // One `test -f` per shader change, which is debounced to 110ms — far
+        // cheaper than the error it prevents, and it also covers a shader of
+        // your own that was deleted or renamed while the shell was running.
+        shaderCheck.wanted = path;
+        shaderCheck.command = ["test", "-f", path];
+        shaderCheck.running = true;
+    }
+
+    Process {
+        id: shaderCheck
+        property string wanted: ""
+        onExited: (code) => {
+            if (code === 0) {
+                root.pushNow(shaderCheck.wanted);
+                return;
+            }
+            console.warn(`[AppDisplay] shader file is gone, clearing instead of naming it: ${shaderCheck.wanted}`);
+            // Forget it as well as clearing it, or the next reapply() tries the
+            // same dead path and warns again for the rest of the session.
+            if (shaderCheck.wanted === root.baseShader) {
+                root.baseShader = "";
+                root.save();
+            }
+            root.pushNow("");
+        }
+    }
+
+    function pushNow(path) {
         root.applied = path;
         // Startup guard: don't wipe a screen_shader set in hyprland.conf on restart.
         if (path.length === 0 && root.everPushed === false) return;
@@ -549,6 +602,37 @@ Singleton {
             // Same path, new contents: Hyprland only re-reads the file when set again.
             root.applied = "";
             root.push(root.appShaderPath);
+        }
+    }
+
+    readonly property string baseGradingPath: "/dev/shm/qs-display-shader.frag"
+
+    /// Write the global grading shader from its values and apply it. Owning the
+    /// generation here rather than in the settings panel is what lets it be
+    /// rebuilt on load, when no panel is instantiated.
+    function setBaseGrading(g) {
+        if (!g || root.isNeutral(g)) {
+            root.baseGrading = null;
+            root.setBase("", false);
+            return;
+        }
+        root.baseGrading = ({ saturation: g.saturation, contrast: g.contrast,
+                              gain: g.gain, gamma: g.gamma,
+                              invert: g.invert === true, grayscale: g.grayscale === true });
+        const frag = root.buildGradingFrag(g.grayscale === true ? 0.0 : g.saturation,
+                                           g.contrast, g.gain, g.gamma,
+                                           g.invert === true, g.grayscale === true);
+        baseWriter.command = ["bash", "-c",
+            "cat > '" + root.baseGradingPath + "' <<'QSEOF'\n" + frag + "QSEOF"];
+        baseWriter.running = true;
+    }
+
+    Process {
+        id: baseWriter
+        // force: the path does not change but its contents just did, and
+        // Hyprland only re-reads the file when the keyword is set again.
+        onExited: (code) => {
+            if (code === 0) root.setBase(root.baseGradingPath, true);
         }
     }
 
@@ -575,8 +659,16 @@ Singleton {
                 root.profiles = d.profiles ?? {};
                 root.enabled = d.enabled === true;
                 if (d.livePreview !== undefined) root.livePreview = d.livePreview === true;
-                // reapply(), not just assignment: baseShader alone doesn't push it.
-                if (typeof d.baseShader === "string" && d.baseShader.length > 0) {
+                // A generated base shader is rebuilt from its values rather
+                // than restored by path: the path survives a reboot and the
+                // file in /dev/shm does not.
+                if (d.baseGrading && !root.isNeutral(d.baseGrading)) {
+                    Qt.callLater(() => root.setBaseGrading(d.baseGrading));
+                } else if (typeof d.baseShader === "string" && d.baseShader.length > 0
+                           && !d.baseShader.startsWith("/dev/shm/")) {
+                    // A real shader file of your own. reapply(), not just
+                    // assignment: baseShader alone doesn't push it — and push()
+                    // checks it still exists before naming it.
                     root.baseShader = d.baseShader;
                     Qt.callLater(() => root.reapply(true));
                 }
