@@ -14,6 +14,40 @@ import Qt5Compat.GraphicalEffects
 Rectangle {
     id: root
 
+    /// A section's own label.
+    component SectionLabel: StyledText {
+        Layout.fillWidth: true
+        Layout.topMargin: 2
+        font.pixelSize: Appearance.font.pixelSize.smaller - 1
+        font.weight: Font.Medium
+        font.letterSpacing: 0.4
+        color: Appearance.colors.colOnLayer0
+        opacity: 0.45
+    }
+
+    /// The two halves of this panel: what the wallpaper does, and what the
+    /// colour does. They were interleaved — transition, parallax, effect,
+    /// stack, then dark/light, extraction — so neither read as a group.
+    component GroupHeading: RowLayout {
+        property alias text: groupText.text
+        Layout.fillWidth: true
+        Layout.topMargin: 10
+        spacing: 8
+        StyledText {
+            id: groupText
+            font.pixelSize: Appearance.font.pixelSize.small
+            font.weight: Font.DemiBold
+            color: Appearance.colors.colOnLayer0
+        }
+        Rectangle {
+            Layout.fillWidth: true
+            Layout.alignment: Qt.AlignVCenter
+            implicitHeight: 1
+            color: Appearance.colors.colOnLayer0
+            opacity: 0.12
+        }
+    }
+
     readonly property string home: `${Quickshell.env("HOME")}`
     readonly property string blueprintsDir: home + "/.config/aether/blueprints"
     readonly property string stateFile: home + "/.local/state/quickshell/walltune-state.json"
@@ -85,6 +119,201 @@ Rectangle {
             default:        return qsTr("Working")
         }
     }
+
+        GroupHeading { text: qsTr("Recent") }
+        // ── History row ─────────────────────────────────────────────────
+        // Newest output first. Each chip shows a visual preview of the tuned
+        // wallpaper with overlaid primary/secondary/tertiary colors.
+        ColumnLayout {
+            Layout.fillWidth: true
+            spacing: 4
+            visible: root.history.length > 0
+
+            RowLayout {
+                Layout.fillWidth: true; spacing: 4
+                StyledText {
+                    Layout.fillWidth: true
+                    text: qsTr("Recent Themes")
+                    font.pixelSize: Appearance.font.pixelSize.smaller - 1
+                    font.weight: Font.Medium
+                    color: Appearance.colors.colOnLayer0; opacity: 0.5
+                }
+                StyledText {
+                    text: root.history.length + ""
+                    font.pixelSize: Appearance.font.pixelSize.smaller - 2
+                    color: Appearance.colors.colOnLayer0; opacity: 0.35
+                }
+            }
+
+            Item {
+                Layout.fillWidth: true
+                implicitHeight: 48
+                clip: true
+                ListView {
+                    id: walltuneHistList
+                    anchors.fill: parent
+                    orientation: ListView.Horizontal
+                    spacing: 5
+                    boundsBehavior: Flickable.StopAtBounds
+                    model: root.history
+
+                    delegate: Rectangle {
+                        id: histChip
+                        required property var modelData
+                        required property int index
+                        implicitWidth: 64
+                        height: ListView.view.height
+                        radius: 8
+                        color: histChipHov.hovered
+                            ? Appearance.colors.colLayer2
+                            : Appearance.colors.colLayer1
+                        
+                        readonly property bool isCurrent: {
+                            const cw = modelData.wallpaper
+                            if (!cw || cw === "" || cw !== root.sourceWall) return false
+                            const s = modelData.state
+                            if (!s) return false
+                            
+                            // Compare core slider states with float tolerance
+                            if (Math.abs((s.slVibrance !== undefined ? s.slVibrance : 50) - root.slVibrance) > 0.01) return false
+                            if (Math.abs((s.slContrast !== undefined ? s.slContrast : 50) - root.slContrast) > 0.01) return false
+                            if (Math.abs((s.slTemperature !== undefined ? s.slTemperature : 50) - root.slTemperature) > 0.01) return false
+                            if (Math.abs((s.slBrightness !== undefined ? s.slBrightness : 50) - root.slBrightness) > 0.01) return false
+                            if (Math.abs((s.slSaturation !== undefined ? s.slSaturation : 50) - root.slSaturation) > 0.01) return false
+                            if (Math.abs((s.slHueShift !== undefined ? s.slHueShift : 50) - root.slHueShift) > 0.01) return false
+                            if (Math.abs((s.slHighlight !== undefined ? s.slHighlight : 50) - root.slHighlight) > 0.01) return false
+                            if (Math.abs((s.slShadow !== undefined ? s.slShadow : 50) - root.slShadow) > 0.01) return false
+                            if (Math.abs((s.slGrain !== undefined ? s.slGrain : 0) - root.slGrain) > 0.01) return false
+                            if (Math.abs((s.slSharpness !== undefined ? s.slSharpness : 50) - root.slSharpness) > 0.01) return false
+                            
+                            // Compare mode and options
+                            if ((s.selectedMode !== undefined ? s.selectedMode : "") !== root.selectedMode) return false
+                            if ((s.selectedTheory !== undefined ? s.selectedTheory : "") !== root.selectedTheory) return false
+                            if ((s.selectedStyle !== undefined ? s.selectedStyle : "") !== root.selectedStyle) return false
+                            if ((s.selectedPractical !== undefined ? s.selectedPractical : "") !== root.selectedPractical) return false
+                            if ((s.remapPalette !== undefined ? s.remapPalette : "") !== root.remapPalette) return false
+                            if ((s.remapColors !== undefined ? s.remapColors : 32) !== root.remapColors) return false
+                            if ((s.remapDither !== undefined ? s.remapDither : "FloydSteinberg2x2") !== root.remapDither) return false
+                            if ((s.darkMode !== undefined ? s.darkMode : true) !== root.darkMode) return false
+                            if ((s.applyMode !== undefined ? s.applyMode : "both") !== root.applyMode) return false
+                            
+                            // Compare tone curve points
+                            if (s.curvePoints && Array.isArray(s.curvePoints)) {
+                                if (s.curvePoints.length !== root.curvePoints.length) return false
+                                for (let i = 0; i < s.curvePoints.length; i++) {
+                                    const p1 = s.curvePoints[i]
+                                    const p2 = root.curvePoints[i]
+                                    if (!p2 || Math.abs(p1[0] - p2[0]) > 0.001 || Math.abs(p1[1] - p2[1]) > 0.001) return false
+                                }
+                            } else if (!root.curveIsIdentity()) {
+                                return false
+                            }
+                            
+                            return true
+                        }
+                        
+                        border.width: isCurrent ? 2 : 1
+                        border.color: isCurrent ? Appearance.colors.colPrimary : Appearance.colors.colLayer0Border
+                        Behavior on color { ColorAnimation { duration: 100 } }
+                        
+                        // Content container for clipping
+                        Rectangle {
+                            id: innerClipContainer
+                            anchors.fill: parent
+                            anchors.margins: parent.border.width
+                            radius: histChip.radius - parent.border.width
+                            color: "transparent"
+                            clip: true
+                            
+                            layer.enabled: true
+                            layer.effect: OpacityMask {
+                                maskSource: Rectangle {
+                                    width: innerClipContainer.width; height: innerClipContainer.height
+                                    radius: innerClipContainer.radius
+                                }
+                            }
+                            
+                            // Visual wallpaper thumbnail
+                            Image {
+                                id: thumbImg
+                                anchors.fill: parent
+                                source: {
+                                    if (modelData.thumbnail && modelData.thumbnail !== "") {
+                                        return "file://" + modelData.thumbnail
+                                    }
+                                    if (modelData.wallpaper && modelData.wallpaper !== "" && !/processed(-[ab])?\.png$/.test(modelData.wallpaper)) {
+                                        return "file://" + modelData.wallpaper
+                                    }
+                                    return ""
+                                }
+                                fillMode: Image.PreserveAspectCrop
+                                smooth: true
+                                asynchronous: true
+                                visible: source != ""
+                            }
+                            
+                            // Fallback stripes if no visual thumbnail is available
+                            Row {
+                                anchors.fill: parent
+                                anchors.margins: 4
+                                spacing: 2
+                                visible: thumbImg.source == ""
+                                
+                                Rectangle {
+                                    width: (parent.width - 4) / 3; height: parent.height
+                                    radius: 4
+                                    color: modelData.primary || "#444"
+                                }
+                                Rectangle {
+                                    width: (parent.width - 4) / 3; height: parent.height
+                                    radius: 4
+                                    color: modelData.secondary || "#444"
+                                }
+                                Rectangle {
+                                    width: (parent.width - 4) / 3; height: parent.height
+                                    radius: 4
+                                    color: modelData.tertiary || "#444"
+                                }
+                            }
+                            
+                            // Subtle bottom overlay for dots on visual thumbnail
+                            Rectangle {
+                                anchors { left: parent.left; right: parent.right; bottom: parent.bottom }
+                                height: 18
+                                color: Qt.rgba(0, 0, 0, 0.6)
+                                visible: thumbImg.source != ""
+                                
+                                Row {
+                                    anchors.centerIn: parent
+                                    spacing: 5
+                                    Rectangle {
+                                        width: 10; height: 10; radius: 5
+                                        color: modelData.primary || "transparent"
+                                        border.width: modelData.primary ? 1 : 0
+                                        border.color: "#ffffff"
+                                    }
+                                    Rectangle {
+                                        width: 10; height: 10; radius: 5
+                                        color: modelData.secondary || "transparent"
+                                        border.width: modelData.secondary ? 1 : 0
+                                        border.color: "#ffffff"
+                                    }
+                                    Rectangle {
+                                        width: 10; height: 10; radius: 5
+                                        color: modelData.tertiary || "transparent"
+                                        border.width: modelData.tertiary ? 1 : 0
+                                        border.color: "#ffffff"
+                                    }
+                                }
+                            }
+                        }
+
+                        HoverHandler { margin: Appearance.sizes.touchSlop; id: histChipHov }
+                        TapHandler { margin: Appearance.sizes.touchSlop; onTapped: root.applyHistoryEntry(modelData) }
+                    }
+                }
+            }
+        }
 
     // ── Active mix summary ─────────────────────────────────────────────────
     // Surfaces every non-default section choice as a dismissable chip so the
@@ -179,6 +408,8 @@ Rectangle {
             case "curve":     curveOpen = true; break
         }
     }
+
+    property bool parallaxOpen:  false
 
     // Section dropdowns (default closed)
     property bool theoryOpen:    false
@@ -1213,124 +1444,119 @@ Rectangle {
                 }
             }
 
-            Flow {
+            // A numbered column, not a chip cloud. These stages RUN IN THIS
+            // ORDER — mixOrder goes to switchwall.sh as --mix-order and the
+            // palette genuinely differs by it — and a row of tags says nothing
+            // about that. Drag a row to reorder; the number is the stage.
+            ColumnLayout {
+                id: mixStack
                 Layout.fillWidth: true
-                spacing: 4
+                spacing: 3
+
                 Repeater {
                     model: root.activeMix
                     delegate: Rectangle {
-                        id: chip
+                        id: stage
                         required property var modelData
-                        implicitWidth: chipRow.implicitWidth + 10
-                        implicitHeight: 22
-                        radius: 11
-                        color: chipBodyMa.containsMouse || dragHandler.active
-                            ? Qt.alpha(modelData.color, 0.28)
-                            : Qt.alpha(modelData.color, 0.16)
+                        required property int index
+
+                        Layout.fillWidth: true
+                        implicitHeight: 30
+                        radius: Appearance.rounding.verysmall
+                        color: stageMa.containsMouse || stageDrag.active
+                            ? Qt.alpha(modelData.color, 0.22)
+                            : Qt.alpha(modelData.color, 0.10)
                         border.width: 1
-                        border.color: Qt.alpha(modelData.color, dragHandler.active ? 0.9 : 0.55)
+                        border.color: Qt.alpha(modelData.color, stageDrag.active ? 0.9 : 0.35)
                         Behavior on color { ColorAnimation { duration: 100 } }
 
-                        // Drag-to-reorder. We offset the chip with a Translate
-                        // transform (NOT x/y) so the parent Flow keeps owning
-                        // layout and doesn't fight the drag. On release we find
-                        // the nearest sibling chip and splice mixOrder so this
-                        // chip lands before it.
-                        z: dragHandler.active ? 50 : 0
-                        opacity: dragHandler.active ? 0.9 : 1
-                        scale: dragHandler.active ? 1.06 : 1
+                        // Moved by transform, not y: the layout keeps owning
+                        // position, so the drag cannot fight it.
+                        z: stageDrag.active ? 50 : 0
+                        scale: stageDrag.active ? 1.02 : 1
                         Behavior on scale { NumberAnimation { duration: 90 } }
-                        transform: Translate {
-                            x: dragHandler.active ? dragHandler.activeTranslation.x : 0
-                            y: dragHandler.active ? dragHandler.activeTranslation.y : 0
-                        }
+                        transform: Translate { y: stageDrag.active ? stageDrag.activeTranslation.y : 0 }
+
                         DragHandler {
-                            id: dragHandler
-                            target: null            // we move via transform, not x/y
-                            // Drop target, recomputed live during the drag.
-                            // (activeTranslation resets to 0 the instant the
-                            // handler deactivates, so we can't read it on
-                            // release — capture the target while still active.)
+                            id: stageDrag
+                            target: null
+                            yAxis.enabled: true
+                            xAxis.enabled: false
                             property string dropKey: ""
                             onActiveTranslationChanged: {
-                                if (!active) return
-                                const flow = chip.parent
-                                const cx = chip.x + activeTranslation.x + chip.width / 2
-                                const cy = chip.y + activeTranslation.y + chip.height / 2
-                                let best = null, bestD = Infinity
-                                for (let i = 0; i < flow.children.length; i++) {
-                                    const c = flow.children[i]
-                                    if (c === chip || !c.modelData) continue
-                                    const dx = (c.x + c.width / 2) - cx
-                                    const dy = (c.y + c.height / 2) - cy
-                                    const d = dx * dx + dy * dy
-                                    if (d < bestD) { bestD = d; best = c }
+                                if (!active) return;
+                                const cy = stage.y + activeTranslation.y + stage.height / 2;
+                                let best = null, bestD = Infinity;
+                                for (const c of mixStack.children) {
+                                    if (c === stage || !c.modelData) continue;
+                                    const d = Math.abs((c.y + c.height / 2) - cy);
+                                    if (d < bestD) { bestD = d; best = c; }
                                 }
-                                dropKey = best ? best.modelData.key : ""
+                                dropKey = best ? best.modelData.key : "";
                             }
                             onActiveChanged: {
-                                if (active) { dropKey = ""; return }
-                                if (dropKey) root.moveMixBefore(chip.modelData.key, dropKey)
-                                dropKey = ""
+                                if (active) { dropKey = ""; return; }
+                                if (dropKey) root.moveMixBefore(stage.modelData.key, dropKey);
+                                dropKey = "";
                             }
                         }
 
-                        // Body MouseArea — clicking opens the section.
-                        // Sits BELOW the × button's MouseArea, which is at the
-                        // right edge. MouseArea event delivery is depth-first
-                        // so the × consumes the press before this one sees it.
-                        // A drag is handled by DragHandler above; a plain click
-                        // still opens the section.
                         MouseArea {
-                            id: chipBodyMa
+                            id: stageMa
                             anchors.fill: parent
                             hoverEnabled: true
-                            cursorShape: dragHandler.active ? Qt.ClosedHandCursor : Qt.PointingHandCursor
-                            acceptedButtons: Qt.LeftButton
-                            onClicked: if (!dragHandler.active) root.openMixSection(chip.modelData.key)
+                            cursorShape: stageDrag.active ? Qt.ClosedHandCursor : Qt.PointingHandCursor
+                            onClicked: if (!stageDrag.active) root.openMixSection(stage.modelData.key)
                         }
 
-                        Row {
-                            id: chipRow
-                            anchors.centerIn: parent
-                            spacing: 5
+                        RowLayout {
+                            anchors.fill: parent
+                            anchors.leftMargin: 8
+                            anchors.rightMargin: 4
+                            spacing: 8
+
+                            StyledText {
+                                text: stage.index + 1
+                                font.pixelSize: Appearance.font.pixelSize.smallest
+                                font.family: Appearance.font.family.numbers
+                                color: Appearance.colors.colOnLayer0
+                                opacity: 0.4
+                            }
                             Rectangle {
-                                anchors.verticalCenter: parent.verticalCenter
-                                width: 7; height: 7; radius: 4
-                                color: chip.modelData.color
+                                implicitWidth: 8; implicitHeight: 8; radius: 4
+                                color: stage.modelData.color
                             }
                             StyledText {
-                                anchors.verticalCenter: parent.verticalCenter
-                                text: chip.modelData.section + ": " + chip.modelData.label
-                                font.pixelSize: Appearance.font.pixelSize.smaller - 2
+                                text: stage.modelData.section
+                                font.pixelSize: Appearance.font.pixelSize.smaller
                                 color: Appearance.colors.colOnLayer0
+                                opacity: 0.55
                             }
-                            // × close button. Its own MouseArea (preventStealing)
-                            // consumes the press so chipBodyMa never sees it.
-                            Rectangle {
-                                anchors.verticalCenter: parent.verticalCenter
-                                width: 14; height: 14
-                                radius: 7
-                                color: closeMa.containsMouse
-                                    ? Qt.alpha(chip.modelData.color, 0.55)
-                                    : "transparent"
-                                Behavior on color { ColorAnimation { duration: 100 } }
-                                MouseArea {
-                                    id: closeMa
+                            StyledText {
+                                Layout.fillWidth: true
+                                text: stage.modelData.label
+                                font.pixelSize: Appearance.font.pixelSize.smaller
+                                font.weight: Font.Medium
+                                color: Appearance.colors.colOnLayer0
+                                elide: Text.ElideRight
+                            }
+                            MaterialSymbol {
+                                text: "drag_indicator"
+                                iconSize: Appearance.font.pixelSize.small
+                                color: Appearance.colors.colOnLayer0
+                                opacity: stageMa.containsMouse ? 0.45 : 0.2
+                            }
+                            RippleButton {
+                                implicitWidth: 22; implicitHeight: 22
+                                buttonRadius: Appearance.rounding.full
+                                onClicked: root.clearMix(stage.modelData.key)
+                                contentItem: MaterialSymbol {
                                     anchors.fill: parent
-                                    anchors.margins: -Appearance.sizes.touchSlop
-                                    hoverEnabled: true
-                                    cursorShape: Qt.PointingHandCursor
-                                    preventStealing: true
-                                    acceptedButtons: Qt.LeftButton
-                                    onClicked: root.clearMix(chip.modelData.key)
-                                }
-                                MaterialSymbol {
-                                    anchors.centerIn: parent
+                                    horizontalAlignment: Text.AlignHCenter
+                                    verticalAlignment: Text.AlignVCenter
                                     text: "close"
-                                    iconSize: 10
+                                    iconSize: Appearance.font.pixelSize.smaller
                                     color: Appearance.colors.colOnLayer0
-                                    opacity: 0.7
                                 }
                             }
                         }
@@ -1368,11 +1594,8 @@ Rectangle {
 
         ColumnLayout { Layout.fillWidth: true; spacing: 5
             opacity: root.sourceIsVideo ? 0.4 : 1.0
-            StyledText {
-                text: qsTr("Transition")
-                font.pixelSize: Appearance.font.pixelSize.smaller - 1
-                color: Appearance.colors.colOnLayer0; opacity: 0.4; font.weight: Font.Medium
-            }
+        GroupHeading { text: qsTr("Wallpaper") }
+            SectionLabel { text: qsTr("Transition") }
             SegmentedButtons {
                 Layout.fillWidth: true
                 showCheck: false
@@ -1382,6 +1605,7 @@ Rectangle {
             }
         }
 
+        SectionLabel { text: qsTr("Apply to") }
         SegmentedButtons {
             Layout.fillWidth: true
             showCheck: false
@@ -1394,128 +1618,13 @@ Rectangle {
         // Background.qml multiplies its render scale by this every time
         // you switch workspaces. 1.00 = no zoom, 1.07 = default subtle,
         // 1.30 = punchy. Off = disable entirely.
-        Rectangle {
+        // Parallax is two settings that are set once and left alone, so it
+        // does not earn a permanent card in the main column.
+        PanelActionButton {
             Layout.fillWidth: true
-            // +24 with 12px inner margins, same as the Effect card. It was
-            // +14 with 10px margins, so the two cards sat at visibly
-            // different densities right next to each other.
-            implicitHeight: parallaxCol.implicitHeight + 24
-            // Card chrome, shared with the Effect card below: one radius from
-            // the ramp and one border, instead of 14-with-border here and
-            // 17-without there.
-            radius: Appearance.rounding.normal
-            color: Appearance.colors.colLayer1
-            border.width: 1
-            border.color: Appearance.colors.colLayer0Border
-
-            ColumnLayout {
-                id: parallaxCol
-                anchors { left: parent.left; right: parent.right; verticalCenter: parent.verticalCenter; margins: 12 }
-                spacing: 4
-
-                RowLayout {
-                    Layout.fillWidth: true
-                    MaterialSymbol {
-                        text: "swap_horiz"
-                        iconSize: Appearance.font.pixelSize.normal
-                        color: Appearance.colors.colOnLayer0
-                    }
-                    StyledText {
-                        Layout.fillWidth: true
-                        text: qsTr("Workspace parallax")
-                        font.pixelSize: Appearance.font.pixelSize.smaller
-                        font.weight: Font.Medium
-                        color: Appearance.colors.colOnLayer0
-                    }
-                    // Mini iOS-style switch.
-                    Rectangle {
-                        implicitWidth: 28; implicitHeight: 16; radius: 8
-                        color: Config.options.background.parallax.enableWorkspace
-                            ? Qt.alpha(Appearance.colors.colPrimary, 0.45)
-                            : Qt.alpha(Appearance.colors.colOnLayer0, 0.20)
-                        Behavior on color { ColorAnimation { duration: 140 } }
-                        TapHandler {
-                            margin: Appearance.sizes.touchSlop
-                            onTapped: Config.options.background.parallax.enableWorkspace =
-                                !Config.options.background.parallax.enableWorkspace
-                        }
-                        Rectangle {
-                            width: 12; height: 12; radius: 6
-                            anchors.verticalCenter: parent.verticalCenter
-                            x: Config.options.background.parallax.enableWorkspace
-                                ? parent.width - width - 2 : 2
-                            color: Config.options.background.parallax.enableWorkspace
-                                ? Appearance.colors.colPrimary
-                                : Appearance.colors.colOnLayer0
-                            Behavior on x     { NumberAnimation { duration: 160; easing.type: Easing.OutCubic } }
-                            Behavior on color { ColorAnimation { duration: 140 } }
-                        }
-                    }
-                }
-
-                RowLayout {
-                    Layout.fillWidth: true
-                    enabled: Config.options.background.parallax.enableWorkspace
-                    opacity: enabled ? 1 : 0.45
-                    Behavior on opacity { NumberAnimation { duration: 160 } }
-
-                    StyledText {
-                        text: qsTr("Zoom")
-                        font.pixelSize: Appearance.font.pixelSize.smaller - 1
-                        color: Appearance.colors.colOnLayer0
-                        opacity: 0.7
-                        Layout.preferredWidth: 38
-                    }
-                    Slider {
-                        id: zoomSlider
-                        Layout.fillWidth: true
-                        implicitHeight: 16
-                        from: 1.00
-                        to:   1.30
-                        stepSize: 0.01
-                        value: Config.options.background.parallax.workspaceZoom
-                        onMoved: Config.options.background.parallax.workspaceZoom = value
-
-                        // Custom M3-style track + thumb (the default QtQuick
-                        // Slider's big dark knob looked out of place next to the
-                        // panel's pill controls). Thin rounded groove, primary
-                        // fill up to the thumb, small primary thumb that grows
-                        // on press.
-                        background: Rectangle {
-                            x: zoomSlider.leftPadding
-                            y: zoomSlider.topPadding + zoomSlider.availableHeight / 2 - height / 2
-                            width: zoomSlider.availableWidth
-                            height: 4
-                            radius: 2
-                            color: Qt.alpha(Appearance.colors.colOnLayer0, 0.15)
-                            Rectangle {
-                                width: zoomSlider.position * parent.width
-                                height: parent.height
-                                radius: parent.radius
-                                color: Appearance.colors.colPrimary
-                            }
-                        }
-                        handle: Rectangle {
-                            x: zoomSlider.leftPadding + zoomSlider.position * (zoomSlider.availableWidth - width)
-                            y: zoomSlider.topPadding + zoomSlider.availableHeight / 2 - height / 2
-                            implicitWidth: 14
-                            implicitHeight: 14
-                            radius: 7
-                            color: Appearance.colors.colPrimary
-                            scale: zoomSlider.pressed ? 1.25 : (zoomHov.hovered ? 1.1 : 1)
-                            Behavior on scale { NumberAnimation { duration: 100; easing.type: Easing.OutCubic } }
-                            HoverHandler { id: zoomHov }
-                        }
-                    }
-                    StyledText {
-                        text: Math.round(Config.options.background.parallax.workspaceZoom * 100) + "%"
-                        font.pixelSize: Appearance.font.pixelSize.smaller - 1
-                        color: Appearance.colors.colOnLayer0
-                        Layout.preferredWidth: 38
-                        horizontalAlignment: Text.AlignRight
-                    }
-                }
-            }
+            iconName: "swap_horiz"
+            buttonLabel: qsTr("Workspace parallax")
+            onClicked: root.parallaxOpen = true
         }
 
         // ── Wallpaper effect ────────────────────────────────────────────
@@ -1576,6 +1685,11 @@ Rectangle {
                 // directions and it no longer read as the card's main control.
                 StyledComboBox {
                     Layout.fillWidth: true
+                    // colLayer2, not secondaryContainer: filled with the accent
+                    // it was the loudest element here, for a control that is
+                    // off most of the time.
+                    colBackground: Appearance.colors.colLayer2
+                    colBackgroundHover: Appearance.colors.colLayer2Hover
                     readonly property var opts: [{ name: "Off", path: "" }]
                         .concat(AppDisplay.effects.map(e => ({ name: e.name, path: e.path })))
                     model: opts
@@ -1671,6 +1785,8 @@ Rectangle {
             }
         }
 
+        GroupHeading { text: qsTr("Colour") }
+        SectionLabel { text: qsTr("Theme mode") }
         SegmentedButtons {
             Layout.fillWidth: true
             showCheck: false
@@ -1683,7 +1799,7 @@ Rectangle {
         }
 
         // Extraction mode
-        StyledText { text: qsTr("Extraction mode"); font.pixelSize: Appearance.font.pixelSize.smaller - 1; color: Appearance.colors.colOnLayer0; opacity: 0.4; font.weight: Font.Medium }
+        SectionLabel { text: qsTr("Extraction mode") }
         Flow { Layout.fillWidth: true; spacing: 4
             Repeater {
                 model: root.extractModes
@@ -1721,199 +1837,6 @@ Rectangle {
             visible: root.history.length > 0
         }
 
-        // ── History row ─────────────────────────────────────────────────
-        // Newest output first. Each chip shows a visual preview of the tuned
-        // wallpaper with overlaid primary/secondary/tertiary colors.
-        ColumnLayout {
-            Layout.fillWidth: true
-            spacing: 4
-            visible: root.history.length > 0
-
-            RowLayout {
-                Layout.fillWidth: true; spacing: 4
-                StyledText {
-                    Layout.fillWidth: true
-                    text: qsTr("Recent Themes")
-                    font.pixelSize: Appearance.font.pixelSize.smaller - 1
-                    font.weight: Font.Medium
-                    color: Appearance.colors.colOnLayer0; opacity: 0.5
-                }
-                StyledText {
-                    text: root.history.length + ""
-                    font.pixelSize: Appearance.font.pixelSize.smaller - 2
-                    color: Appearance.colors.colOnLayer0; opacity: 0.35
-                }
-            }
-
-            Item {
-                Layout.fillWidth: true
-                implicitHeight: 48
-                clip: true
-                ListView {
-                    id: walltuneHistList
-                    anchors.fill: parent
-                    orientation: ListView.Horizontal
-                    spacing: 5
-                    boundsBehavior: Flickable.StopAtBounds
-                    model: root.history
-
-                    delegate: Rectangle {
-                        id: histChip
-                        required property var modelData
-                        required property int index
-                        implicitWidth: 64
-                        height: ListView.view.height
-                        radius: 8
-                        color: histChipHov.hovered
-                            ? Appearance.colors.colLayer2
-                            : Appearance.colors.colLayer1
-                        
-                        readonly property bool isCurrent: {
-                            const cw = modelData.wallpaper
-                            if (!cw || cw === "" || cw !== root.sourceWall) return false
-                            const s = modelData.state
-                            if (!s) return false
-                            
-                            // Compare core slider states with float tolerance
-                            if (Math.abs((s.slVibrance !== undefined ? s.slVibrance : 50) - root.slVibrance) > 0.01) return false
-                            if (Math.abs((s.slContrast !== undefined ? s.slContrast : 50) - root.slContrast) > 0.01) return false
-                            if (Math.abs((s.slTemperature !== undefined ? s.slTemperature : 50) - root.slTemperature) > 0.01) return false
-                            if (Math.abs((s.slBrightness !== undefined ? s.slBrightness : 50) - root.slBrightness) > 0.01) return false
-                            if (Math.abs((s.slSaturation !== undefined ? s.slSaturation : 50) - root.slSaturation) > 0.01) return false
-                            if (Math.abs((s.slHueShift !== undefined ? s.slHueShift : 50) - root.slHueShift) > 0.01) return false
-                            if (Math.abs((s.slHighlight !== undefined ? s.slHighlight : 50) - root.slHighlight) > 0.01) return false
-                            if (Math.abs((s.slShadow !== undefined ? s.slShadow : 50) - root.slShadow) > 0.01) return false
-                            if (Math.abs((s.slGrain !== undefined ? s.slGrain : 0) - root.slGrain) > 0.01) return false
-                            if (Math.abs((s.slSharpness !== undefined ? s.slSharpness : 50) - root.slSharpness) > 0.01) return false
-                            
-                            // Compare mode and options
-                            if ((s.selectedMode !== undefined ? s.selectedMode : "") !== root.selectedMode) return false
-                            if ((s.selectedTheory !== undefined ? s.selectedTheory : "") !== root.selectedTheory) return false
-                            if ((s.selectedStyle !== undefined ? s.selectedStyle : "") !== root.selectedStyle) return false
-                            if ((s.selectedPractical !== undefined ? s.selectedPractical : "") !== root.selectedPractical) return false
-                            if ((s.remapPalette !== undefined ? s.remapPalette : "") !== root.remapPalette) return false
-                            if ((s.remapColors !== undefined ? s.remapColors : 32) !== root.remapColors) return false
-                            if ((s.remapDither !== undefined ? s.remapDither : "FloydSteinberg2x2") !== root.remapDither) return false
-                            if ((s.darkMode !== undefined ? s.darkMode : true) !== root.darkMode) return false
-                            if ((s.applyMode !== undefined ? s.applyMode : "both") !== root.applyMode) return false
-                            
-                            // Compare tone curve points
-                            if (s.curvePoints && Array.isArray(s.curvePoints)) {
-                                if (s.curvePoints.length !== root.curvePoints.length) return false
-                                for (let i = 0; i < s.curvePoints.length; i++) {
-                                    const p1 = s.curvePoints[i]
-                                    const p2 = root.curvePoints[i]
-                                    if (!p2 || Math.abs(p1[0] - p2[0]) > 0.001 || Math.abs(p1[1] - p2[1]) > 0.001) return false
-                                }
-                            } else if (!root.curveIsIdentity()) {
-                                return false
-                            }
-                            
-                            return true
-                        }
-                        
-                        border.width: isCurrent ? 2 : 1
-                        border.color: isCurrent ? Appearance.colors.colPrimary : Appearance.colors.colLayer0Border
-                        Behavior on color { ColorAnimation { duration: 100 } }
-                        
-                        // Content container for clipping
-                        Rectangle {
-                            id: innerClipContainer
-                            anchors.fill: parent
-                            anchors.margins: parent.border.width
-                            radius: histChip.radius - parent.border.width
-                            color: "transparent"
-                            clip: true
-                            
-                            layer.enabled: true
-                            layer.effect: OpacityMask {
-                                maskSource: Rectangle {
-                                    width: innerClipContainer.width; height: innerClipContainer.height
-                                    radius: innerClipContainer.radius
-                                }
-                            }
-                            
-                            // Visual wallpaper thumbnail
-                            Image {
-                                id: thumbImg
-                                anchors.fill: parent
-                                source: {
-                                    if (modelData.thumbnail && modelData.thumbnail !== "") {
-                                        return "file://" + modelData.thumbnail
-                                    }
-                                    if (modelData.wallpaper && modelData.wallpaper !== "" && !/processed(-[ab])?\.png$/.test(modelData.wallpaper)) {
-                                        return "file://" + modelData.wallpaper
-                                    }
-                                    return ""
-                                }
-                                fillMode: Image.PreserveAspectCrop
-                                smooth: true
-                                asynchronous: true
-                                visible: source != ""
-                            }
-                            
-                            // Fallback stripes if no visual thumbnail is available
-                            Row {
-                                anchors.fill: parent
-                                anchors.margins: 4
-                                spacing: 2
-                                visible: thumbImg.source == ""
-                                
-                                Rectangle {
-                                    width: (parent.width - 4) / 3; height: parent.height
-                                    radius: 4
-                                    color: modelData.primary || "#444"
-                                }
-                                Rectangle {
-                                    width: (parent.width - 4) / 3; height: parent.height
-                                    radius: 4
-                                    color: modelData.secondary || "#444"
-                                }
-                                Rectangle {
-                                    width: (parent.width - 4) / 3; height: parent.height
-                                    radius: 4
-                                    color: modelData.tertiary || "#444"
-                                }
-                            }
-                            
-                            // Subtle bottom overlay for dots on visual thumbnail
-                            Rectangle {
-                                anchors { left: parent.left; right: parent.right; bottom: parent.bottom }
-                                height: 18
-                                color: Qt.rgba(0, 0, 0, 0.6)
-                                visible: thumbImg.source != ""
-                                
-                                Row {
-                                    anchors.centerIn: parent
-                                    spacing: 5
-                                    Rectangle {
-                                        width: 10; height: 10; radius: 5
-                                        color: modelData.primary || "transparent"
-                                        border.width: modelData.primary ? 1 : 0
-                                        border.color: "#ffffff"
-                                    }
-                                    Rectangle {
-                                        width: 10; height: 10; radius: 5
-                                        color: modelData.secondary || "transparent"
-                                        border.width: modelData.secondary ? 1 : 0
-                                        border.color: "#ffffff"
-                                    }
-                                    Rectangle {
-                                        width: 10; height: 10; radius: 5
-                                        color: modelData.tertiary || "transparent"
-                                        border.width: modelData.tertiary ? 1 : 0
-                                        border.color: "#ffffff"
-                                    }
-                                }
-                            }
-                        }
-
-                        HoverHandler { margin: Appearance.sizes.touchSlop; id: histChipHov }
-                        TapHandler { margin: Appearance.sizes.touchSlop; onTapped: root.applyHistoryEntry(modelData) }
-                    }
-                }
-            }
-        }
 
         // ── Per-app colours ──────────────────────────────────────────────
         // Everything below shapes the one palette every app receives. This
@@ -2820,7 +2743,7 @@ Rectangle {
 
         // Blueprints
         ColumnLayout { Layout.fillWidth: true; spacing: 4; visible: root.blueprints.length > 0
-            StyledText { text: qsTr("Blueprints"); font.pixelSize: Appearance.font.pixelSize.smaller - 1; color: Appearance.colors.colOnLayer0; opacity: 0.4; font.weight: Font.Medium }
+            SectionLabel { text: qsTr("Blueprints") }
             Flow { Layout.fillWidth: true; spacing: 4
                 Repeater {
                     model: root.blueprints
@@ -2919,6 +2842,138 @@ Rectangle {
                 }
             }
         }
+    }
+
+    // Parallax, on demand: two settings that get set once and left alone.
+    PanelSheet {
+        id: parallaxPopup
+        open: root.parallaxOpen
+        title: qsTr("Workspace parallax")
+        onClosed: root.parallaxOpen = false
+
+            Rectangle {
+                Layout.fillWidth: true
+                // +24 with 12px inner margins, same as the Effect card. It was
+                // +14 with 10px margins, so the two cards sat at visibly
+                // different densities right next to each other.
+                implicitHeight: parallaxCol.implicitHeight + 24
+                // Card chrome, shared with the Effect card below: one radius from
+                // the ramp and one border, instead of 14-with-border here and
+                // 17-without there.
+                radius: Appearance.rounding.normal
+                color: Appearance.colors.colLayer1
+                border.width: 1
+                border.color: Appearance.colors.colLayer0Border
+    
+                ColumnLayout {
+                    id: parallaxCol
+                    anchors { left: parent.left; right: parent.right; verticalCenter: parent.verticalCenter; margins: 12 }
+                    spacing: 4
+    
+                    RowLayout {
+                        Layout.fillWidth: true
+                        MaterialSymbol {
+                            text: "swap_horiz"
+                            iconSize: Appearance.font.pixelSize.normal
+                            color: Appearance.colors.colOnLayer0
+                        }
+                        StyledText {
+                            Layout.fillWidth: true
+                            text: qsTr("Workspace parallax")
+                            font.pixelSize: Appearance.font.pixelSize.smaller
+                            font.weight: Font.Medium
+                            color: Appearance.colors.colOnLayer0
+                        }
+                        // Mini iOS-style switch.
+                        Rectangle {
+                            implicitWidth: 28; implicitHeight: 16; radius: 8
+                            color: Config.options.background.parallax.enableWorkspace
+                                ? Qt.alpha(Appearance.colors.colPrimary, 0.45)
+                                : Qt.alpha(Appearance.colors.colOnLayer0, 0.20)
+                            Behavior on color { ColorAnimation { duration: 140 } }
+                            TapHandler {
+                                margin: Appearance.sizes.touchSlop
+                                onTapped: Config.options.background.parallax.enableWorkspace =
+                                    !Config.options.background.parallax.enableWorkspace
+                            }
+                            Rectangle {
+                                width: 12; height: 12; radius: 6
+                                anchors.verticalCenter: parent.verticalCenter
+                                x: Config.options.background.parallax.enableWorkspace
+                                    ? parent.width - width - 2 : 2
+                                color: Config.options.background.parallax.enableWorkspace
+                                    ? Appearance.colors.colPrimary
+                                    : Appearance.colors.colOnLayer0
+                                Behavior on x     { NumberAnimation { duration: 160; easing.type: Easing.OutCubic } }
+                                Behavior on color { ColorAnimation { duration: 140 } }
+                            }
+                        }
+                    }
+    
+                    RowLayout {
+                        Layout.fillWidth: true
+                        enabled: Config.options.background.parallax.enableWorkspace
+                        opacity: enabled ? 1 : 0.45
+                        Behavior on opacity { NumberAnimation { duration: 160 } }
+    
+                        StyledText {
+                            text: qsTr("Zoom")
+                            font.pixelSize: Appearance.font.pixelSize.smaller - 1
+                            color: Appearance.colors.colOnLayer0
+                            opacity: 0.7
+                            Layout.preferredWidth: 38
+                        }
+                        Slider {
+                            id: zoomSlider
+                            Layout.fillWidth: true
+                            implicitHeight: 16
+                            from: 1.00
+                            to:   1.30
+                            stepSize: 0.01
+                            value: Config.options.background.parallax.workspaceZoom
+                            onMoved: Config.options.background.parallax.workspaceZoom = value
+    
+                            // Custom M3-style track + thumb (the default QtQuick
+                            // Slider's big dark knob looked out of place next to the
+                            // panel's pill controls). Thin rounded groove, primary
+                            // fill up to the thumb, small primary thumb that grows
+                            // on press.
+                            background: Rectangle {
+                                x: zoomSlider.leftPadding
+                                y: zoomSlider.topPadding + zoomSlider.availableHeight / 2 - height / 2
+                                width: zoomSlider.availableWidth
+                                height: 4
+                                radius: 2
+                                color: Qt.alpha(Appearance.colors.colOnLayer0, 0.15)
+                                Rectangle {
+                                    width: zoomSlider.position * parent.width
+                                    height: parent.height
+                                    radius: parent.radius
+                                    color: Appearance.colors.colPrimary
+                                }
+                            }
+                            handle: Rectangle {
+                                x: zoomSlider.leftPadding + zoomSlider.position * (zoomSlider.availableWidth - width)
+                                y: zoomSlider.topPadding + zoomSlider.availableHeight / 2 - height / 2
+                                implicitWidth: 14
+                                implicitHeight: 14
+                                radius: 7
+                                color: Appearance.colors.colPrimary
+                                scale: zoomSlider.pressed ? 1.25 : (zoomHov.hovered ? 1.1 : 1)
+                                Behavior on scale { NumberAnimation { duration: 100; easing.type: Easing.OutCubic } }
+                                HoverHandler { id: zoomHov }
+                            }
+                        }
+                        StyledText {
+                            text: Math.round(Config.options.background.parallax.workspaceZoom * 100) + "%"
+                            font.pixelSize: Appearance.font.pixelSize.smaller - 1
+                            color: Appearance.colors.colOnLayer0
+                            Layout.preferredWidth: 38
+                            horizontalAlignment: Text.AlignRight
+                        }
+                    }
+                }
+            }
     }
 }
 
