@@ -165,7 +165,19 @@ Scope {
             x: root.snapRight
                 ? parent.width - width - Appearance.sizes.hyprlandGapsOut
                 : Appearance.sizes.hyprlandGapsOut
-            Behavior on x { NumberAnimation { duration: 320; easing.type: Easing.OutCubic } }
+            // One duration and one curve for everything this card does. It
+            // used to fade at 220ms, rise at 260 and slide at 320, all on
+            // OutCubic — three clocks for one gesture, which is what made it
+            // look busy rather than quick.
+            readonly property int animDuration: Appearance.animation.elementMoveFast.duration
+
+            Behavior on x {
+                NumberAnimation {
+                    duration: hintCard.animDuration
+                    easing.type: Easing.BezierSpline
+                    easing.bezierCurve: Appearance.animationCurves.expressiveFastSpatial
+                }
+            }
             implicitWidth: cardCol.implicitWidth + 18
             implicitHeight: cardCol.implicitHeight + 14
             radius: Appearance.rounding.screenRounding - Appearance.sizes.hyprlandGapsOut + 1
@@ -174,11 +186,23 @@ Scope {
             border.color: Appearance.colors.colLayer0Border
 
             opacity: root.hintVisible ? 1 : 0
-            Behavior on opacity { NumberAnimation { duration: 220; easing.type: Easing.OutCubic } }
+            Behavior on opacity {
+                NumberAnimation {
+                    duration: hintCard.animDuration
+                    easing.type: Easing.BezierSpline
+                    easing.bezierCurve: Appearance.animationCurves.expressiveFastSpatial
+                }
+            }
 
             transform: Translate {
-                y: root.hintVisible ? 0 : 8
-                Behavior on y { NumberAnimation { duration: 260; easing.type: Easing.OutCubic } }
+                y: root.hintVisible ? 0 : 6
+                Behavior on y {
+                    NumberAnimation {
+                        duration: hintCard.animDuration
+                        easing.type: Easing.BezierSpline
+                        easing.bezierCurve: Appearance.animationCurves.expressiveFastSpatial
+                    }
+                }
             }
 
             // Context label header
@@ -186,6 +210,19 @@ Scope {
                 id: cardCol
                 anchors.centerIn: parent
                 spacing: 7
+
+                /// Width of the key column, i.e. the widest key group here.
+                property real keyColumnWidth: 0
+                function noteKeyWidth(w) {
+                    if (w > cardCol.keyColumnWidth) cardCol.keyColumnWidth = w;
+                }
+                // Reset on a context change, or the column keeps the widest
+                // value some earlier context happened to need and every later
+                // card is padded out to it.
+                Connections {
+                    target: root
+                    function onActiveContextChanged() { cardCol.keyColumnWidth = 0 }
+                }
 
                 // Context title
                 StyledText {
@@ -219,35 +256,36 @@ Scope {
                     opacity: 0.5
                 }
 
-                // Keybind rows
+                // Keybind rows.
+                //
+                // Every row used to size its own key area, so "Super" and
+                // "Super Tab" pushed their labels to different places and no
+                // two lines started at the same x. The widest key group now
+                // sets the column for all of them.
                 Repeater {
                     model: root.currentKeybinds
                     delegate: RowLayout {
                         required property var modelData
                         spacing: 10
 
-                        // Key chips
                         Row {
+                            id: keyRow
                             spacing: 3
+                            // Row's implicitWidth comes from its children, so
+                            // widening the cell cannot feed back into it.
+                            Layout.preferredWidth: Math.max(cardCol.keyColumnWidth, implicitWidth)
+                            onImplicitWidthChanged: cardCol.noteKeyWidth(implicitWidth)
+                            Component.onCompleted: cardCol.noteKeyWidth(implicitWidth)
+
                             Repeater {
                                 model: modelData.keys
-                                delegate: Rectangle {
+                                // The same key widget the cheatsheet draws, so
+                                // the two places that show keybinds agree about
+                                // what a key looks like.
+                                delegate: KeyboardKey {
                                     required property string modelData
-                                    implicitWidth: keyLabel.implicitWidth + 10
-                                    implicitHeight: keyLabel.implicitHeight + 5
-                                    radius: Appearance.rounding.small
-                                    color: Appearance.colors.colLayer2
-                                    border.width: 1
-                                    border.color: Appearance.colors.colOutlineVariant
-
-                                    StyledText {
-                                        id: keyLabel
-                                        anchors.centerIn: parent
-                                        text: modelData
-                                        font.pixelSize: Appearance.font.pixelSize.smallest
-                                        font.weight: Font.Medium
-                                        color: Appearance.colors.colOnLayer0
-                                    }
+                                    key: modelData
+                                    pixelSize: Appearance.font.pixelSize.smallest
                                 }
                             }
                         }

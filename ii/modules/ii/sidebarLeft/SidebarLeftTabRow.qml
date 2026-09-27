@@ -33,7 +33,11 @@ Flow {
             // the "Tools" label has collapsed.
             implicitHeight: 32
             implicitWidth: 32
-            radius: Appearance.rounding.full
+            // width / 2, not Appearance.rounding.full. The sentinel is meant to
+            // clamp to half the shorter side and it did not here — the result
+            // rendered as a rounded square. Half the width is unambiguous, and
+            // it is what this file used before.
+            radius: width / 2
             color: pill.active ? Appearance.colors.colPrimary
                  : (pillHov.hovered ? Appearance.colors.colLayer1Hover : "transparent")
             Behavior on color { ColorAnimation { duration: 160 } }
