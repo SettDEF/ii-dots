@@ -251,7 +251,10 @@ ApplicationWindow {
                 id: headerActions
                 anchors.verticalCenter: parent.verticalCenter
                 anchors.left: parent.left
-                anchors.leftMargin: 6
+                // Lines the first icon up with the page-list icons below: the
+                // rail sits 5px inside this bar, and a rail button centres its
+                // icon 28px in, against 20px for these 40px buttons.
+                anchors.leftMargin: 5 + 28 - 20
                 spacing: 2
 
                 NavigationRailExpandButton {

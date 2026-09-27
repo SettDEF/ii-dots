@@ -314,6 +314,15 @@ ScrollBar {
             }
         }
 
+
+    }
+
+    // Above the thumb: a Control paints contentItem over its background,
+    // so a map drawn down there disappears under a full-length thumb.
+    Item {
+        anchors.fill: parent
+        z: 10
+
         // The map: a dot per landmark, larger for a section start.
         Repeater {
             model: root.hasMap ? root.markers : []
