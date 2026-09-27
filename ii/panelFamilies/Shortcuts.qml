@@ -18,7 +18,7 @@ Scope {
     // ── WallTune ────────────────────────────────────────────────────────
     GlobalShortcut {
         name: "wallTuneToggle"
-        description: "Toggle WallTune color panel"
+        description: "Toggle the Palette panel"
         onPressed: GlobalStates.wallTuneOpen = !GlobalStates.wallTuneOpen
     }
 

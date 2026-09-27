@@ -973,7 +973,7 @@ Rectangle {
         height: 24
 
         MaterialSymbol { text: "tune"; iconSize: Appearance.font.pixelSize.normal; color: Appearance.colors.colPrimary; opacity: 0.8 }
-        StyledText { text: qsTr("Wall Tune"); font.pixelSize: Appearance.font.pixelSize.small; font.weight: Font.Medium; color: Appearance.colors.colOnLayer0; Layout.fillWidth: true }
+        StyledText { text: qsTr("Palette"); font.pixelSize: Appearance.font.pixelSize.small; font.weight: Font.Medium; color: Appearance.colors.colOnLayer0; Layout.fillWidth: true }
         // Phase text shown in the header while processing — discreet, but
         // visible enough that you know *which* stage you're in without
         // scrolling down to the button.
@@ -1366,115 +1366,28 @@ Rectangle {
             }
         }
 
-        // Transition picker
         ColumnLayout { Layout.fillWidth: true; spacing: 5
             opacity: root.sourceIsVideo ? 0.4 : 1.0
-            StyledText { text: qsTr("Transition"); font.pixelSize: Appearance.font.pixelSize.smaller - 1; color: Appearance.colors.colOnLayer0; opacity: 0.4; font.weight: Font.Medium }
-            Row { spacing: 5
-                Repeater {
-                    model: root.transitions
-                    delegate: Rectangle {
-                        required property var modelData
-                        readonly property bool active: GlobalStates.wallTransition === modelData.id
-                        implicitWidth: tRow.implicitWidth + 14; implicitHeight: 28; radius: 14
-                        color: active ? Appearance.colors.colSecondaryContainer : (tHov.hovered ? Appearance.colors.colLayer2 : Appearance.colors.colLayer1)
-                        Behavior on color { ColorAnimation { duration: 100 } }
-                        HoverHandler { id: tHov }
-                        TapHandler { onTapped: GlobalStates.wallTransition = modelData.id }
-                        Row { id: tRow; anchors.centerIn: parent; spacing: 4
-                            MaterialSymbol {
-                                anchors.verticalCenter: parent.verticalCenter; text: modelData.icon
-                                iconSize: Appearance.font.pixelSize.small - 1
-                                color: active ? Appearance.m3colors.m3onSecondaryContainer : Appearance.colors.colOnLayer0; opacity: active ? 1 : 0.55
-                                Behavior on color { ColorAnimation { duration: 100 } }
-                            }
-                            StyledText {
-                                anchors.verticalCenter: parent.verticalCenter; text: modelData.label
-                                font.pixelSize: Appearance.font.pixelSize.smaller - 2
-                                color: active ? Appearance.m3colors.m3onSecondaryContainer : Appearance.colors.colOnLayer0; opacity: active ? 1 : 0.65
-                                Behavior on color { ColorAnimation { duration: 100 } }
-                            }
-                        }
-                    }
-                }
+            StyledText {
+                text: qsTr("Transition")
+                font.pixelSize: Appearance.font.pixelSize.smaller - 1
+                color: Appearance.colors.colOnLayer0; opacity: 0.4; font.weight: Font.Medium
+            }
+            SegmentedButtons {
+                Layout.fillWidth: true
+                showCheck: false
+                currentId: GlobalStates.wallTransition
+                onSelected: id => GlobalStates.wallTransition = id
+                model: root.transitions.map(t => ({ id: t.id, label: t.label, icon: t.icon }))
             }
         }
 
-        // ── Apply mode switch (hole pill, 3-way slider) ─────────────────
-        // Recessed track + sliding thumb. Click any segment to switch.
-        Rectangle {
-            id: applyModeTrack
+        SegmentedButtons {
             Layout.fillWidth: true
-            implicitHeight: 32
-            radius: 16
-            // "Hole" look: just darker than the surrounding panel.
-            color: Qt.darker(Appearance.colors.colLayer0, 1.25)
-
-            readonly property int segCount: root.applyModes.length
-            readonly property int activeIdx: {
-                for (let i = 0; i < root.applyModes.length; i++)
-                    if (root.applyModes[i].id === root.applyMode) return i
-                return 1 // default "both"
-            }
-
-            // Sliding thumb (the "knob")
-            Rectangle {
-                id: applyModeThumb
-                width: applyModeTrack.width / applyModeTrack.segCount - 4
-                height: applyModeTrack.height - 4
-                y: 2
-                x: 2 + applyModeTrack.activeIdx * (applyModeTrack.width / applyModeTrack.segCount)
-                radius: applyModeTrack.radius - 2
-                color: Appearance.colors.colPrimary
-                Behavior on x { NumberAnimation { duration: 180; easing.type: Easing.OutCubic } }
-                Behavior on color { ColorAnimation { duration: 150 } }
-            }
-
-            // Three clickable segments overlaid on the track
-            Row {
-                anchors.fill: parent
-                Repeater {
-                    model: root.applyModes
-                    delegate: Item {
-                        required property var modelData
-                        required property int index
-                        readonly property bool active: root.applyMode === modelData.id
-                        width: applyModeTrack.width / applyModeTrack.segCount
-                        height: applyModeTrack.height
-
-                        TapHandler { onTapped: root.applyMode = modelData.id }
-                        HoverHandler { id: amHov }
-
-                        Row {
-                            anchors.centerIn: parent
-                            spacing: 4
-                            MaterialSymbol {
-                                anchors.verticalCenter: parent.verticalCenter
-                                text: modelData.icon
-                                iconSize: Appearance.font.pixelSize.small
-                                color: parent.parent.active
-                                    ? Appearance.m3colors.m3onPrimary
-                                    : Appearance.colors.colOnLayer0
-                                opacity: parent.parent.active ? 1 : (amHov.hovered ? 0.85 : 0.55)
-                                Behavior on color   { ColorAnimation  { duration: 150 } }
-                                Behavior on opacity { NumberAnimation { duration: 120 } }
-                            }
-                            StyledText {
-                                anchors.verticalCenter: parent.verticalCenter
-                                text: modelData.label
-                                font.pixelSize: Appearance.font.pixelSize.smaller - 1
-                                font.weight: parent.parent.active ? Font.Medium : Font.Normal
-                                color: parent.parent.active
-                                    ? Appearance.m3colors.m3onPrimary
-                                    : Appearance.colors.colOnLayer0
-                                opacity: parent.parent.active ? 1 : (amHov.hovered ? 0.85 : 0.55)
-                                Behavior on color   { ColorAnimation  { duration: 150 } }
-                                Behavior on opacity { NumberAnimation { duration: 120 } }
-                            }
-                        }
-                    }
-                }
-            }
+            showCheck: false
+            currentId: root.applyMode
+            onSelected: id => root.applyMode = id
+            model: root.applyModes.map(m => ({ id: m.id, label: m.label, icon: m.icon }))
         }
 
         // ── Parallax zoom on workspace scroll ──────────────────────────
@@ -1758,33 +1671,15 @@ Rectangle {
             }
         }
 
-        // Dark / Light
-        RowLayout { Layout.fillWidth: true; spacing: 4
-            Repeater {
-                model: [ { label: "Dark", icon: "dark_mode", val: true }, { label: "Light", icon: "light_mode", val: false } ]
-                delegate: Rectangle {
-                    required property var modelData
-                    Layout.fillWidth: true; implicitHeight: 28; radius: 14
-                    color: (root.darkMode === modelData.val) ? Appearance.colors.colSecondaryContainer : (dmHov.hovered ? Appearance.colors.colLayer2 : Appearance.colors.colLayer1)
-                    Behavior on color { ColorAnimation { duration: 120 } }
-                    HoverHandler { id: dmHov }
-                    TapHandler { onTapped: root.darkMode = modelData.val }
-                    RowLayout { anchors.centerIn: parent; spacing: 4
-                        MaterialSymbol {
-                            text: modelData.icon; iconSize: Appearance.font.pixelSize.small
-                            color: (root.darkMode === modelData.val) ? Appearance.m3colors.m3onSecondaryContainer : Appearance.colors.colOnLayer0
-                            opacity: (root.darkMode === modelData.val) ? 1 : 0.5
-                            Behavior on color { ColorAnimation { duration: 120 } }
-                        }
-                        StyledText {
-                            text: modelData.label; font.pixelSize: Appearance.font.pixelSize.smaller
-                            color: (root.darkMode === modelData.val) ? Appearance.m3colors.m3onSecondaryContainer : Appearance.colors.colOnLayer0
-                            opacity: (root.darkMode === modelData.val) ? 1 : 0.5
-                            Behavior on color { ColorAnimation { duration: 120 } }
-                        }
-                    }
-                }
-            }
+        SegmentedButtons {
+            Layout.fillWidth: true
+            showCheck: false
+            currentId: root.darkMode ? "dark" : "light"
+            onSelected: id => root.darkMode = (id === "dark")
+            model: [
+                { id: "dark",  label: qsTr("Dark"),  icon: "dark_mode" },
+                { id: "light", label: qsTr("Light"), icon: "light_mode" }
+            ]
         }
 
         // Extraction mode
