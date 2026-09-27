@@ -21,7 +21,7 @@ ScrollBar {
     property bool alwaysVisible: Config.options?.appearance?.scrollbar?.alwaysVisible ?? false
     /// Pointer target, wider than the drawn bar. Also a dead strip down every
     /// list's edge, since an attached ScrollBar overlays rather than reserves.
-    property real hitWidth: 18
+    property real hitWidth: 22
     /// Gap between the outer edge of the container and the drawn bar.
     ///
     /// The drawn bar sits at the outer edge rather than centred, so the extra
@@ -45,6 +45,19 @@ ScrollBar {
     function laneOffset(containerThickness, w) {
         return root.mirrored ? root.barInset
                              : Math.max(0, containerThickness - root.barInset - w);
+    }
+
+    /// Gap between the bar's lane and the map's, measured centre to centre.
+    property real mapLaneGap: 7
+
+    /// Cross-axis position for a dot `w` across, in its own lane INBOARD of the
+    /// bar. On the bar's own lane a landmark reads as a bead threaded onto it.
+    function mapLaneOffset(containerThickness, w) {
+        const barCentre = root.mirrored
+            ? root.barInset + root.barWidth / 2
+            : containerThickness - root.barInset - root.barWidth / 2;
+        const centre = barCentre + (root.mirrored ? root.mapLaneGap : -root.mapLaneGap);
+        return Math.max(0, Math.min(containerThickness - w, centre - w / 2));
     }
 
     /// Landmarks: [{ at, label, major }]. `at` is a fraction of the scrollable
@@ -287,14 +300,10 @@ ScrollBar {
                 readonly property bool lit: dot.current || dot.pulled || dot.underThumb
                 readonly property real along: root.padLead + root.trackLength * dot.at
 
-                // Centred on the LANE, not the container, so the dots stay on
-                // the same line as the bar however wide the container gets.
-                x: root.isVertical
-                    ? root.laneOffset(parent.width, root.thickness) + (root.thickness - width) / 2
-                    : along - width / 2
-                y: root.isVertical
-                    ? along - height / 2
-                    : root.laneOffset(parent.height, root.thickness) + (root.thickness - height) / 2
+                x: root.isVertical ? root.mapLaneOffset(parent.width, width)
+                                   : along - width / 2
+                y: root.isVertical ? along - height / 2
+                                   : root.mapLaneOffset(parent.height, height)
                 // Grows where you are, under the magnet, the pointer, and the thumb.
                 width: baseSize + (current ? 2 : 0) + (pulled ? 3 : 0) + (hovered ? 3 : 0)
                     + dot.nearness * 2
