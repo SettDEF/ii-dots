@@ -98,16 +98,15 @@ ApplicationWindow {
     property int findIndex: 0
     readonly property int findCount: root.findMatches.length
 
-    /// Every visible item whose text contains `q`. Invisible ones are skipped:
-    /// a match you cannot see is one you cannot be scrolled to.
-    function collectMatches(item, q, out) {
+    /// Every visible item carrying a short label. Invisible ones are skipped:
+    /// a match you cannot see is one you cannot be scrolled to. Long ones are
+    /// skipped too — highlighting a paragraph says nothing.
+    function collectLabels(item, out) {
         if (!item || item.visible === false) return out;
-        if (item.text !== undefined
-                && String(item.text).toLowerCase().indexOf(q) !== -1
-                && String(item.text).length > 0)
-            out.push(item);
+        const t = item.text === undefined ? "" : String(item.text);
+        if (t.length > 0 && t.length <= 60) out.push(item);
         const kids = item.children ?? [];
-        for (let i = 0; i < kids.length; ++i) root.collectMatches(kids[i], q, out);
+        for (let i = 0; i < kids.length; ++i) root.collectLabels(kids[i], out);
         return out;
     }
 
@@ -122,8 +121,20 @@ ApplicationWindow {
     function _rebuildFind() {
         const flick = pageLoader.item;
         if (!flick || root.findQuery.length === 0) { root.findMatches = []; return; }
-        root.findMatches = root.collectMatches(flick, root.findQuery.toLowerCase(), []);
-        if (root.findMatches.length > 0) root.scrollToMatch(0);
+
+        // The same matcher the index uses, or a query that fuzzy-matched its way
+        // to this page finds nothing once it arrives.
+        const prepared = root.collectLabels(flick, []).map(it =>
+            ({ item: it, key: CF.Fuzzy.prepare(String(it.text)) }));
+        const hits = CF.Fuzzy.go(root.findQuery, prepared, { all: false, key: "key" });
+
+        // Document order, so next and previous run down the page rather than by
+        // score.
+        const items = hits.map(h => h.obj.item);
+        items.sort((a, b) => a.mapToItem(flick.contentItem, 0, 0).y
+                           - b.mapToItem(flick.contentItem, 0, 0).y);
+        root.findMatches = items;
+        if (items.length > 0) root.scrollToMatch(0);
     }
 
     function stepFind(delta) {
