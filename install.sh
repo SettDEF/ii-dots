@@ -40,8 +40,16 @@ RECOMMENDED_PKGS=(libnotify wl-clipboard networkmanager pipewire pipewire-pulse
                   wireplumber brightnessctl grim slurp cliphist hyprpicker
                   polkit-gnome xdg-utils jq curl
                   matugen ddcutil
-                  syntax-highlighting)      # code blocks in the AI chat
-EXTRA_PKGS=(ffmpeg zenity udisks2 translate-shell timew solaar)
+                  syntax-highlighting       # code blocks in the AI chat
+                  # Applications the shell launches BY NAME. Without them the
+                  # button is there and does nothing, which is worse than a
+                  # feature that hides itself.
+                  dolphin                   # file manager, opened from several panels
+                  kitty                     # terminal for shell actions
+                  pavucontrol               # the audio panel's "advanced" button
+                  nm-connection-editor)     # same, for network
+EXTRA_PKGS=(ffmpeg zenity udisks2 translate-shell timew solaar
+            mpv loupe)                      # media preview and image viewer
 ROG_PKGS=(asusctl supergfxctl)
 
 die()  { printf '\033[31merror\033[0m: %s\n' "$*" >&2; exit 1; }
