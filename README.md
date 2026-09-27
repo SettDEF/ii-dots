@@ -5,6 +5,23 @@ A bar, dock, sidebars, overlays and a set of panels, written in QML for
 
 ## Install
 
+**From the Arch ISO**, with nothing installed yet. Four questions, then it
+partitions, installs Arch and this desktop, and you reboot into it:
+
+```sh
+curl -fsSL https://github.com/SettDEF/ii-dots/raw/master/iso-install.sh | bash
+```
+
+It **erases the disk you point it at**, and makes you type the path back before
+it does. `--dry-run` prints the whole plan and changes nothing — worth running
+first, and it works from any machine, not just the ISO. `--disk` and `--yes`
+together skip every prompt. UEFI and BIOS, ext4 or `--fs btrfs` (with @/@home/
+@log/@cache subvolumes), zram instead of a swap partition.
+
+> Built on `pacstrap`/`genfstab`/`arch-chroot`, not archinstall, whose config
+> schema changes between releases. **Not yet tested on real hardware or in a
+> VM** — read the dry-run before trusting it with a disk.
+
 **From a fresh Arch install**, once you have a network — this fetches packages,
 clones the repo and walks you through locale, keyboard layout and profile:
 
