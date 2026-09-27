@@ -60,49 +60,51 @@ Item {
         }
     }
 
+    // The active indicator SLIDES between slots rather than each slot
+    // colouring itself in place — the same thing the horizontal bar does, and
+    // the reason switching workspace there reads as one object moving instead
+    // of two lights blinking.
+    //
+    // A SIBLING of the column, not a child of it. Declared inside a
+    // ColumnLayout it became a layout item: the column gave it a row of its
+    // own and overrode the x and y it was being positioned by, so no indicator
+    // was ever drawn and the slots were left as bare dots.
+    Rectangle {
+        id: activeIndicator
+        z: -1
+
+        // itemAt() is not reactive, so both dependencies are named to force a
+        // re-read when the list or the selection changes.
+        readonly property int shownIdx: {
+            void root.shownIndices;
+            return root.shownIndices.indexOf(WorkspaceSlots.activeIndex);
+        }
+        readonly property Item target: shownIdx >= 0 ? slotRepeater.itemAt(shownIdx) : null
+
+        visible: activeIndicator.target !== null
+        width: root.slotSize
+        height: root.slotSize
+        radius: width / 2
+        color: Appearance.colors.colPrimary
+
+        x: slotColumn.x + (activeIndicator.target?.x ?? 0)
+        y: slotColumn.y + (activeIndicator.target?.y ?? 0)
+
+        // No Behavior on x: the column is one slot wide, so x never moves and
+        // animating it could only add a frame of lag.
+        Behavior on y {
+            NumberAnimation {
+                duration: Appearance.animationCurves.expressiveFastSpatialDuration
+                easing.type: Easing.BezierSpline
+                easing.bezierCurve: Appearance.animationCurves.expressiveFastSpatial
+            }
+        }
+    }
+
     ColumnLayout {
         id: slotColumn
         anchors.horizontalCenter: parent.horizontalCenter
         spacing: root.slotSpacing
-
-        // The active indicator SLIDES between slots rather than each slot
-        // colouring itself in place — the same thing the horizontal bar does,
-        // and the reason switching workspace there reads as one object moving
-        // instead of two lights blinking.
-        //
-        // Drawn behind the slots, so their numbers sit on top of it.
-        Rectangle {
-            id: activeIndicator
-            z: -1
-            parent: slotColumn
-
-            // itemAt() is not itself reactive, so both of these are named to
-            // force a re-read when the list or the selection changes.
-            readonly property int shownIdx: {
-                void root.shownIndices;
-                return root.shownIndices.indexOf(WorkspaceSlots.activeIndex);
-            }
-            readonly property Item target: shownIdx >= 0 ? slotRepeater.itemAt(shownIdx) : null
-
-            visible: activeIndicator.target !== null
-            width: root.slotSize
-            height: root.slotSize
-            radius: width / 2
-            color: Appearance.colors.colPrimary
-
-            x: activeIndicator.target ? activeIndicator.target.x : 0
-            y: activeIndicator.target ? activeIndicator.target.y : 0
-
-            // No Behavior on x: the column is one slot wide, so x never moves
-            // and an animation on it could only ever add a frame of lag.
-            Behavior on y {
-                NumberAnimation {
-                    duration: Appearance.animationCurves.expressiveFastSpatialDuration
-                    easing.type: Easing.BezierSpline
-                    easing.bezierCurve: Appearance.animationCurves.expressiveFastSpatial
-                }
-            }
-        }
 
         Repeater {
             id: slotRepeater
@@ -147,7 +149,11 @@ Item {
                     anchors.fill: parent
                     horizontalAlignment: Text.AlignHCenter
                     verticalAlignment: Text.AlignVCenter
-                    visible: root.alwaysShowNumbers || root.hovered || slot.active
+                    // Occupied and active slots always show their number. In
+                    // a bar this narrow a column of identical faint dots tells
+                    // you nothing at all, which is what it looked like.
+                    visible: root.alwaysShowNumbers || root.hovered
+                        || slot.active || slot.occupied
                     text: WorkspaceSlots.labelAt(slot.modelData)
                     font.pixelSize: Appearance.font.pixelSize.small
                     font.family: Appearance.font.family.numbers
@@ -159,7 +165,8 @@ Item {
                 // The dot an unoccupied slot shows instead of a number.
                 Rectangle {
                     anchors.centerIn: parent
-                    visible: !(root.alwaysShowNumbers || root.hovered || slot.active)
+                    visible: !(root.alwaysShowNumbers || root.hovered
+                        || slot.active || slot.occupied)
                     implicitWidth: slot.occupied ? 7 : 4
                     implicitHeight: implicitWidth
                     radius: width / 2

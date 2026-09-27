@@ -73,6 +73,16 @@ Item { // Bar content region
                 colBackground: barTopSectionMouseArea.hovered ? Appearance.colors.colLayer1Hover : ColorUtils.transparentize(Appearance.colors.colLayer1Hover, 1)
             }
 
+            // The util buttons the top bar has and this one did not: screen
+            // snip, colour picker, mic, keyboard, dark mode. They live under
+            // the sidebar button rather than at the far end, which is where
+            // the dead space was anyway.
+            Bar.UtilButtons {
+                vertical: true
+                Layout.alignment: Qt.AlignHCenter
+                Layout.topMargin: 4
+            }
+
             Item {
                 Layout.fillHeight: true
             }

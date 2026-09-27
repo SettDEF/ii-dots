@@ -12,13 +12,21 @@ import Quickshell.Services.UPower
 Item {
     id: root
     property bool borderless: Config.options.bar.borderless
-    implicitWidth: rowLayout.implicitWidth + rowLayout.spacing * 2
-    implicitHeight: rowLayout.implicitHeight
+    /// Stack instead of row, for the vertical bar. Same trick SysTray uses —
+    /// a GridLayout switching between one column and one row — because QML has
+    /// no orientation on RowLayout, and these buttons were simply absent from
+    /// the vertical bar for want of it.
+    property bool vertical: false
 
-    RowLayout {
+    implicitWidth: rowLayout.implicitWidth + (root.vertical ? 0 : rowLayout.columnSpacing * 2)
+    implicitHeight: rowLayout.implicitHeight + (root.vertical ? rowLayout.rowSpacing * 2 : 0)
+
+    GridLayout {
         id: rowLayout
 
-        spacing: 4
+        columns: root.vertical ? 1 : -1
+        rowSpacing: 4
+        columnSpacing: 4
         anchors.centerIn: parent
 
         Loader {
