@@ -253,6 +253,11 @@ ApplicationWindow {
         }
 
         Item { // Titlebar
+            // Above the content pane, which is a LATER sibling in this column
+            // and so paints over this whole subtree. The search results hang
+            // below the box, outside the titlebar's own bounds, and were being
+            // covered — z inside searchWrapper cannot reach across parents.
+            z: 600
             visible: Config.options?.windows.showTitlebar
             Layout.fillWidth: true
             Layout.fillHeight: false
@@ -369,8 +374,12 @@ ApplicationWindow {
                     id: resultsPopup
                     readonly property var results:
                         SettingsIndex.search(searchField.text, 10)
-                    visible: searchField.text.length > 0 && searchField.activeFocus
-                        || (searchField.text.length > 0 && resultsHov.hovered)
+                    // inputItem, not searchField: PillTextField keeps focus on
+                    // its inner TextInput, and an Item does not report
+                    // activeFocus for a child that holds it — so this was
+                    // always false and the results never appeared at all.
+                    visible: searchField.text.length > 0
+                        && ((searchField.inputItem?.activeFocus ?? false) || resultsHov.hovered)
                     anchors.top: parent.bottom
                     anchors.topMargin: 6
                     anchors.right: parent.right
