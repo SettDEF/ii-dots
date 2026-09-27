@@ -478,6 +478,25 @@ ApplicationWindow {
                             // floating hint this replaces, it does not sit on
                             // top of the last item in the list.
                             ScrollBar.vertical: StyledScrollBar {
+                                id: railScroll
+
+                                // On the OUTER edge of the window, not the
+                                // inner one. On the right the bar sat exactly
+                                // on the seam between the rail and the content
+                                // pane: its click strip landed where you reach
+                                // for the content, and the label pill opened
+                                // into the rail's own buttons. Out here it has
+                                // nothing to collide with, and the dots read as
+                                // a spine for the rail rather than as a divider
+                                // between two panes.
+                                //
+                                // LayoutMirroring rather than a hand-set x:
+                                // an attached ScrollBar is positioned by Qt's
+                                // own layout pass, which would overwrite the
+                                // binding.
+                                LayoutMirroring.enabled: true
+                                LayoutMirroring.childrenInherit: false
+
                                 policy: railFlick.contentHeight > railFlick.height + 2
                                     ? ScrollBar.AlwaysOn : ScrollBar.AsNeeded
 
@@ -491,10 +510,20 @@ ApplicationWindow {
                                 // they measured — a group heading adds height,
                                 // and how much depends on whether the rail is
                                 // expanded.
-                                markers: {
-                                    void root.currentPage;   // re-read on navigation
+                                //
+                                // Computed on demand rather than as a live
+                                // binding. As a binding it depended on every
+                                // button's y, so each time the rail's highlight
+                                // animated, a NEW array arrived and the Repeater
+                                // destroyed and rebuilt every dot — which is
+                                // what made hovering feel like it was lagging:
+                                // the thing under the pointer kept being
+                                // replaced by a fresh copy of itself.
+                                currentMarker: root.currentPage
+
+                                function rebuildMap() {
                                     const range = railFlick.contentHeight - railFlick.height;
-                                    if (range <= 0) return [];
+                                    if (range <= 0) { railScroll.markers = []; return; }
                                     const out = [];
                                     const btns = railTabs.buttons ?? [];
                                     for (let i = 0; i < btns.length; ++i) {
@@ -503,18 +532,32 @@ ApplicationWindow {
                                         out.push({
                                             at: Math.max(0, Math.min(1, b.y / range)),
                                             label: b.buttonText,
-                                            major: b.hasGroupLabel === true,
-                                            current: i === root.currentPage
+                                            major: b.hasGroupLabel === true
                                         });
                                     }
-                                    return out;
+                                    railScroll.markers = out;
                                 }
 
-                                // The map navigates, it does not merely
-                                // scroll: a dot is a page, so clicking one
-                                // opens it. Scrolling the rail to a page you
-                                // then still have to click would be a worse
-                                // version of the list that is already there.
+                                // Coalesced: expanding the rail moves every
+                                // button, and rebuilding once per button per
+                                // frame would be exactly the churn this is
+                                // here to avoid.
+                                Timer {
+                                    id: mapRebuild
+                                    interval: 80
+                                    onTriggered: railScroll.rebuildMap()
+                                }
+                                Component.onCompleted: railScroll.rebuildMap()
+                                Connections {
+                                    target: railFlick
+                                    function onContentHeightChanged() { mapRebuild.restart() }
+                                    function onHeightChanged() { mapRebuild.restart() }
+                                }
+                                Connections {
+                                    target: navRail
+                                    function onExpandedChanged() { mapRebuild.restart() }
+                                }
+
                                 onMarkerActivated: index => {
                                     root.currentPage = index;
                                 }

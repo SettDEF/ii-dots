@@ -71,6 +71,14 @@ ScrollBar {
     /// Index of the dot under the pointer, or -1.
     property int hoveredMarker: -1
 
+    /// Which landmark is the one you are "at", or -1.
+    ///
+    /// Deliberately its own property rather than a `current` field inside
+    /// `markers`: a new array makes the Repeater destroy and rebuild every
+    /// dot, so carrying the current index in there meant changing page threw
+    /// the whole map away and built it again.
+    property int currentMarker: -1
+
     /// Index of the marker currently pulling, or -1.
     readonly property int nearestMarker: {
         if (!root.hasMap) return -1;
@@ -175,7 +183,7 @@ ScrollBar {
                 required property int index
 
                 readonly property bool major: modelData.major === true
-                readonly property bool current: modelData.current === true
+                readonly property bool current: root.currentMarker === index
                 readonly property bool pulled: root.nearestMarker === index
 
                 readonly property real trackLength: Math.max(0,
@@ -210,8 +218,15 @@ ScrollBar {
                         easing.bezierCurve: Appearance.animationCurves.expressiveFastSpatial
                     }
                 }
+                // A plain ColorAnimation, not colorAnimation.createObject(this):
+                // that builds one animation OBJECT per dot, and there is one
+                // dot per page.
                 Behavior on color {
-                    animation: Appearance.animation.elementMoveFast.colorAnimation.createObject(this)
+                    ColorAnimation {
+                        duration: Appearance.animation.elementMoveFast.duration
+                        easing.type: Appearance.animation.elementMoveFast.type
+                        easing.bezierCurve: Appearance.animation.elementMoveFast.bezierCurve
+                    }
                 }
 
                 // A ring that expands and fades once when the magnet catches,
@@ -300,9 +315,13 @@ ScrollBar {
                       && (root.hoveredMarker >= 0 || root.pressed)) ? 1 : 0
             Behavior on opacity { NumberAnimation { duration: 120 } }
 
-            // To the LEFT of the bar, since the bar lives on a right edge.
-            anchors.right: parent.left
+            // Opens away from the bar, whichever edge the bar is on. A bar
+            // moved to the left with LayoutMirroring would otherwise open its
+            // label off the side of the window.
+            anchors.right: root.mirrored ? undefined : parent.left
             anchors.rightMargin: 6
+            anchors.left: root.mirrored ? parent.right : undefined
+            anchors.leftMargin: 6
             y: {
                 const at = mapLabel.marker?.at ?? 0;
                 const track = Math.max(0, root.height - root.topPadding - root.bottomPadding);
