@@ -60,57 +60,23 @@ Singleton {
         }
     ]
 
-    function entry(id) { return root.catalog.find(w => w.id === id) ?? null }
-
-    // ── Which are on ─────────────────────────────────────────────────────
-    readonly property var enabled: {
-        Config.options.dock.widgets;
-        let ids = [];
-        try { ids = JSON.parse(Config.options.dock.widgets || "[]") ?? []; }
-        catch (e) { ids = []; }
-        return ids.filter(id => root.entry(id) !== null);
+    readonly property WidgetRegistry registry: WidgetRegistry {
+        catalog: root.catalog
+        enabledJson: Config.options.dock.widgets
+        writeEnabled: (v) => Config.options.dock.widgets = v
+        settingsJson: Config.options.dock.widgetSettings
+        writeSettings: (v) => Config.options.dock.widgetSettings = v
     }
 
-    function isEnabled(id) { return root.enabled.indexOf(id) >= 0 }
+    // Same surface as before, so no call site changes.
+    readonly property var enabled: root.registry.enabled
+    function entry(id) { return root.registry.entry(id) }
+    function isEnabled(id) { return root.registry.isEnabled(id) }
+    function toggle(id) { root.registry.toggle(id) }
+    function move(id, delta) { root.registry.move(id, delta) }
+    function schema(id, key) { return root.registry.schema(id, key) }
+    function get(id, key) { return root.registry.get(id, key) }
+    function set(id, key, value) { root.registry.set(id, key, value) }
 
-    function toggle(id) {
-        const next = root.isEnabled(id)
-            ? root.enabled.filter(w => w !== id)
-            : root.enabled.concat([id]);
-        Config.options.dock.widgets = JSON.stringify(next);
-    }
-
-    function move(id, delta) {
-        const list = root.enabled.slice();
-        const i = list.indexOf(id);
-        const j = i + delta;
-        if (i < 0 || j < 0 || j >= list.length) return;
-        list[i] = list[j];
-        list[j] = id;
-        Config.options.dock.widgets = JSON.stringify(list);
-    }
-
-    // ── Per-widget settings ──────────────────────────────────────────────
-    readonly property var overrides: {
-        Config.options.dock.widgetSettings;
-        try { return JSON.parse(Config.options.dock.widgetSettings || "{}") ?? ({}); }
-        catch (e) { return ({}); }
-    }
-
-    function schema(id, key) {
-        return (root.entry(id)?.settings ?? []).find(s => s.key === key) ?? null;
-    }
-
-    /// Reads through to the schema default, so a widget never sees undefined.
-    function get(id, key) {
-        const v = root.overrides?.[id]?.[key];
-        return v === undefined ? root.schema(id, key)?.def : v;
-    }
-
-    function set(id, key, value) {
-        const all = Object.assign({}, root.overrides);
-        all[id] = Object.assign({}, all[id] ?? {});
-        all[id][key] = value;
-        Config.options.dock.widgetSettings = JSON.stringify(all);
     }
 }
