@@ -411,6 +411,12 @@ Singleton {
                 }
             }
 
+            property JsonObject profile: JsonObject {
+                // Empty means "use the system": SystemInfo.username and ~/.face.
+                property string displayName: ""
+                property string avatarPath: ""
+            }
+
             property JsonObject monitors: JsonObject {
                 // Give a display its best mode and a scale that divides the
                 // panel evenly, once per connection. Off means nothing is

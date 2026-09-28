@@ -105,6 +105,44 @@ Singleton {
     FileView { id: fileStat; path: "/proc/stat" }
     FileView { id: fileCpuMaxFreq; path: "/sys/devices/system/cpu/cpu0/cpufreq/cpuinfo_max_freq" }
 
+    // Capacity, not the I/O rates SysStats tracks. Polled slowly on purpose:
+    // a root filesystem does not fill in three seconds, and this is a fork.
+    property real diskTotal: 0
+    property real diskUsed: 0
+    readonly property real diskUsedPercentage: diskTotal > 0 ? diskUsed / diskTotal : 0
+
+    Timer {
+        interval: 4000; running: true; repeat: false
+        onTriggered: console.warn("DISKPROBE used=" + root.diskUsed + " total=" + root.diskTotal
+            + " pct=" + (root.diskUsedPercentage * 100).toFixed(1)
+)
+    }
+    Timer {
+        interval: 60000
+        running: true
+        repeat: true
+        triggeredOnStart: true
+        onTriggered: dfProc.running = true
+    }
+    Process {
+        id: dfProc
+        command: ["df", "-P", "-k", "/"]
+        running: false
+        stdout: StdioCollector {
+            onStreamFinished: {
+                // Second line, fields: fs 1K-blocks used available use% mount
+                const rows = String(text).trim().split("\n");
+                if (rows.length < 2) return;
+                const f = rows[1].trim().split(/\s+/);
+                const total = Number(f[1]), used = Number(f[2]);
+                if (isFinite(total) && total > 0) {
+                    root.diskTotal = total;
+                    root.diskUsed = used;
+                }
+            }
+        }
+    }
+
     Process {
         id: findCpuMaxFreqProc
         environment: ({

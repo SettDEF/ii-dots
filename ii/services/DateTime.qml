@@ -20,6 +20,8 @@ Singleton {
             return SystemClock.Minutes;
         }
     }
+    /// 0-23, for code that branches on time of day rather than formats it.
+    readonly property int hour24: clock.date.getHours()
     property string time: Qt.locale().toString(clock.date, Config.options?.time.format ?? "hh:mm")
     property string shortDate: Qt.locale().toString(clock.date, Config.options?.time.shortDateFormat ?? "dd/MM")
     property string date: Qt.locale().toString(clock.date, Config.options?.time.dateWithYearFormat ?? "dd/MM/yyyy")

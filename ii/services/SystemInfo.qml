@@ -6,7 +6,7 @@ import Quickshell
 import Quickshell.Io
 
 /**
- * Provides some system info: distro, username.
+ * Provides some system info: distro, username, hostname.
  */
 Singleton {
     id: root
@@ -14,6 +14,7 @@ Singleton {
     property string distroId: "unknown"
     property string distroIcon: "linux-symbolic"
     property string username: "user"
+    property string hostname: "localhost"
     property string homeUrl: ""
     property string documentationUrl: ""
     property string supportUrl: ""
@@ -22,6 +23,15 @@ Singleton {
     property string logo: ""
     property string desktopEnvironment: ""
     property string windowingSystem: ""
+
+    // procfs, not a `hostname` subprocess: one open+read, no fork.
+    FileView {
+        path: "file:///proc/sys/kernel/hostname"
+        onLoaded: {
+            const h = String(text()).trim();
+            if (h.length > 0) root.hostname = h;
+        }
+    }
 
     Timer {
         triggeredOnStart: true

@@ -99,7 +99,7 @@ AbstractBackgroundWidget {
 
     component AvatarImage: Image {
         source: Config.options.profile.avatarPath !== ""
-            ? "file://" + Config.options.profile.avatarPicture
+            ? "file://" + Config.options.profile.avatarPath
             : "file:///home/" + (Quickshell.env("USER") ?? "user") + "/.face"
         sourceSize.width: width * 2
         sourceSize.height: height * 2
@@ -468,7 +468,7 @@ AbstractBackgroundWidget {
                         anchors.fill: parent
                         anchors.margins: 3
                         source: Config.options.profile.avatarPath !== ""
-                            ? "file://" + Config.options.profile.avatarPicture
+                            ? "file://" + Config.options.profile.avatarPath
                             : "file:///home/" + (Quickshell.env("USER") ?? "user") + "/.face"
                         sourceSize.width: avatarImage.width * 2
                         sourceSize.height: avatarImage.height * 2
