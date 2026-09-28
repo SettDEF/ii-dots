@@ -424,7 +424,7 @@ AbstractBackgroundWidget {
                                 MouseArea {
                                     anchors.fill: parent
                                     cursorShape: Qt.PointingHandCursor
-                                    onClicked: GlobalStates.settingsOpen = true
+                                    onClicked: SettingsApp.open()
                                 }
                             }
 

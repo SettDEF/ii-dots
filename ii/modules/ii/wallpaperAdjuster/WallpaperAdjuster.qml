@@ -274,7 +274,7 @@ Scope {
                     Rectangle {
                         Layout.preferredWidth: 1
                         Layout.preferredHeight: 32
-                        color: Appearance.colors.colOnLayer0Border
+                        color: Appearance.colors.colLayer0Border
                     }
 
                     DialogButton {
