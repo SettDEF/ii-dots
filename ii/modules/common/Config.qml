@@ -411,6 +411,15 @@ Singleton {
                 }
             }
 
+            property JsonObject monitors: JsonObject {
+                // Give a display its best mode and a scale that divides the
+                // panel evenly, once per connection. Off means nothing is
+                // touched automatically; MonitorAutoMode.applyAll() still
+                // works by hand.
+                property bool autoBestMode: true
+                property bool notifyOnChange: true
+            }
+
             property JsonObject bar: JsonObject {
                 property JsonObject autoHide: JsonObject {
                     property bool enable: false

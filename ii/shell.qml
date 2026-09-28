@@ -31,6 +31,8 @@ ShellRoot {
     readonly property var eagerSingletons: [
         { service: LayoutService,         prop: "defaultLayout",
           why: "registers the IpcHandler exposing layout cycle commands" },
+        { service: MonitorAutoMode,       prop: "enabled",
+          why: "watches for a display arriving and gives it its best mode and a clean scale" },
         { service: PlayerService,         prop: "contextIcon",
           why: "starts the mute-poll Process; otherwise the Timer never runs" },
         { service: AppUsage,              prop: "todayTotal",
@@ -129,6 +131,65 @@ ShellRoot {
         onPressed: root.cyclePanelFamily()
     }
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
