@@ -112,12 +112,6 @@ Singleton {
     readonly property real diskUsedPercentage: diskTotal > 0 ? diskUsed / diskTotal : 0
 
     Timer {
-        interval: 4000; running: true; repeat: false
-        onTriggered: console.warn("DISKPROBE used=" + root.diskUsed + " total=" + root.diskTotal
-            + " pct=" + (root.diskUsedPercentage * 100).toFixed(1)
-)
-    }
-    Timer {
         interval: 60000
         running: true
         repeat: true
