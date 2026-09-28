@@ -427,6 +427,14 @@ Singleton {
                 property string topLeftIcon: "spark" // Options: "distro" or any icon name in ~/.config/quickshell/ii/assets/icons
                 property bool showBackground: true
                 property bool verbose: true
+                // Pluggable bar widgets, the same mechanism the dock uses: a
+                // JSON array of ids from BarWidgets.catalog, in display order.
+                // Empty by default, so the bar looks exactly as it did until
+                // something is switched on.
+                property string widgets: "[]"
+                // Per-widget settings, { widgetId: { key: value } }. Defaults
+                // live in BarWidgets.catalog, so only overrides are stored.
+                property string widgetSettings: "{}"
                 property bool vertical: false
                 property JsonObject resources: JsonObject {
                     property bool alwaysShowSwap: true
