@@ -410,14 +410,14 @@ Variants {
                 Behavior on x {
                     enabled: wallpaper.state === "active" && !activeTransition.running && !GameMode.active
                     NumberAnimation {
-                        duration: 600
+                        duration: Config.options.background.parallax.duration
                         easing.type: Easing.OutCubic
                     }
                 }
                 Behavior on y {
                     enabled: wallpaper.state === "active" && !activeTransition.running && !GameMode.active
                     NumberAnimation {
-                        duration: 600
+                        duration: Config.options.background.parallax.duration
                         easing.type: Easing.OutCubic
                     }
                 }

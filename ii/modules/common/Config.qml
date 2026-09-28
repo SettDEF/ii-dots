@@ -401,6 +401,11 @@ Singleton {
                     property bool autoVertical: false
                     property bool enableWorkspace: true
                     property real workspaceZoom: 1.07 // Relative to your screen, not wallpaper size
+                    // How long the wallpaper takes to slide to the new
+                    // workspace. Was hardcoded at 600, which is nearly double
+                    // the shell's longest standard animation (400) and read as
+                    // sluggish next to everything else moving.
+                    property int duration: 400
                     property bool enableSidebar: true
                     property real widgetsFactor: 1.2
                 }
