@@ -209,6 +209,33 @@ Singleton {
         Quickshell.env("HOME") + "/.local/state/quickshell/user/effectFolders.json"
     property var extraPackDirs: []
 
+    /// Add a folder of effect packs, from the picker in Settings -> Display.
+    ///
+    /// This did not exist: the picker called AppDisplay.addPackFolder and threw
+    /// "is not a function" on every pick, so "Add an effect pack folder" chose
+    /// a folder and silently did nothing.
+    function addPackFolder(path) {
+        if (!path || path.length === 0) return;
+        // Trailing slashes would let the same folder be added twice, and
+        // packRoots concatenates these straight onto packDir.
+        const clean = String(path).replace(/\/+$/, "");
+        if (clean.length === 0 || root.extraPackDirs.indexOf(clean) >= 0) return;
+        const next = root.extraPackDirs.concat([clean]);
+        root.extraPackDirs = next;
+        packFolders.setText(JSON.stringify(next));
+        root.rescanEffects();
+    }
+
+    /// The other half, so a folder added by mistake is not permanent.
+    function removePackFolder(path) {
+        const clean = String(path ?? "").replace(/\/+$/, "");
+        const next = root.extraPackDirs.filter(d => d !== clean);
+        if (next.length === root.extraPackDirs.length) return;
+        root.extraPackDirs = next;
+        packFolders.setText(JSON.stringify(next));
+        root.rescanEffects();
+    }
+
     // [{ path, pack, name, kind, color, strength, speed, icon, desc }]
     property var effects: []
 

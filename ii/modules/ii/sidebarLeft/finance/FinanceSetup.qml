@@ -119,7 +119,7 @@ Item {
                 root.step = 4;
                 root.refreshTimerStatus();
                 root.statusText = qsTr("Linked. Fetching your accounts…");
-                Finance.sync();
+                Finance.refresh();
             } else {
                 root.errorText = (setupErr.text ?? "").trim().split("\n")[0]
                     || qsTr("Setup failed (exit %1)").arg(code);
