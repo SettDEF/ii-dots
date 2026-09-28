@@ -234,7 +234,17 @@ Singleton {
         root.thumbnailGenerationProgress = 0
         let done = 0
         for (const file of files) {
-            Quarry.thumbPath(file, pixels, function (err, payload) {
+            // `call("thumb_path", …)`, not `Quarry.thumbPath(…)`: the service
+            // exposes call/page/hello and never had a thumbPath method, so this
+            // threw "is not a function" on every file and the daemon path was
+            // dead the whole time it looked connected.
+            //
+            // `spec: "freedesktop"` files the result by the standard's rule,
+            // under ~/.cache/thumbnails — which is where the selector looks and
+            // where the script fallback already writes. Without it the daemon
+            // would cache into quarry's private directory and the picker would
+            // still show nothing.
+            Quarry.call("thumb_path", { path: file, size: pixels, spec: "freedesktop" }, function (err, payload) {
                 done++
                 root.thumbnailGenerationProgress = done / files.length
                 if (!err && payload && payload.path)
