@@ -63,12 +63,43 @@ Scope {
                     if (wsId === undefined || wsId === null) return false;
                     return (HyprlandData.workspaceById?.[wsId]?.hasfullscreen) === true;
                 }
+                /*
+                 * REAL fullscreen, not maximize — and the difference decides
+                 * whether the bar may keep its exclusive zone.
+                 *
+                 * A real-fullscreen window covers reserved space by
+                 * definition, so releasing the zone for it buys nothing and
+                 * costs a resize of every OTHER tiled window on the monitor:
+                 * reserved goes 40 -> 0 on the way in and 0 -> 40 on the way
+                 * out, and `windowsMove` animates both. That is the size
+                 * animation you see on leaving a fullscreen workspace.
+                 *
+                 * Maximize is the opposite case: it respects reserved space,
+                 * so it still needs the zone dropped to fill the screen.
+                 * `hasfullscreen` on the workspace cannot tell the two apart;
+                 * the window's own `fullscreen` mode can (2 = real).
+                 */
+                readonly property bool realFullscreenHere: {
+                    if (!barRoot.fullscreenHere) return false;
+                    const mon = (HyprlandData.monitors ?? []).find(m => m?.name === barRoot.screen?.name);
+                    const wsId = mon?.activeWorkspace?.id;
+                    const wl = HyprlandData.windowList ?? [];
+                    for (let i = 0; i < wl.length; ++i) {
+                        const w = wl[i];
+                        if (w?.workspace?.id === wsId && w?.fullscreen === 2) return true;
+                    }
+                    return false;
+                }
                 // Hovering the edge still reveals it.
                 readonly property bool hidden: !mustShow
                     && ((Config?.options.bar.autoHide.enable ?? false) || barRoot.fullscreenHere)
                 readonly property real shelfHeight: Math.round(barRoot.screen.height * 0.20)
                 exclusionMode: ExclusionMode.Ignore
-                exclusiveZone: (barRoot.fullscreenHere || (Config?.options.bar.autoHide.enable && (!mustShow || !Config?.options.bar.autoHide.pushWindows))) ? 0 :
+                // `fullscreenHere && !realFullscreenHere` — i.e. maximize only.
+                // See realFullscreenHere: dropping the zone for real
+                // fullscreen resizes every other window for nothing.
+                exclusiveZone: ((barRoot.fullscreenHere && !barRoot.realFullscreenHere)
+                                || (Config?.options.bar.autoHide.enable && (!mustShow || !Config?.options.bar.autoHide.pushWindows))) ? 0 :
                     Appearance.sizes.baseBarHeight + (Config.options.bar.cornerStyle === 1 ? Appearance.sizes.hyprlandGapsOut : 0)
                     + (GlobalStates.shelfOpen ? barRoot.shelfHeight : 0)
                 WlrLayershell.namespace: "quickshell:bar"
