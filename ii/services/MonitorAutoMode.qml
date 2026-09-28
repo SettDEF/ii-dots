@@ -1,20 +1,9 @@
-// Give every display its best picture, automatically, and say what changed.
+// Best mode and a scale that divides the panel evenly, once per connection.
 //
-// Two things decide whether a screen looks right, and only one of them is the
-// mode:
-//
-//   MODE   Hyprland's `preferred` takes the monitor's EDID-preferred timing,
-//          which is not always its best. A TV that lists 1920x1080@50 before
-//          1920x1080@60 runs at 50Hz forever, with 60 sitting in the mode list.
-//
-//   SCALE  A scale that does not divide the panel evenly is worse than a wrong
-//          mode. 2560x1600 at 1.67 is 1532.93x958.08 logical pixels; Hyprland
-//          rounds, nothing lands on a pixel boundary, and every surface is
-//          resampled. That is the difference between a sharp screen and a soft
-//          one, and no mode choice fixes it.
-//
-// It never fights you: a monitor is evaluated once per connection, so a mode
-// you set by hand afterwards stays set.
+// `preferred` takes the EDID-preferred timing, which is not always the best —
+// a TV listing 1080p@50 before @60 runs at 50 forever. And a scale that leaves
+// fractional logical pixels makes the compositor resample every surface, which
+// no mode choice fixes.
 pragma Singleton
 
 import qs.modules.common
@@ -31,8 +20,7 @@ Singleton {
     /// What was changed this session, newest first.
     property var history: []
 
-    // Keyed by name + description so a re-plug is a fresh decision but a
-    // workspace switch is not.
+    // name + description: a re-plug is a fresh decision, a workspace switch isn't.
     property var _handled: ({})
 
     // ── Picking ──────────────────────────────────────────────────────────
@@ -51,8 +39,7 @@ Singleton {
         return best;
     }
 
-    /// The scales that divide this panel into whole logical pixels. Anything
-    /// else makes the compositor round and resample every surface.
+    /// Scales that divide the panel into whole logical pixels.
     function cleanScales(w, h) {
         const out = [];
         for (let i = 100; i <= 300; i += 5) {
@@ -69,8 +56,7 @@ Singleton {
         return Math.abs(lw - Math.round(lw)) < 1e-9 && Math.abs(lh - Math.round(lh)) < 1e-9;
     }
 
-    /// The clean scale nearest what the monitor already uses, so fixing
-    /// sharpness changes the apparent size of everything as little as possible.
+    /// Nearest clean scale, so sharpness changes apparent size the least.
     function nearestCleanScale(w, h, current) {
         const opts = root.cleanScales(w, h);
         if (opts.length === 0) return null;
@@ -115,8 +101,7 @@ Singleton {
         const r = root.inspect(m);
         if (!r || (r.modeOk && r.scaleOk)) return false;
 
-        // MonitorManager owns the eval transport and the type contract that
-        // decides whether a call applies or silently does nothing.
+        // MonitorManager owns the eval transport and the type contract.
         MonitorManager._runMonitor({
             output: m.name,
             mode: r.wantMode ? r.wantMode.str : "preferred",
@@ -154,15 +139,13 @@ Singleton {
         for (const m of (HyprlandData.monitors ?? [])) {
             const k = root._key(m);
             if (root._handled[k]) continue;
-            // Marked BEFORE applying: the apply itself emits monitorsChanged,
-            // and re-entering here would reapply the same change forever.
+            // Marked before applying: the apply re-emits monitorsChanged.
             root._handled[k] = true;
             root.apply(m, "connected");
         }
     }
 
-    // Debounced: a hotplug emits several changes while the mode settles, and
-    // acting on the first reads a half-configured monitor.
+    // Debounced: a hotplug emits several changes while the mode settles.
     Timer {
         id: settle
         interval: 1200

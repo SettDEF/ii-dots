@@ -471,11 +471,8 @@ Item { // Bar content region
             // to it (just left of the network/bluetooth cluster in RTL flow).
             // Negative right margin closes the row's spacing-induced gap so
             // it doesn't read as a separator.
-            // Pluggable widgets, the same mechanism the dock has: ids come from
-            // Config.options.bar.widgets, files from bar/widgets/. Empty by
-            // default, so this adds nothing to the bar until something is
-            // switched on. Sits beside the battery because these are readouts,
-            // not buttons.
+            // Pluggable widgets; empty by default. Beside the battery because
+            // these are readouts, not buttons.
             Repeater {
                 model: BarWidgets.enabled
                 delegate: BarWidget {

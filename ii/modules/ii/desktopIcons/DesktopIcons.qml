@@ -41,8 +41,7 @@ Scope {
             }
 
             // Cut holes for the background widgets (layer below) so they stay draggable.
-            // `?.`: Variants nulls modelData on teardown while this binding is
-            // still live, and forScreen("") is an empty list rather than a throw.
+            // Variants nulls modelData on teardown; forScreen("") is empty.
             readonly property var widgetRects: DesktopWidgetRegions.forScreen(win.modelData?.name ?? "")
 
             // A Region with no `item` is EMPTY, not "everything", so the base is explicit.

@@ -1,10 +1,6 @@
-// The widget list any surface with pluggable widgets needs: one row per catalog
-// entry, a switch to turn it on, reorder arrows once it is, and that widget's
-// own settings rendered underneath from its schema.
-//
-// Knows no widget. It is handed a registry -- DockWidgets, BarWidgets, or
-// whatever comes next -- and everything it draws comes from that registry's
-// catalog, so a new widget is a catalog entry and nothing here changes.
+// One row per catalog entry: a switch, reorder arrows, and that widget's own
+// settings from its schema. Knows no widget — it draws whatever registry it
+// is handed.
 import qs.modules.common
 import qs.modules.common.widgets
 import QtQuick
@@ -45,8 +41,7 @@ ColumnLayout {
             Layout.topMargin: 4
             implicitHeight: widgetCol.implicitHeight + 12
             radius: Appearance.rounding.normal
-            // An enabled widget carries its settings, so it gets a surface; a
-            // disabled one is just a row in a list.
+            // Enabled widgets carry settings, so they get a surface.
             color: widgetBlock.on ? Appearance.colors.colLayer1
                                   : ColorUtils.transparentize(Appearance.colors.colLayer1)
             Behavior on color { ColorAnimation { duration: 160 } }
@@ -106,8 +101,7 @@ ColumnLayout {
                     }
                 }
 
-                // Hairline between a widget and its own settings, so the
-                // sub-rows read as belonging to it rather than as more widgets.
+                // Hairline, so sub-rows read as settings rather than widgets.
                 Rectangle {
                     visible: widgetBlock.on && widgetBlock.schema.length > 0
                     Layout.fillWidth: true

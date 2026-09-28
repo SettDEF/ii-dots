@@ -198,12 +198,8 @@ Item {
             visible: armed
             fragmentShader: armed && root.fx?.shader
                 ? Qt.resolvedUrl("shaders/" + root.fx.shader) : ""
-            // Declared even though a non-sampling shader never reads it: Qt
-            // resolves the sampler by name against this item's properties, and
-            // without one it warns per instance — thirteen lines every time the
-            // effects list opens. Null is the honest value; there is no window
-            // being sampled on this path, which is what distinguishes it from
-            // the sampling branch above.
+            // Qt resolves the sampler by name against this item's properties
+            // and warns per instance without one. Null: nothing is sampled here.
             property var source: null
             // The rest must match the shader's ABI block exactly.
             property real time: root.phase

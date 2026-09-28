@@ -63,22 +63,9 @@ Scope {
                     if (wsId === undefined || wsId === null) return false;
                     return (HyprlandData.workspaceById?.[wsId]?.hasfullscreen) === true;
                 }
-                /*
-                 * REAL fullscreen, not maximize — and the difference decides
-                 * whether the bar may keep its exclusive zone.
-                 *
-                 * A real-fullscreen window covers reserved space by
-                 * definition, so releasing the zone for it buys nothing and
-                 * costs a resize of every OTHER tiled window on the monitor:
-                 * reserved goes 40 -> 0 on the way in and 0 -> 40 on the way
-                 * out, and `windowsMove` animates both. That is the size
-                 * animation you see on leaving a fullscreen workspace.
-                 *
-                 * Maximize is the opposite case: it respects reserved space,
-                 * so it still needs the zone dropped to fill the screen.
-                 * `hasfullscreen` on the workspace cannot tell the two apart;
-                 * the window's own `fullscreen` mode can (2 = real).
-                 */
+                // Real fullscreen (mode 2), not maximize. Releasing the zone
+                // for it buys nothing — it covers reserved space anyway — and
+                // resizes every other tiled window. Maximize still needs it.
                 readonly property bool realFullscreenHere: {
                     if (!barRoot.fullscreenHere) return false;
                     const mon = (HyprlandData.monitors ?? []).find(m => m?.name === barRoot.screen?.name);
@@ -95,9 +82,7 @@ Scope {
                     && ((Config?.options.bar.autoHide.enable ?? false) || barRoot.fullscreenHere)
                 readonly property real shelfHeight: Math.round(barRoot.screen.height * 0.20)
                 exclusionMode: ExclusionMode.Ignore
-                // `fullscreenHere && !realFullscreenHere` — i.e. maximize only.
-                // See realFullscreenHere: dropping the zone for real
-                // fullscreen resizes every other window for nothing.
+                // Maximize only; see realFullscreenHere.
                 exclusiveZone: ((barRoot.fullscreenHere && !barRoot.realFullscreenHere)
                                 || (Config?.options.bar.autoHide.enable && (!mustShow || !Config?.options.bar.autoHide.pushWindows))) ? 0 :
                     Appearance.sizes.baseBarHeight + (Config.options.bar.cornerStyle === 1 ? Appearance.sizes.hyprlandGapsOut : 0)

@@ -1,9 +1,5 @@
-// Registry of the bar's widgets: which exist, which are on, and each one's
-// own settings.
-//
-// The mechanism is WidgetRegistry, shared with the dock; this file is only the
-// catalog and the two config keys. Adding a widget is a file in bar/widgets/
-// plus an entry below — nothing else changes.
+// The bar's widget catalog. Mechanism is WidgetRegistry, shared with the dock;
+// adding a widget is a file in bar/widgets/ plus an entry below.
 pragma Singleton
 
 import qs.modules.common
@@ -23,9 +19,7 @@ Singleton {
         {
             id: "loadavg", name: Translation.tr("Load average"), icon: "monitoring",
             settings: [
-                // SysStats reads /proc/loadavg but only keeps the 1- and
-                // 5-minute figures, so this is a choice between those two
-                // rather than the usual three.
+                // SysStats keeps only the 1- and 5-minute figures.
                 { key: "fiveMinute", label: Translation.tr("Use the 5-minute average"), type: "bool", def: false }
             ]
         }
@@ -39,7 +33,7 @@ Singleton {
         writeSettings: (v) => Config.options.bar.widgetSettings = v
     }
 
-    // The surface of DockWidgets, so the two read the same at every call site.
+    // Mirrors DockWidgets' surface, so call sites read the same.
     readonly property var enabled: root.registry.enabled
     function entry(id) { return root.registry.entry(id) }
     function isEnabled(id) { return root.registry.isEnabled(id) }

@@ -51,18 +51,15 @@ Item {
         }
         if (!root.host) root.host = top;
         root.parent = root.host;
-        // Anchored HERE rather than declaratively, because until the line above
-        // runs this item is still a child of the ColumnLayout it was written
-        // in, and `anchors.fill` on a layout-managed item is undefined
-        // behaviour that Qt warns about on every construction. Filling only
-        // after the reparent means there is no moment where both are true.
+        // After the reparent, not declaratively: anchors on a layout-managed
+        // item are undefined behaviour and Qt warns on every construction.
         root.anchors.fill = root.host;
     }
 
     readonly property real hostRadius: (root.host && root.host.radius !== undefined)
         ? root.host.radius : 0
 
-    // anchors.fill is assigned in Component.onCompleted, after the reparent.
+    // anchors.fill: set in Component.onCompleted, after the reparent.
     z: 8000
 
     // Not `visible: open`: it has to outlive the dismissal to animate out of it.

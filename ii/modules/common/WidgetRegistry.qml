@@ -1,15 +1,8 @@
-// Which widgets exist, which are on, in what order, and what each one's
-// settings are — the half of a widget system that is the same for the bar as
-// for the dock.
+// Which widgets exist, which are on, in what order, and their settings — the
+// half of a widget system the bar and the dock share.
 //
-// The dock grew this first (see services/DockWidgets.qml). Rather than copy it
-// for the bar, the mechanism lives here and each surface supplies its own
-// catalog and its own two config keys. A widget declares its settings as
-// schema, so an edit panel can render controls for it without knowing what the
-// widget is.
-//
-// The config keys are passed as a value plus a setter rather than a path,
-// because a property alias cannot be built from a string at runtime.
+// Config keys come in as a value plus a setter, not a path: a property alias
+// cannot be built from a string at runtime.
 import QtQuick
 
 QtObject {
@@ -30,8 +23,7 @@ QtObject {
     }
 
     // ── Which are on ─────────────────────────────────────────────────────
-    // Unknown ids are dropped rather than rendered: a catalog entry removed in
-    // an update would otherwise leave a hole that throws on every frame.
+    // Unknown ids are dropped: a removed catalog entry would throw every frame.
     readonly property var enabled: {
         let ids = [];
         try { ids = JSON.parse(reg.enabledJson || "[]") ?? []; }

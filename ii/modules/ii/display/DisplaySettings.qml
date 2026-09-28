@@ -2817,9 +2817,8 @@ Scope {
                         color: Appearance.m3colors.m3onSecondaryContainer
                         opacity: 0.75
                     }
-                    // The boxes are laid out in LOGICAL space, so without this a
-                    // 2560-wide panel draws smaller than a 1920 one and the
-                    // label looks wrong.
+                    // Boxes are laid out in logical space; without this a
+                    // 2560-wide panel draws smaller than a 1920 one.
                     StyledText {
                         Layout.alignment: Qt.AlignHCenter
                         visible: box.sc !== 1

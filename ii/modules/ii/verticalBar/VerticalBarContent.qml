@@ -103,10 +103,7 @@ Item { // Bar content region
                 Layout.fillHeight: false
             }
 
-            // The same pluggable widgets the horizontal bar takes, from the
-            // same BarWidgets registry — a widget switched on should appear
-            // whichever way round the bar is. Empty by default, so this adds
-            // nothing until something is enabled.
+            // Same BarWidgets registry as the horizontal bar.
             Repeater {
                 model: BarWidgets.enabled
                 delegate: Bar.BarWidget {

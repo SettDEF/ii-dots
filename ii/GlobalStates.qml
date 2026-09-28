@@ -164,11 +164,8 @@ Singleton {
     property bool screenDrawFullOpen: false  // fullscreen drawing overlay
     // Set by the screenDrawToggle shortcut to ask SidebarLeft to switch
     // to the Draw tab the next time it opens. Cleared after consumption.
-    /// A desktop widget wants typing: the todo widget in edit mode, the world
-    /// clock with its settings open. Both already set this; nothing declared
-    /// it, so the write went nowhere and neither could ever receive a key.
-    /// Background.qml turns it into OnDemand keyboard focus on the wallpaper
-    /// layer, and back to None the moment the widget is done with it.
+    /// A desktop widget wants typing. Background.qml turns it into OnDemand
+    /// keyboard focus on the wallpaper layer, and back to None after.
     property bool desktopWidgetKeyboardFocus: false
 
     property bool sidebarLeftFocusDraw: false

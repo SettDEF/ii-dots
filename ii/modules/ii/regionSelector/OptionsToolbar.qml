@@ -29,16 +29,8 @@ Toolbar {
             {"icon": "activity_zone", "name": Translation.tr("Rect")},
             {"icon": "gesture", "name": Translation.tr("Circle")}
         ]
-        /*
-         * Synced in both directions by hand, not by a binding.
-         *
-         * `currentIndex: <from selectionMode>` plus an onCurrentIndexChanged
-         * that WRITES selectionMode is a cycle: the write re-evaluates the
-         * binding that caused it, and Qt reported it as a binding loop on
-         * currentIndex every time this toolbar was built. Assigning only when
-         * the value actually differs breaks it — each direction stops after
-         * one hop instead of handing control back.
-         */
+        // Synced by hand, not bound: binding currentIndex from selectionMode
+        // while writing it back is a loop. Assign only on a real difference.
         Component.onCompleted: tabBar.syncFromMode()
 
         function syncFromMode(): void {
