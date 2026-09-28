@@ -102,6 +102,21 @@ Item { // Bar content region
                 Layout.fillWidth: true
                 Layout.fillHeight: false
             }
+
+            // The same pluggable widgets the horizontal bar takes, from the
+            // same BarWidgets registry — a widget switched on should appear
+            // whichever way round the bar is. Empty by default, so this adds
+            // nothing until something is enabled.
+            Repeater {
+                model: BarWidgets.enabled
+                delegate: Bar.BarWidget {
+                    required property var modelData
+                    widgetId: modelData
+                    Layout.alignment: Qt.AlignHCenter
+                    Layout.topMargin: 2
+                    Layout.bottomMargin: 2
+                }
+            }
             
             HorizontalBarSeparator {}
 
