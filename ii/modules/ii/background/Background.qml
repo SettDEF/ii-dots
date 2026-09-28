@@ -122,7 +122,6 @@ Variants {
         exclusionMode: ExclusionMode.Ignore
         WlrLayershell.layer: (GlobalStates.screenLocked && !scaleAnim.running) ? WlrLayer.Overlay : WlrLayer.Background
         WlrLayershell.namespace: "quickshell:background"
-        }
         // OnDemand only while a widget asks, so the wallpaper takes focus on a
         // click and hands it straight back; None the rest of the time, which is
         // what a background layer should be.
@@ -716,4 +715,3 @@ Variants {
         }
     }
 }
-
