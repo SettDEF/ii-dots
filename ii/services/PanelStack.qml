@@ -72,8 +72,8 @@ Singleton {
     readonly property int openCount: Object.keys(root.widths).length
 
     // ── Capacity ────────────────────────────────────────────────────────
-    // Side-by-side only works while there is side to be beside. This screen is
-    // 1532 logical px, a panel slot is 408, so THREE fit — the fourth was
+    // Side-by-side only works while there is side to be beside. A panel slot is
+    // 408 logical px, so on this laptop (1600 logical wide) THREE fit — the fourth was
     // landing at x=-108, off the left edge, and the fifth and sixth piled up
     // behind it. That is the overlap: not panels drawn on top of each other by
     // design, but the stack silently running out of room.

@@ -6,9 +6,9 @@ pragma ComponentBehavior: Bound
 // This exists because the calculation was copy-pasted into every panel and the
 // copies drifted. Two things are easy to get wrong and were both got wrong:
 //
-//   1. `screen.height` is PHYSICAL pixels. On a fractionally-scaled display
-//      (1.67 here) that reads ~1600 while the usable logical height is ~958,
-//      so a cap written against it never triggers.
+//   1. `screen.height` is PHYSICAL pixels. On a scaled display it reads far
+//      larger than the usable logical height (2560x1600 at scale 1.6 is
+//      1600x1000 logical), so a cap written against it never triggers.
 //
 //   2. A panel does NOT start at `margins.top`. The compositor places it after
 //      any reserved strip (MiniMeters reserves 68px here, the bar 40), and the
