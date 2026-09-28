@@ -2812,9 +2812,32 @@ Scope {
                     StyledText {
                         Layout.alignment: Qt.AlignHCenter
                         text: box.modelData.width + "×" + box.modelData.height
+                            + " · " + Math.round(box.modelData.refreshRate) + "Hz"
                         font.pixelSize: Appearance.font.pixelSize.smallest
                         color: Appearance.m3colors.m3onSecondaryContainer
                         opacity: 0.75
+                    }
+                    // The boxes are laid out in LOGICAL space, so without this a
+                    // 2560-wide panel draws smaller than a 1920 one and the
+                    // label looks wrong.
+                    StyledText {
+                        Layout.alignment: Qt.AlignHCenter
+                        visible: box.sc !== 1
+                        text: Math.round(box.logW) + "×" + Math.round(box.logH)
+                            + " @" + box.sc + "×"
+                        font.pixelSize: Appearance.font.pixelSize.smallest
+                        color: Appearance.m3colors.m3onSecondaryContainer
+                        opacity: 0.5
+                    }
+                    StyledText {
+                        Layout.alignment: Qt.AlignHCenter
+                        readonly property var check: MonitorAutoMode.inspect(box.modelData)
+                        visible: check && (!check.modeOk || !check.scaleOk)
+                        text: !check ? ""
+                            : !check.modeOk && check.wantMode ? Translation.tr("↑ %1 available").arg(check.wantMode.str)
+                            : Translation.tr("blurry: scale %1 doesn't divide evenly").arg(box.sc)
+                        font.pixelSize: Appearance.font.pixelSize.smallest
+                        color: Appearance.m3colors.m3error
                     }
                 }
 
