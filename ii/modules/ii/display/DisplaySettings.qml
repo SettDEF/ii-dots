@@ -375,9 +375,16 @@ Scope {
             root.activeShader = "";
             root.applyGrading();
         }
+        // Not `hyprctl keyword`: under a Lua config Hyprland answers "unknown
+        // request" and hyprctl still exits 0, so restoring a monitor looked
+        // like it worked and did nothing.
         if (st.monName && st.monMode)
-            Quickshell.execDetached(["hyprctl", "keyword", "monitor",
-                st.monName + "," + st.monMode + ",auto," + Number(st.monScale ?? 1).toFixed(2)]);
+            MonitorManager._runMonitor({
+                output: st.monName,
+                mode: st.monMode,
+                position: "auto",
+                scale: Number(st.monScale ?? 1).toFixed(2)
+            });
         Qt.callLater(() => root.restoring = false);
     }
 

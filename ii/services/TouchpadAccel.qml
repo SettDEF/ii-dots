@@ -33,28 +33,38 @@ Singleton {
     // A per-device config stops the touchpad inheriting global input:touchpad,
     // so its click/scroll settings must be re-asserted or they silently turn
     // off — which is what killed tap-to-click.
-    function tpKeywords(dev) {
-        return " ; keyword " + dev + ":tap-to-click true"
-             + " ; keyword " + dev + ":tap-and-drag true"
-             + " ; keyword " + dev + ":natural_scroll true"
-             + " ; keyword " + dev + ":clickfinger_behavior true"
-             + " ; keyword " + dev + ":disable_while_typing true";
+    readonly property var tpDefaults: ({
+        "tap-to-click": true,
+        "tap-and-drag": true,
+        natural_scroll: true,
+        clickfinger_behavior: true,
+        disable_while_typing: true
+    })
+
+    /// `hl.device`, not `keyword`. Under a Lua config every `keyword` request
+    /// answers "unknown request", AND a failed request aborts the rest of a
+    /// --batch — so the whole chain below did nothing, including the settings
+    /// re-asserted to keep tap-to-click alive.
+    function _applyDevice(fields) {
+        const parts = [`name = '${root.deviceName.replace(/'/g, "\\'")}'`];
+        for (const k of Object.keys(fields)) {
+            const v = fields[k];
+            const lit = (typeof v === "boolean" || typeof v === "number")
+                ? String(v) : `'${String(v)}'`;
+            // Hyprland's own keys contain hyphens, which are not bare Lua
+            // identifiers, so every key goes through the bracket form.
+            parts.push(`["${k}"] = ${lit}`);
+        }
+        Quickshell.execDetached(["hyprctl", "eval", `hl.device({ ${parts.join(", ")} })`]);
     }
 
     function apply() {
         if (root.deviceName.length === 0) { probe.running = true; return; }
-        const dev = "device[" + root.deviceName + "]";
-        if (root.enabled) {
-            Quickshell.execDetached(["hyprctl", "--batch",
-                "keyword " + dev + ":accel_profile " + (root.flat ? "flat" : "adaptive") + " ; "
-                + "keyword " + dev + ":sensitivity " + root.clampedSens().toFixed(3)
-                + root.tpKeywords(dev)]);
-        } else {
-            Quickshell.execDetached(["hyprctl", "--batch",
-                "keyword " + dev + ":accel_profile adaptive ; "
-                + "keyword " + dev + ":sensitivity 0"
-                + root.tpKeywords(dev)]);
-        }
+        const fields = Object.assign({}, root.tpDefaults, root.enabled
+            ? { accel_profile: root.flat ? "flat" : "adaptive",
+                sensitivity: Number(root.clampedSens().toFixed(3)) }
+            : { accel_profile: "adaptive", sensitivity: 0 });
+        root._applyDevice(fields);
         root.persist();
     }
 

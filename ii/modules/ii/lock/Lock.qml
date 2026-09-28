@@ -102,7 +102,14 @@ LockScreen {
                             `printf '%s' '${lastWorkspaceId}' > '${saveFile}'`])
                     }
                     // Sliding-up effect: jump to a far-away workspace.
-                    Quickshell.execDetached(["hyprctl", "--batch", `keyword animation workspaces,1,7,menu_decel,slidevert; dispatch workspace ${2147483647 - lastWorkspaceId}`]);
+                    //
+                    // Two calls, not one --batch. `keyword` is an unknown
+                    // request under a Lua config AND a failed request aborts
+                    // the rest of the batch, so the dispatch never ran either
+                    // and this effect did nothing at all.
+                    Quickshell.execDetached(["hyprctl", "eval",
+                        'hl.animation({ leaf = "workspaces", enabled = true, speed = 7, bezier = "menu_decel", style = "slidevert" })']);
+                    HyprDispatch.run(`workspace ${2147483647 - lastWorkspaceId}`);
                 } else {
                     // Restore. Fall back to the persisted file if the
                     // in-memory value was lost, then to workspace 1.
