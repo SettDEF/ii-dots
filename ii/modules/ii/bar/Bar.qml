@@ -100,22 +100,40 @@ Scope {
                 // fullscreen resizes every other window for nothing.
                 exclusiveZone: ((barRoot.fullscreenHere && !barRoot.realFullscreenHere)
                                 || (Config?.options.bar.autoHide.enable && (!mustShow || !Config?.options.bar.autoHide.pushWindows))) ? 0 :
-                    Appearance.sizes.baseBarHeight + (Config.options.bar.cornerStyle === 1 ? Appearance.sizes.hyprlandGapsOut : 0)
-                    + (GlobalStates.shelfOpen ? barRoot.shelfHeight : 0)
+                    barRoot.vertical
+                    // A side bar reserves its WIDTH, and the shelf drops down
+                    // inside it rather than growing the reservation.
+                    ? Appearance.sizes.baseVerticalBarWidth
+                      + (Config.options.bar.cornerStyle === 1 ? Appearance.sizes.hyprlandGapsOut : 0)
+                    : Appearance.sizes.baseBarHeight
+                      + (Config.options.bar.cornerStyle === 1 ? Appearance.sizes.hyprlandGapsOut : 0)
+                      + (GlobalStates.shelfOpen ? barRoot.shelfHeight : 0)
                 WlrLayershell.namespace: "quickshell:bar"
                 // Always full height — never resize the Wayland window, clip shelf internally
-                implicitHeight: Appearance.sizes.barHeight + Appearance.rounding.screenRounding + barRoot.shelfHeight
+                implicitHeight: barRoot.vertical
+                    ? 0   // spans top-to-bottom from the anchors; no implicit height to fight it
+                    : Appearance.sizes.barHeight + Appearance.rounding.screenRounding + barRoot.shelfHeight
+                // Mirror image when vertical: the thickness is now a width.
+                implicitWidth: barRoot.vertical
+                    ? Appearance.sizes.verticalBarWidth + Appearance.rounding.screenRounding
+                    : 0
                 mask: Region {
                     item: hoverMaskRegion
                 }
                 color: "transparent"
 
-                // Positioning
+                /*
+                 * Positioning. `bar.bottom` doubles as "the far side" when the
+                 * bar is vertical -- bottom becomes right -- which is the
+                 * reading StyledPopup already uses to place itself, so the two
+                 * cannot disagree about which edge the bar is on.
+                 */
+                readonly property bool vertical: Config.options.bar.vertical ?? false
                 anchors {
-                    top: !Config.options.bar.bottom
-                    bottom: Config.options.bar.bottom
-                    left: true
-                    right: true
+                    top: barRoot.vertical || !Config.options.bar.bottom
+                    bottom: barRoot.vertical || Config.options.bar.bottom
+                    left: !barRoot.vertical || !Config.options.bar.bottom
+                    right: !barRoot.vertical || Config.options.bar.bottom
                 }
 
                 margins {
