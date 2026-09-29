@@ -56,7 +56,21 @@ Scope { // Scope
             readonly property real floatGap: (Config.options?.dock.floating ?? false)
                 ? (Config.options?.dock.floatingMargin ?? 8) : 0
 
-            property bool reveal: root.pinned || (Config.options?.dock.hoverToReveal && dockMouseArea.containsMouse) || dockApps.requestDockShow || dockMedia.requestDockShow || GlobalStates.dockEditMode || (!ToplevelManager.activeToplevel?.activated) || GlobalStates.dockOpen
+            /*
+             * Nothing on THIS screen, as opposed to nothing focused anywhere.
+             *
+             * ToplevelManager.activeToplevel is global, so a focused window on
+             * one monitor hid the dock on every monitor — including one sitting
+             * on an empty workspace with nothing to cover.
+             */
+            readonly property bool emptyHere: {
+                const mon = (HyprlandData.monitors ?? []).find(m => m?.name === dockRoot.screen?.name);
+                const wsId = mon?.activeWorkspace?.id;
+                if (wsId === undefined || wsId === null) return false;
+                return (HyprlandData.workspaceById?.[wsId]?.windows ?? 0) === 0;
+            }
+
+            property bool reveal: root.pinned || (Config.options?.dock.hoverToReveal && dockMouseArea.containsMouse) || dockApps.requestDockShow || dockMedia.requestDockShow || GlobalStates.dockEditMode || (!ToplevelManager.activeToplevel?.activated) || dockRoot.emptyHere || GlobalStates.dockOpen
 
             anchors {
                 bottom: true
