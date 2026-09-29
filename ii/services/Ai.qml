@@ -41,16 +41,38 @@ Singleton {
     // property var messages: []
     property var messageIDs: []
     property var messageByID: ({})
-    // Keys come from the keyring only. A default baked in here is a key that
-    // ships to everyone who clones the repo and bills whoever owns it.
+    // No default is baked in here: that would be a key shipped to everyone who
+    // clones the repo, billed to whoever owns it. See keyFor() for the lookup.
     readonly property var apiKeys: KeyringStorage.keyringData?.apiKeys ?? ({})
+
+    /// key_id -> the name that key has in ~/.secure/apikeys.
+    readonly property var secureKeyNames: ({
+        "gemini": "GEMINI_API_KEY",
+        "anthropic": "ANTHROPIC_API_KEY",
+        "openai": "OPENAI_API_KEY",
+        "openrouter": "OPENROUTER_API_KEY",
+        "mistral": "MISTRAL_API_KEY"
+    })
+
+    /// The keyring first, because that is what the settings UI writes; then
+    /// ~/.secure/apikeys, which is where every key on this machine actually
+    /// lives. Without the fallback a key present on disk still produced
+    /// "403 Method doesn't allow unregistered callers", because the request
+    /// went out with an empty key rather than none.
+    function keyFor(keyId) {
+        const fromRing = root.apiKeys ? (root.apiKeys[keyId] ?? "") : "";
+        if (fromRing.length > 0) return fromRing;
+        const name = root.secureKeyNames[keyId] ?? "";
+        return name.length > 0 ? ApiKeys.get(name) : "";
+    }
     readonly property var apiKeysLoaded: KeyringStorage.loaded
+    /// Both stores have to have settled before a missing key means anything.
+    readonly property bool keysReady: apiKeysLoaded && ApiKeys.ready
     readonly property bool currentModelHasApiKey: {
         const model = models[currentModelId];
         if (!model || !model.requires_key) return true;
-        if (!apiKeysLoaded) return false;
-        const key = apiKeys[model.key_id];
-        return (key?.length > 0);
+        if (!keysReady) return false;
+        return root.keyFor(model.key_id).length > 0;
     }
     property var postResponseHook
     property real temperature: Persistent.states?.ai?.temperature ?? 0.5
@@ -711,9 +733,14 @@ Singleton {
     }
 
     function addApiKeyAdvice(model) {
+        const secureName = root.secureKeyNames[model.key_id] ?? "";
+        const secureHint = secureName.length > 0
+            ? Translation.tr("\n\nOr put it in `~/.secure/apikeys` as `%1=...`").arg(secureName)
+            : "";
         root.addMessage(
             Translation.tr('To set an API key, pass it with the %4 command\n\nTo view the key, pass "get" with the command<br/>\n\n### For %1:\n\n**Link**: %2\n\n%3')
-                .arg(model.name).arg(model.key_get_link).arg(model.key_get_description ?? Translation.tr("<i>No further instruction provided</i>")).arg("/key"), 
+                .arg(model.name).arg(model.key_get_link).arg(model.key_get_description ?? Translation.tr("<i>No further instruction provided</i>")).arg("/key")
+                + secureHint,
             Ai.interfaceRole
         );
     }
@@ -739,7 +766,9 @@ Singleton {
             if (feedback) root.addMessage(Translation.tr("Model set to %1").arg(model.name), root.interfaceRole);
             if (model.requires_key) {
                 // If key not there show advice
-                if (root.apiKeysLoaded && (!root.apiKeys[model.key_id] || root.apiKeys[model.key_id].length === 0)) {
+                // keyFor, not the keyring alone: advising "set a key" while one
+                // sits in ~/.secure/apikeys is how the 403 stayed mysterious.
+                if (root.keysReady && root.keyFor(model.key_id).length === 0) {
                     root.addApiKeyAdvice(model)
                 }
             }
@@ -807,7 +836,7 @@ Singleton {
     function printApiKey() {
         const model = models[currentModelId];
         if (model.requires_key) {
-            const key = root.apiKeys[model.key_id];
+            const key = root.keyFor(model.key_id);
             if (key) {
                 root.addMessage(Translation.tr("API key:\n\n```txt\n%1\n```").arg(key), Ai.interfaceRole);
             } else {
@@ -859,8 +888,19 @@ Singleton {
             requester.currentStrategy = root.currentApiStrategy;
             requester.currentStrategy.reset(); // Reset strategy state
 
-            /* Put API key in environment variable */
-            if (model.requires_key) requester.environment[`${root.apiKeyEnvVarName}`] = root.apiKeys ? (root.apiKeys[model.key_id] ?? "") : ""
+            /* Put API key in environment variable. Sending an empty one reads
+               as an anonymous caller, and the provider answers with a bare 403
+               instead of naming the real problem, so stop here and give advice
+               the user can act on. */
+            if (model.requires_key) {
+                const apiKey = root.keyFor(model.key_id);
+                if (apiKey.length === 0) {
+                    root.addApiKeyAdvice(model);
+                    root.responseFinished();
+                    return;
+                }
+                requester.environment[`${root.apiKeyEnvVarName}`] = apiKey;
+            }
 
             /* Build endpoint, request data */
             const endpoint = root.currentApiStrategy.buildEndpoint(model);
@@ -968,7 +1008,10 @@ Singleton {
             }
 
             // Handle error responses
-            if (requester.message.content.includes("API key not valid")) {
+            // Gemini answers a missing key with "Method doesn't allow
+            // unregistered callers", which names nothing the user can fix.
+            const content = requester.message.content;
+            if (content.includes("API key not valid") || content.includes("unregistered callers")) {
                 root.addApiKeyAdvice(models[requester.message.model]);
             }
         }
