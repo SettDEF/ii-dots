@@ -77,6 +77,4 @@ Singleton {
     function schema(id, key) { return root.registry.schema(id, key) }
     function get(id, key) { return root.registry.get(id, key) }
     function set(id, key, value) { root.registry.set(id, key, value) }
-
-    }
 }
