@@ -12,6 +12,10 @@ QuickToggleModel {
 
     toggled: false
     icon: "cloud_lock"
+    // QuickToggleModel defaults this to true, so without it the tile sat there
+    // live on a machine with no warp-cli and both actions did nothing. The
+    // status probe below turns it on once warp-cli actually answers.
+    available: false
     
     mainAction: () => {
         if (toggled) {

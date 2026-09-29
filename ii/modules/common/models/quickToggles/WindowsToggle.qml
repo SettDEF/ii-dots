@@ -12,6 +12,16 @@ QuickToggleModel {
     name: Translation.tr("Windows")
     tooltipText: Translation.tr("Windows VM | Right-click to re-open screen")
     icon: "desktop_windows"
+    // The VM script is a personal one, not something every machine has.
+    // QuickToggleModel defaults available to true, so without this the tile is
+    // live wherever the script is absent and both actions fail silently.
+    available: false
+
+    FileView {
+        path: Quickshell.env("HOME") + "/.scripts/start_windows_vm.sh"
+        onLoaded: root.available = true
+        onLoadFailed: root.available = false
+    }
 
     mainAction: () => {
         if (root.toggled) {
