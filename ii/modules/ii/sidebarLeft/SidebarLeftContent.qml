@@ -213,10 +213,15 @@ Item {
                     Item {
                         id: tabsContainer
                         anchors.verticalCenter: parent.verticalCenter
-                        height: parent.height
+                        // The tab row's own height, NOT parent.height. The Row
+                        // above sizes itself from its other children — a 20px
+                        // icon and a line of text — so taking its height made
+                        // this clip 24px and sheared the top and bottom off the
+                        // 32px circles inside.
+                        height: tabsRow.implicitHeight
                         clip: true
                         visible: width > 0.5 && root.pillTabs.length > 0
-                        width: root.toolsOpen ? tabsRow.implicitWidth + 8 : 0
+                        width: root.toolsOpen ? tabsRow.implicitWidth : 0
                         opacity: root.toolsOpen ? 1 : 0
                         Behavior on width   { NumberAnimation { duration: 260; easing.type: Easing.OutCubic } }
                         Behavior on opacity { NumberAnimation { duration: 200 } }
@@ -224,17 +229,20 @@ Item {
                         Row {
                             id: tabsRow
                             anchors.left: parent.left
-                            anchors.leftMargin: 8
                             anchors.verticalCenter: parent.verticalCenter
-                            spacing: 6
+                            spacing: 8
 
+                            // Full pill height, so the divider reads as the
+                            // edge of the group rather than a floating tick.
                             Rectangle {
                                 anchors.verticalCenter: parent.verticalCenter
-                                width: 1; height: 16
-                                color: Appearance.colors.colOnLayer0
-                                opacity: 0.25
+                                width: 1
+                                height: tabRow.pillSize - 8
+                                radius: 0.5
+                                color: Appearance.m3colors.m3outlineVariant
                             }
                             SidebarLeftTabRow {
+                                id: tabRow
                                 anchors.verticalCenter: parent.verticalCenter
                                 tabs: root.pillTabs
                                 currentIndex: swipeView.currentIndex
