@@ -38,8 +38,15 @@ Scope { // Scope
     }
 
     Variants {
-        // For each monitor
-        model: Quickshell.screens
+        // For each monitor, unless dock.screenList names a subset. Same
+        // filter as Bar.qml: empty list means every screen.
+        model: {
+            const screens = Quickshell.screens;
+            const list = Config.options.dock.screenList;
+            if (!list || list.length === 0)
+                return screens;
+            return screens.filter(screen => list.includes(screen.name));
+        }
 
         PanelWindow {
             id: dockRoot

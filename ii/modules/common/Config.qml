@@ -567,6 +567,10 @@ Singleton {
 
             property JsonObject dock: JsonObject {
                 property bool enable: false
+                // Which monitors get a dock. Empty means all of them, the same
+                // meaning bar.screenList has. Names like "eDP-1"; `hyprctl
+                // monitors` lists them.
+                property list<string> screenList: []
                 property bool showBackground: true
                 property bool showPinButton: true
                 property bool showAppsButton: true
