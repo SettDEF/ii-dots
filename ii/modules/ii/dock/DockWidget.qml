@@ -29,7 +29,11 @@ Item {
     implicitWidth: ldr.item?.implicitWidth ?? 0
     implicitHeight: root.inline ? (ldr.item?.implicitHeight ?? 0)
                                 : (ldr.item?.implicitHeight ?? 0)
-    visible: ldr.item?.visible ?? false
+    // Never from the item's own `visible`: that is EFFECTIVE visibility, which
+    // includes this host, so a host that starts hidden (nothing loaded yet)
+    // keeps its item hidden and itself hidden for good. Width stands in for
+    // "has nothing to show" instead.
+    visible: ldr.item !== null && (!root.inline || root.implicitWidth > 0)
 
     Loader {
         id: ldr
