@@ -54,9 +54,8 @@ resolve() {
     return 1
 }
 
+# Path only. Averaging the pixels used to happen here with magick, which cost
+# 223 ms per icon on a hover — Qt's ColorQuantizer does the same 1x1 rescale
+# in process, and renders SVG natively, which is what 25k of these are.
 file=$(resolve "$name") || exit 1
-# -resize 1x1 weights by alpha, so transparent padding doesn't drag every
-# icon towards black.
-hex=$(magick "$file" -background none -resize '1x1!' -alpha off \
-        -format '%[hex:p{0,0}]' info: 2>/dev/null) || exit 1
-[ -n "$hex" ] && printf '#%s' "$hex"
+printf '%s' "$file"
