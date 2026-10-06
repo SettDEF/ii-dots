@@ -280,6 +280,14 @@ Singleton {
                     property real width: 460
                     property real height: 330
                 }
+                property JsonObject discordVoice: JsonObject {
+                    property bool pinned: false
+                    property bool clickthrough: true
+                    property real x: 40
+                    property real y: 40
+                    property real width: 240
+                    property real height: 220
+                }
             }
 
             property JsonObject bar: JsonObject {
