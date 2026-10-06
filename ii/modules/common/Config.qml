@@ -832,6 +832,7 @@ Singleton {
                     // A word, not a symbol: the good single characters are
                     // taken, and "tr " reads as what it does.
                     property string translate: "tr "
+                    property string notifications: "!"
                 }
                 property JsonObject imageSearch: JsonObject {
                     property string imageSearchEngineBaseUrl: "https://lens.google.com/uploadbyurl?url="

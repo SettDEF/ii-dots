@@ -21,12 +21,13 @@ Singleton {
     // here rather than being services, the way Ai owns its api strategies.
     readonly property ClipboardRows clipboardRows: ClipboardRows {}
     readonly property EmojiRows emojiRows: EmojiRows {}
+    readonly property NotificationRows notificationRows: NotificationRows {}
 
     // Kept as an alias, not moved: the search bar sets it by this name.
     property alias clipboardSort: root.clipboardRows.sort
 
     function ensurePrefix(prefix) {
-        if ([Config.options.search.prefix.action, Config.options.search.prefix.app, Config.options.search.prefix.clipboard, Config.options.search.prefix.emojis, Config.options.search.prefix.math, Config.options.search.prefix.shellCommand, Config.options.search.prefix.webSearch, Config.options.search.prefix.translate,].some(i => root.query.startsWith(i))) {
+        if ([Config.options.search.prefix.action, Config.options.search.prefix.app, Config.options.search.prefix.clipboard, Config.options.search.prefix.emojis, Config.options.search.prefix.math, Config.options.search.prefix.shellCommand, Config.options.search.prefix.webSearch, Config.options.search.prefix.translate, Config.options.search.prefix.notifications,].some(i => root.query.startsWith(i))) {
             root.query = prefix + root.query.slice(1);
         } else {
             root.query = prefix + root.query;
@@ -795,6 +796,8 @@ Singleton {
             return root.clipboardRows.rows(StringUtils.cleanPrefix(root.query, p.clipboard));
         if (root.query.startsWith(p.emojis))
             return root.emojiRows.rows(StringUtils.cleanPrefix(root.query, p.emojis));
+        if (root.query.startsWith(p.notifications))
+            return root.notificationRows.rows(StringUtils.cleanPrefix(root.query, p.notifications));
         return null;
     }
 
@@ -873,6 +876,21 @@ Singleton {
         const ids = fromQuery || root.discordIdsIn(Quickshell.clipboardText);
         const source = fromQuery ? Translation.tr("from what you typed")
                                  : Translation.tr("from the clipboard");
+        // With no link anywhere, /dc previously matched nothing at all and
+        // fell through to a command row and a stray qalc reading. Offer the
+        // clipboard-history scan instead, so the prefix always does something
+        // and says what it needs.
+        if (ids.length === 0) {
+            return { ids, fromQuery, row: resultComp.createObject(null, {
+                name: Translation.tr("Scan clipboard history for Discord links"),
+                verb: Translation.tr("Scan"),
+                type: Translation.tr("Discord · copy a channel link first (right-click › Copy Link)"),
+                iconName: 'content_paste_search',
+                iconType: LauncherSearchResult.IconType.Material,
+                execute: () => Quickshell.execDetached(["bash", "-c",
+                    `'${root.discordPinScript}' --harvest`])
+            })};
+        }
         return { ids, fromQuery, row: resultComp.createObject(null, {
             name: Translation.tr("Pin %1 to /%2").arg(ids).arg("dc"),
             verb: Translation.tr("Pin"),
@@ -900,7 +918,6 @@ Singleton {
         const mathResultObject      = root._mathRow();
         const translateResultObject = root._translateRow();
         const dc                    = root._discordPin();
-        const dcIds                 = dc.ids;
         const dcFromQuery           = dc.fromQuery;
         const discordPinObject      = dc.row;
 
@@ -920,7 +937,9 @@ Singleton {
         // group with a link already copied is the other way in — which is what
         // makes an empty /dc useful before anything has been pinned.
         const dcTyped = root.query.startsWith(Config.options.search.prefix.action + "dc");
-        if (dcIds.length > 0 && (dcFromQuery.length > 0 || dcTyped)) {
+        // Typing the group always gets a row — the pin when a link is around,
+        // the scan when there is not. A link in the query leads on its own.
+        if (dcTyped || dcFromQuery.length > 0) {
             result.push(discordPinObject);
         }
         if (startsWithTranslatePrefix) {
