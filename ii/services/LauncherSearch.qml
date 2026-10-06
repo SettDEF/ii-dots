@@ -558,6 +558,17 @@ Singleton {
 
     property string mathResult: ""
     property string translateResult: ""
+
+    readonly property string discordPinScript:
+        FileUtils.trimFileProtocol(`${Directories.scriptPath}/launcher/discord-pin.sh`)
+
+    /// "<guild>/<channel>" or "<guild>" out of a web link, a deep link or a
+    /// bare pair; empty when there is none.
+    function discordIdsIn(text) {
+        const m = String(text ?? "").match(/channels\/(@me|\d{5,})(?:\/(\d{5,}))?/);
+        if (!m) return "";
+        return m[2] ? `${m[1]}/${m[2]}` : m[1];
+    }
     property bool clipboardWorkSafetyActive: {
         const enabled = Config.options.workSafety.enable.clipboard;
         const sensitiveNetwork = (StringUtils.stringListContainsSubstring(Network.networkName.toLowerCase(), Config.options.workSafety.triggerCondition.networkNameKeywords));
@@ -765,6 +776,26 @@ Singleton {
                 Quickshell.clipboardText = root.translateResult;
             }
         });
+        // Pin a Discord channel without leaving the launcher. clipboardText is
+        // a plain reactive property, so this costs no process and the row
+        // appears the moment a link is pasted or copied — no watcher needed.
+        const dcFromQuery = root.discordIdsIn(root.query);
+        const dcFromClip  = root.discordIdsIn(Quickshell.clipboardText);
+        const dcIds       = dcFromQuery || dcFromClip;
+        const dcSource    = dcFromQuery ? Translation.tr("from what you typed")
+                                        : Translation.tr("from the clipboard");
+        const discordPinObject = resultComp.createObject(null, {
+            name: Translation.tr("Pin %1 to /%2").arg(dcIds).arg("dc"),
+            verb: Translation.tr("Pin"),
+            type: Translation.tr("Discord · %1").arg(dcSource),
+            iconName: 'forum',
+            iconType: LauncherSearchResult.IconType.Material,
+            execute: () => {
+                Quickshell.execDetached(["bash", "-c",
+                    `'${root.discordPinScript}' --from-stdin <<< 'https://discord.com/channels/${dcIds}'`]);
+            }
+        });
+
         const appResultObjects = AppSearch.fuzzyQuery(StringUtils.cleanPrefix(root.query, Config.options.search.prefix.app)).map(entry => {
             return resultComp.createObject(null, {
                 type: Translation.tr("App"),
@@ -956,6 +987,13 @@ Singleton {
         const startsWithShellCommandPrefix = root.query.startsWith(Config.options.search.prefix.shellCommand);
         const startsWithWebSearchPrefix = root.query.startsWith(Config.options.search.prefix.webSearch);
         const startsWithTranslatePrefix = root.query.startsWith(Config.options.search.prefix.translate);
+        // A pasted link is an unambiguous intent, so it leads. Typing the dc
+        // group with a link already copied is the other way in — which is what
+        // makes an empty /dc useful before anything has been pinned.
+        const dcTyped = root.query.startsWith(Config.options.search.prefix.action + "dc");
+        if (dcIds.length > 0 && (dcFromQuery.length > 0 || dcTyped)) {
+            result.push(discordPinObject);
+        }
         if (startsWithTranslatePrefix) {
             // Deliberately absent from the showDefaultActionsWithoutPrefix
             // block below: an unprefixed row would translate every query typed.
