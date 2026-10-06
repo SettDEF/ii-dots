@@ -3,7 +3,8 @@ import qs.modules.common.widgets
 import QtQuick
 import QtQuick.Layouts
 
-// Section container for dock widget windows; the config's card idiom.
+// Section container for widget panels and popups (dock and bar share it); the
+// config's card idiom.
 Rectangle {
     id: root
     property string title: ""
