@@ -66,8 +66,8 @@ Item {
         color: ColorUtils.mix(root.iconColor, Appearance.colors.colPrimaryContainer, 0.45)
     }
 
-    Layout.fillHeight: true
-    Layout.topMargin: Appearance.sizes.hyprlandGapsOut // why does this work
+    // Layout belongs to DockWidget now: this is loaded, not a direct child
+    // of the row, so attachments declared here would be silently ignored.
     implicitWidth: listView.implicitWidth
     
     StyledListView {

@@ -43,11 +43,15 @@ Singleton {
     readonly property var catalog: [
         {
             id: "apps", name: Translation.tr("Applications"), icon: "apps",
-            kind: "inline", noPanel: true
+            kind: "inline", noPanel: true,
+            // Was Layout.topMargin on DockApps itself, with a "why does this
+            // work" beside it. It works because the row is anchored to the
+            // window top and the gap has to come off somewhere.
+            topMargin: Appearance.sizes.hyprlandGapsOut
         },
         {
             id: "media", name: Translation.tr("Now playing"), icon: "music_note",
-            kind: "inline", noPanel: true
+            kind: "inline", noPanel: true, topMargin: 12, bottomMargin: 8
         },
         {
             id: "clock", name: Translation.tr("Clock"), icon: "schedule",

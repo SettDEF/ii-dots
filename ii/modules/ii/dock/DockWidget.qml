@@ -1,31 +1,52 @@
-// One dock widget, by id. Dispatches on kind: a tile gets DockButton chrome
-// around a 35px square, an inline widget is the content itself and sizes
-// itself. Apps and media were hardcoded siblings of the widget row only
-// because this host could draw nothing but a tile.
+// One dock widget, by id, and the RowLayout child that holds it.
+//
+// Inline widgets (apps, media) were written as direct children of the row:
+// they declare Layout.fillHeight on themselves and read parent.height. Neither
+// survives being loaded, so this host carries the layout role for them and the
+// catalog says what margins each wants.
 import qs.services
 import qs.modules.common
 import QtQuick
+import QtQuick.Layouts
 
-Loader {
+Item {
     id: root
     required property string widgetId
 
+    readonly property var entry: DockWidgets.entry(root.widgetId)
     readonly property string kind: DockWidgets.kindOf(root.widgetId)
+    readonly property bool inline: root.kind === "inline"
     readonly property url widgetUrl: root.widgetId.length > 0
         ? Qt.resolvedUrl(`widgets/${root.widgetId.charAt(0).toUpperCase()}${root.widgetId.slice(1)}Widget.qml`)
         : ""
 
-    sourceComponent: root.kind === "inline" ? inlineComp : tileComp
+    Layout.fillHeight: root.inline
+    Layout.topMargin: root.entry?.topMargin ?? 0
+    Layout.bottomMargin: root.entry?.bottomMargin ?? 0
 
-    Component {
-        id: inlineComp
-        Loader { source: root.widgetUrl }
-    }
-    Component {
-        id: tileComp
-        DockTileButton {
-            widgetId: root.widgetId
-            widgetUrl: root.widgetUrl
+    // From the loaded item, so a widget that collapses to nothing (media with
+    // no track) takes no width in the row.
+    implicitWidth: ldr.item?.implicitWidth ?? 0
+    implicitHeight: root.inline ? (ldr.item?.implicitHeight ?? 0)
+                                : (ldr.item?.implicitHeight ?? 0)
+    visible: ldr.item?.visible ?? false
+
+    Loader {
+        id: ldr
+        anchors.fill: parent
+
+        // setSource, not a source binding: DockTileButton has required
+        // properties, and only setSource can supply them at construction.
+        function reload() {
+            if (root.widgetUrl.toString().length === 0) { ldr.setSource(""); return }
+            if (root.inline) ldr.setSource(root.widgetUrl, {});
+            else ldr.setSource(Qt.resolvedUrl("DockTileButton.qml"), {
+                widgetId: root.widgetId,
+                widgetUrl: root.widgetUrl
+            });
         }
+        Component.onCompleted: ldr.reload()
     }
+    onWidgetUrlChanged: ldr.reload()
+    onKindChanged: ldr.reload()
 }
