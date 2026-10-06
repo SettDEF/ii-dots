@@ -2,6 +2,7 @@ pragma Singleton
 pragma ComponentBehavior: Bound
 
 import qs.modules.common
+import qs.services
 import qs
 import QtQuick
 import Quickshell
@@ -234,9 +235,8 @@ Singleton {
                 // Shell-owned sound, inside the popup branch so it shares its gating.
                 // Disable apps' own sounds (e.g. Telegram) to avoid doubling.
                 if ((Config?.options.notifications.sound ?? false) && !root.isAppSoundOff(newNotifObject.appName)) {
-                    const ev = (Config?.options.notifications.soundName ?? "message-new-instant").replace(/'/g, "");
-                    Quickshell.execDetached(["bash", "-c",
-                        `canberra-gtk-play -i '${ev}' 2>/dev/null || paplay /usr/share/sounds/Oxygen-Im-Message-In.ogg 2>/dev/null`]);
+                    // Per-app choice, falling back to the global one.
+                    NotificationSounds.playForApp(newNotifObject.appName);
                 }
             }
             root.notify(newNotifObject);

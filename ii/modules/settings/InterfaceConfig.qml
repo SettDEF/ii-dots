@@ -421,6 +421,8 @@ ContentPage {
                 Config.options.notifications.timeout = value;
             }
         }
+
+        NotificationSoundsConfig {}
     }
 
     ContentSection {
