@@ -22,6 +22,9 @@ Singleton {
     readonly property ClipboardRows clipboardRows: ClipboardRows {}
     readonly property EmojiRows emojiRows: EmojiRows {}
     readonly property NotificationRows notificationRows: NotificationRows {}
+    readonly property ClipboardActionRows clipboardActionRows: ClipboardActionRows {
+        discordPinScript: root.discordPinScript
+    }
 
     // Kept as an alias, not moved: the search bar sets it by this name.
     property alias clipboardSort: root.clipboardRows.sort
@@ -907,8 +910,11 @@ Singleton {
     property list<var> results: {
         // Search results are handled here
         ////////////////// Skip? //////////////////
+        // An empty query used to return nothing at all. Offer whatever the
+        // clipboard holds instead — still nothing when it holds nothing
+        // recognisable, so the launcher stays quiet rather than noisy.
         if (root.query == "")
-            return [];
+            return root.clipboardActionRows.rows();
 
         ///////////// Special cases ///////////////
         const specialCaseRows = root._specialCaseRows();

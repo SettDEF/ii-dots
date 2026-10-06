@@ -101,6 +101,21 @@ parse_ids() {
     printf '%s' "$1" | grep -oE '(@me|[0-9]{5,})(/[0-9]{5,})?$' || true
 }
 
+# Discord's Developer Mode "Copy ID" gives a bare snowflake with no link around
+# it, which is what most people actually copy. The public widget endpoint tells
+# the two apart without any auth: 200 is a guild and names it, 403 "Widget
+# Disabled" is still a guild (just private), and 404 means it is not one — a
+# channel id, which cannot be opened without knowing its guild.
+classify_snowflake() {   # $1 id -> prints "guild" or "channel"
+    local code
+    code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 10 \
+        "https://discord.com/api/guilds/$1/widget.json" 2>/dev/null) || code=000
+    case "$code" in
+        200|403) printf 'guild' ;;
+        *)       printf 'channel' ;;
+    esac
+}
+
 pin() {          # $1 name ("" = derive), $2 ids
     local name=$1 ids=$2 guild channel deep node
     guild=${ids%%/*}; channel=${ids#"$guild"}; channel=${channel#/}
@@ -178,9 +193,19 @@ case "${1:-}" in
         echo "watching the clipboard; copy channel or server links in Discord. Ctrl-C to stop."
         exec wl-paste --watch "$0" --from-stdin ;;
     --from-stdin)
-        url=$(cat); ids=$(parse_ids "$url")
+        url=$(cat | tr -d '[:space:]'); ids=$(parse_ids "$url")
         [ -n "$ids" ] || exit 0          # not a Discord link, stay quiet
         [ -f "$CONFIG" ] || exit 0
+        # A bare snowflake could be either kind; a channel one is unusable on
+        # its own, so say that rather than pinning something that will not open.
+        case "$url" in
+            [0-9][0-9][0-9][0-9][0-9]*)
+                if [ "$(classify_snowflake "$ids")" = channel ]; then
+                    echo "that is a channel id; use right-click > Copy Link instead," >&2
+                    echo "since a channel cannot be opened without its server id" >&2
+                    exit 1
+                fi ;;
+        esac
         pin "" "$ids"
         exit 0 ;;
     --list)
