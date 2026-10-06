@@ -156,10 +156,31 @@ PopupWindow {
                 spacing: 8
                 StyledText {
                     Layout.fillWidth: true
-                    text: Translation.tr("Drag the dock's top edge to resize it.")
+                    text: Translation.tr("Drag widgets to reorder them, or the dock's top edge to resize it.")
                     font.pixelSize: Appearance.font.pixelSize.smallest
                     color: Appearance.colors.colSubtext
                     wrapMode: Text.WordWrap
+                }
+                RippleButton {
+                    implicitHeight: 30
+                    implicitWidth: undoRow.implicitWidth + 24
+                    buttonRadius: Appearance.rounding.full
+                    enabled: DockWidgets.canUndo
+                    onClicked: DockWidgets.undo()
+                    contentItem: RowLayout {
+                        id: undoRow
+                        anchors.centerIn: parent
+                        spacing: 4
+                        MaterialSymbol {
+                            text: "undo"; iconSize: Appearance.font.pixelSize.large
+                            color: DockWidgets.canUndo ? Appearance.colors.colOnLayer0 : Appearance.colors.colSubtext
+                        }
+                        StyledText {
+                            text: Translation.tr("Undo")
+                            font.pixelSize: Appearance.font.pixelSize.smaller
+                            color: DockWidgets.canUndo ? Appearance.colors.colOnLayer0 : Appearance.colors.colSubtext
+                        }
+                    }
                 }
                 RippleButton {
                     implicitHeight: 30
@@ -301,6 +322,14 @@ PopupWindow {
                     { displayName: Translation.tr("No windows"), icon: "filter_alt", value: "noWindows" },
                     { displayName: Translation.tr("Off"), icon: "close", value: "off" }
                 ]
+            }
+
+            // Shared with the bar: loaded by path with the registry it draws.
+            Loader {
+                Layout.fillWidth: true
+                Component.onCompleted: setSource(
+                    Qt.resolvedUrl("../../common/widgets/WidgetGallery.qml"),
+                    { registry: DockWidgets })
             }
 
             // Was ~110 lines inline here. Identical to what the bar needs, so

@@ -33,23 +33,59 @@ QtObject {
 
     function isEnabled(id) { return reg.enabled.indexOf(id) >= 0; }
 
-    function toggle(id) {
+    // ── Edits, with undo ─────────────────────────────────────────────────
+    // Every change to the list goes through _write, which remembers what it
+    // replaced. A drag is dozens of moves, so beginEdit()/endEdit() fold a
+    // gesture into one undo step instead of dozens.
+    property var history: []
+    readonly property bool canUndo: reg.history.length > 0
+    property bool _folding: false
+
+    function _write(list) {
         if (!reg.writeEnabled) return;
-        const next = reg.isEnabled(id)
-            ? reg.enabled.filter(w => w !== id)
-            : reg.enabled.concat([id]);
-        reg.writeEnabled(JSON.stringify(next));
+        if (!reg._folding) reg._remember();
+        reg.writeEnabled(JSON.stringify(list));
+    }
+    function _remember() {
+        reg.history = reg.history.concat([reg.enabledJson]).slice(-30);
+    }
+    function beginEdit() { reg._remember(); reg._folding = true; }
+    function endEdit() { reg._folding = false; }
+    function undo() {
+        if (!reg.writeEnabled || reg.history.length === 0) return;
+        const prev = reg.history[reg.history.length - 1];
+        reg.history = reg.history.slice(0, -1);
+        reg.writeEnabled(prev);
     }
 
+    function toggle(id) {
+        reg._write(reg.isEnabled(id)
+            ? reg.enabled.filter(w => w !== id)
+            : reg.enabled.concat([id]));
+    }
+    function add(id) { if (!reg.isEnabled(id) && reg.entry(id)) reg.toggle(id); }
+    function remove(id) { if (reg.isEnabled(id)) reg.toggle(id); }
+
     function move(id, delta) {
-        if (!reg.writeEnabled) return;
         const list = reg.enabled.slice();
         const i = list.indexOf(id);
         const j = i + delta;
         if (i < 0 || j < 0 || j >= list.length) return;
         list[i] = list[j];
         list[j] = id;
-        reg.writeEnabled(JSON.stringify(list));
+        reg._write(list);
+    }
+
+    /// To an absolute position: what a drag wants, since it knows where the
+    /// pointer is and not how many neighbours it has passed.
+    function moveTo(id, index) {
+        const list = reg.enabled.slice();
+        const i = list.indexOf(id);
+        const j = Math.max(0, Math.min(list.length - 1, index));
+        if (i < 0 || i === j) return;
+        list.splice(i, 1);
+        list.splice(j, 0, id);
+        reg._write(list);
     }
 
     // ── Per-widget settings ──────────────────────────────────────────────

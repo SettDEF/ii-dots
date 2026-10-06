@@ -51,6 +51,13 @@ Singleton {
     function isEnabled(id) { return root.registry.isEnabled(id) }
     function toggle(id) { root.registry.toggle(id) }
     function move(id, delta) { root.registry.move(id, delta) }
+    function moveTo(id, index) { root.registry.moveTo(id, index) }
+    function add(id) { root.registry.add(id) }
+    function remove(id) { root.registry.remove(id) }
+    function beginEdit() { root.registry.beginEdit() }
+    function endEdit() { root.registry.endEdit() }
+    function undo() { root.registry.undo() }
+    readonly property bool canUndo: root.registry.canUndo
     function schema(id, key) { return root.registry.schema(id, key) }
     function get(id, key) { return root.registry.get(id, key) }
     function set(id, key, value) { root.registry.set(id, key, value) }

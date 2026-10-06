@@ -199,7 +199,10 @@ Scope { // Scope
                             // there is no special case left to keep in step.
                             Repeater {
                                 id: dockWidgets
-                                model: DockWidgets.enabled
+                                // ScriptModel, not the bare array: a reorder must keep each
+                                // delegate alive, or the widget being dragged is destroyed
+                                // from under the pointer.
+                                model: ScriptModel { values: DockWidgets.enabled }
                                 delegate: DockWidget {
                                     required property var modelData
                                     widgetId: modelData
