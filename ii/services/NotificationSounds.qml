@@ -123,6 +123,9 @@ Singleton {
     FileView {
         id: mapView
         path: Qt.resolvedUrl(root.mapPath)
+        // Absent until the first per-app sound is set, which is normal and
+        // not worth a warning on every load.
+        printErrors: false
         watchChanges: true
         onFileChanged: reload()
         onLoaded: {
