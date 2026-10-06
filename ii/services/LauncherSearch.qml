@@ -2,6 +2,7 @@ pragma Singleton
 
 import qs
 import qs.services
+import qs.services.launcher
 import qs.modules.common
 import qs.modules.common.models
 import qs.modules.common.functions
@@ -16,8 +17,13 @@ Singleton {
     id: root
 
     property string query: ""
-    // Clipboard sort mode: "newest" | "oldest" | "size"
-    property string clipboardSort: "newest"
+    // Row builders for the prefixes that own the whole result list. Owned
+    // here rather than being services, the way Ai owns its api strategies.
+    readonly property ClipboardRows clipboardRows: ClipboardRows {}
+    readonly property EmojiRows emojiRows: EmojiRows {}
+
+    // Kept as an alias, not moved: the search bar sets it by this name.
+    property alias clipboardSort: root.clipboardRows.sort
 
     function ensurePrefix(prefix) {
         if ([Config.options.search.prefix.action, Config.options.search.prefix.app, Config.options.search.prefix.clipboard, Config.options.search.prefix.emojis, Config.options.search.prefix.math, Config.options.search.prefix.shellCommand, Config.options.search.prefix.webSearch, Config.options.search.prefix.translate,].some(i => root.query.startsWith(i))) {
@@ -569,18 +575,6 @@ Singleton {
         if (!m) return "";
         return m[2] ? `${m[1]}/${m[2]}` : m[1];
     }
-    property bool clipboardWorkSafetyActive: {
-        const enabled = Config.options.workSafety.enable.clipboard;
-        const sensitiveNetwork = (StringUtils.stringListContainsSubstring(Network.networkName.toLowerCase(), Config.options.workSafety.triggerCondition.networkNameKeywords));
-        return enabled && sensitiveNetwork;
-    }
-
-    function containsUnsafeLink(entry) {
-        if (entry == undefined)
-            return false;
-        const unsafeKeywords = Config.options.workSafety.triggerCondition.linkKeywords;
-        return StringUtils.stringListContainsSubstring(entry.toLowerCase(), unsafeKeywords);
-    }
 
     Timer {
         id: nonAppResultsTimer
@@ -796,110 +790,11 @@ Singleton {
     /// Clipboard and emoji queries own the whole result list, so they
     /// return early. null means "not a special case, carry on".
     function _specialCaseRows() {
-        if (root.query.startsWith(Config.options.search.prefix.clipboard)) {
-            // Clipboard
-            const searchString = StringUtils.cleanPrefix(root.query, Config.options.search.prefix.clipboard);
-            const sorted = Cliphist.fuzzyQuery(searchString).slice();
-            // Apply explicit sort regardless of fuzzy ordering. Each entry starts with "<id>\t..."
-            const idOf = (e) => parseInt((e || "").split("\t")[0]) || 0;
-            const sizeOf = (e) => {
-                const s = (e || "").length;
-                const m = (e || "").match(/binary data\s+(\d+(?:\.\d+)?)\s*(KiB|MiB|GiB|B)/i);
-                if (m) {
-                    const n = parseFloat(m[1]);
-                    const u = m[2].toUpperCase();
-                    return u === "GIB" ? n * 1024 * 1024 : u === "MIB" ? n * 1024 : u === "KIB" ? n : n / 1024;
-                }
-                return s;
-            };
-            if (root.clipboardSort === "newest") sorted.sort((a, b) => idOf(b) - idOf(a));
-            else if (root.clipboardSort === "oldest") sorted.sort((a, b) => idOf(a) - idOf(b));
-            else if (root.clipboardSort === "size")   sorted.sort((a, b) => sizeOf(b) - sizeOf(a));
-            return sorted.map((entry, index, array) => {
-                const mightBlurImage = Cliphist.entryIsImage(entry) && root.clipboardWorkSafetyActive;
-                let shouldBlurImage = mightBlurImage;
-                if (mightBlurImage) {
-                    shouldBlurImage = shouldBlurImage && (root.containsUnsafeLink(array[index - 1]) || root.containsUnsafeLink(array[index + 1]));
-                }
-                const type = `#${entry.match(/^\s*(\S+)/)?.[1] || ""}`;
-                return resultComp.createObject(null, {
-                    rawValue: entry,
-                    name: StringUtils.cleanCliphistEntry(entry),
-                    verb: "",
-                    type: type,
-                    execute: () => {
-                        Cliphist.copy(entry);
-                    },
-                    actions: [resultComp.createObject(null, {
-                            name: Translation.tr("Copy"),
-                            iconName: "content_copy",
-                            iconType: LauncherSearchResult.IconType.Material,
-                            execute: () => {
-                                Cliphist.copy(entry);
-                            }
-                        }),
-                        // For image entries: decode to a real .png file, then
-                        // offer "copy its path" and "open it in the file manager".
-                        // The decode is on-demand (idempotent) so the file is
-                        // guaranteed to exist when the action runs, not just
-                        // when the thumbnail happened to render.
-                        ...(Cliphist.entryIsImage(entry) ? (() => {
-                            const imgNum  = (entry.match(/^\s*(\d+)/)?.[1]) || "";
-                            const imgPath = `${Directories.cliphistDecode}/clip-${imgNum}.png`;
-                            const escEntry = StringUtils.shellSingleQuoteEscape(entry);
-                            const decode  = `mkdir -p '${Directories.cliphistDecode}'; [ -f '${imgPath}' ] || printf '${escEntry}' | ${Cliphist.cliphistBinary} decode > '${imgPath}'`;
-                            return [resultComp.createObject(null, {
-                                name: Translation.tr("Copy path"),
-                                iconName: "link",
-                                iconType: LauncherSearchResult.IconType.Material,
-                                execute: () => {
-                                    Quickshell.execDetached(["bash", "-c",
-                                        `${decode}; printf '%s' '${imgPath}' | wl-copy`]);
-                                }
-                            }), resultComp.createObject(null, {
-                                name: Translation.tr("Open in file manager"),
-                                iconName: "folder_open",
-                                iconType: LauncherSearchResult.IconType.Material,
-                                execute: () => {
-                                    // Prefer Dolphin (selects the file); fall back
-                                    // to the default opener on the containing dir.
-                                    // execDetached already detaches, so no & needed
-                                    // and the command -v fallback works correctly.
-                                    Quickshell.execDetached(["bash", "-c",
-                                        `${decode}; if command -v dolphin >/dev/null 2>&1; then dolphin --select '${imgPath}'; else xdg-open '${Directories.cliphistDecode}'; fi`]);
-                                }
-                            })];
-                        })() : []),
-                        resultComp.createObject(null, {
-                            name: Translation.tr("Delete"),
-                            iconName: "delete",
-                            iconType: LauncherSearchResult.IconType.Material,
-                            execute: () => {
-                                Cliphist.deleteEntry(entry);
-                            }
-                        })],
-                    blurImage: shouldBlurImage
-                });
-            }).filter(Boolean);
-        } else if (root.query.startsWith(Config.options.search.prefix.emojis)) {
-            // Clipboard
-            const searchString = StringUtils.cleanPrefix(root.query, Config.options.search.prefix.emojis);
-            return Emojis.fuzzyQuery(searchString).map(entry => {
-                const emoji = entry.match(/^\s*(\S+)/)?.[1] || "";
-                return resultComp.createObject(null, {
-                    rawValue: entry,
-                    name: entry.replace(/^\s*\S+\s+/, ""),
-                    iconName: emoji,
-                    iconType: LauncherSearchResult.IconType.Text,
-                    verb: Translation.tr("Copy"),
-                    type: Translation.tr("Emoji"),
-                    execute: () => {
-                        Quickshell.clipboardText = entry.match(/^\s*(\S+)/)?.[1];
-                    }
-                });
-            }).filter(Boolean);
-        }
-
+        const p = Config.options.search.prefix;
+        if (root.query.startsWith(p.clipboard))
+            return root.clipboardRows.rows(StringUtils.cleanPrefix(root.query, p.clipboard));
+        if (root.query.startsWith(p.emojis))
+            return root.emojiRows.rows(StringUtils.cleanPrefix(root.query, p.emojis));
         return null;
     }
 
