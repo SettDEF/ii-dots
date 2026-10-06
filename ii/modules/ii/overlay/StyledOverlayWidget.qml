@@ -4,6 +4,8 @@ import QtQuick.Layouts
 import Quickshell
 import Qt5Compat.GraphicalEffects
 import qs
+import qs.services
+import Quickshell.Wayland
 import qs.modules.common
 import qs.modules.common.functions
 import qs.modules.common.widgets
@@ -25,6 +27,40 @@ AbstractOverlayWidget {
     property bool fancyBorders: true
     property bool showCenterButton: false
     property bool showClickabilityButton: true
+    /// A widget that can sit over a game with nothing behind it opts in. The
+    /// title bar then gets a toggle, and the choice is kept per widget.
+    property bool canHideBackground: false
+    readonly property bool showBackground: root.canHideBackground
+        ? (root.persistentStateEntry.background ?? true) : true
+
+    /// Opt-in: show this widget only while gaming, on one workspace, or while one
+    /// app is focused. Pinned widgets only; with the overlay open it is always
+    /// shown, or there would be no way to change the rule.
+    property bool canRestrictVisibility: false
+    readonly property string visibleOn: root.canRestrictVisibility
+        ? (root.persistentStateEntry.visibleOn ?? "always") : "always"
+    readonly property string visibleKey: String(root.persistentStateEntry.visibleKey ?? "")
+    readonly property bool ruleMet: {
+        switch (root.visibleOn) {
+        case "gaming": return GameMode.gameRunning;
+        case "workspace": return String(HyprlandData.activeWorkspace?.id ?? "") === root.visibleKey;
+        case "window": return (ToplevelManager.activeToplevel?.appId ?? "") === root.visibleKey;
+        default: return true;
+        }
+    }
+    readonly property var visibilityModes: ["always", "gaming", "workspace", "window"]
+    readonly property string visibilityIcon: ({
+        always: "visibility", gaming: "sports_esports",
+        workspace: "grid_view", window: "web_asset"
+    })[root.visibleOn] ?? "visibility"
+    readonly property string visibilityLabel: {
+        switch (root.visibleOn) {
+        case "gaming": return "Only while a game is running";
+        case "workspace": return "Only on workspace " + root.visibleKey;
+        case "window": return "Only while " + root.visibleKey + " is focused";
+        default: return "Always shown";
+        }
+    }
 
     // Defaults n stuff
     required property var modelData
@@ -165,6 +201,26 @@ AbstractOverlayWidget {
         persistentStateEntry.clickthrough = !persistentStateEntry.clickthrough;
     }
 
+    function toggleBackground() {
+        persistentStateEntry.background = !root.showBackground;
+    }
+
+    /// Always -> gaming -> this workspace -> this app -> always. The workspace and
+    /// the app are whatever they are NOW, which is why the rule is changed with
+    /// the overlay open on the thing you mean.
+    function cycleVisibility() {
+        const i = root.visibilityModes.indexOf(root.visibleOn);
+        let next = root.visibilityModes[(i + 1) % root.visibilityModes.length];
+        let key = "";
+        if (next === "workspace") key = String(HyprlandData.activeWorkspace?.id ?? "");
+        if (next === "window") {
+            key = OverlayContext.lastWindowClass;
+            if (key.length === 0) next = "always";
+        }
+        persistentStateEntry.visibleOn = next;
+        persistentStateEntry.visibleKey = key;
+    }
+
     function savePosition(xPos = root.x, yPos = root.y, width = contentContainer.implicitWidth, height = contentContainer.implicitHeight) {
         persistentStateEntry.x = Math.round(xPos);
         persistentStateEntry.y = Math.round(yPos);
@@ -180,7 +236,7 @@ AbstractOverlayWidget {
         root.savePosition(targetX, targetY)
     }
 
-    visible: GlobalStates.overlayOpen || actuallyPinned
+    visible: GlobalStates.overlayOpen || (actuallyPinned && root.ruleMet)
     implicitWidth: contentColumn.implicitWidth + resizeMargin * 2
     implicitHeight: contentColumn.implicitHeight + resizeMargin * 2
 
@@ -249,6 +305,26 @@ AbstractOverlayWidget {
                         onClicked: root.center()
                         StyledToolTip {
                             text: "Center"
+                        }
+                    }
+
+                    TitlebarButton {
+                        visible: root.canRestrictVisibility
+                        materialSymbol: root.visibilityIcon
+                        toggled: root.visibleOn !== "always"
+                        onClicked: root.cycleVisibility()
+                        StyledToolTip {
+                            text: root.visibilityLabel
+                        }
+                    }
+
+                    TitlebarButton {
+                        visible: root.canHideBackground
+                        materialSymbol: "blur_off"
+                        toggled: !root.showBackground
+                        onClicked: root.toggleBackground()
+                        StyledToolTip {
+                            text: "No background"
                         }
                     }
 

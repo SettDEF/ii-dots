@@ -2,6 +2,8 @@ pragma ComponentBehavior: Bound
 import QtQuick
 import QtQuick.Layouts
 import Quickshell.Widgets
+import Qt5Compat.GraphicalEffects
+import qs
 import qs.services
 import qs.modules.common
 import qs.modules.common.widgets
@@ -12,13 +14,32 @@ StyledOverlayWidget {
     id: root
     minimumWidth: 200
     minimumHeight: 70
+    canHideBackground: true
+    canRestrictVisibility: true
+
+    // Over a game there is no surface to read against, so with no background the
+    // text goes white and gets a shadow instead.
+    readonly property color textColor: root.showBackground ? root.textColor : "white"
+    readonly property color subColor: root.showBackground ? root.subColor : "#d0ffffff"
 
     contentItem: OverlayBackground {
         radius: root.contentRadius
+        shown: root.showBackground
+        // Pinned over a game and not in a call: nothing to show, so show nothing
+        // rather than "Not in a voice channel" in the corner of the screen.
+        opacity: (DiscordVoice.inVoice || GlobalStates.overlayOpen) ? 1 : 0
+        Behavior on opacity { NumberAnimation { duration: 200 } }
 
         ColumnLayout {
             anchors { fill: parent; margins: 10 }
             spacing: 6
+            layer.enabled: !root.showBackground
+            layer.effect: DropShadow {
+                radius: 6
+                samples: 13
+                spread: 0.25
+                color: "#d0000000"
+            }
 
             // ── Header ───────────────────────────────────────────────────
             RowLayout {
@@ -28,7 +49,7 @@ StyledOverlayWidget {
                     text: DiscordVoice.inVoice ? "headset_mic" : "headset_off"
                     iconSize: Appearance.font.pixelSize.large
                     color: DiscordVoice.speakingCount > 0 ? Appearance.colors.colPrimary
-                                                          : Appearance.colors.colSubtext
+                                                          : root.subColor
                 }
                 ColumnLayout {
                     Layout.fillWidth: true
@@ -40,7 +61,7 @@ StyledOverlayWidget {
                         elide: Text.ElideRight
                         font.pixelSize: Appearance.font.pixelSize.small
                         font.weight: Font.Medium
-                        color: Appearance.colors.colOnLayer1
+                        color: root.textColor
                     }
                     StyledText {
                         visible: DiscordVoice.inVoice && DiscordVoice.guild.length > 0
@@ -48,7 +69,7 @@ StyledOverlayWidget {
                         text: DiscordVoice.guild
                         elide: Text.ElideRight
                         font.pixelSize: Appearance.font.pixelSize.smallest
-                        color: Appearance.colors.colSubtext
+                        color: root.subColor
                     }
                 }
             }
@@ -108,7 +129,7 @@ StyledOverlayWidget {
                                 elide: Text.ElideRight
                                 font.pixelSize: Appearance.font.pixelSize.small
                                 font.weight: member.modelData.speaking ? Font.DemiBold : Font.Normal
-                                color: Appearance.colors.colOnLayer1
+                                color: root.textColor
                             }
 
                             MaterialSymbol {
@@ -119,7 +140,7 @@ StyledOverlayWidget {
                             MaterialSymbol {
                                 visible: member.modelData.video
                                 text: "videocam"; iconSize: 15
-                                color: Appearance.colors.colSubtext
+                                color: root.subColor
                             }
                             MaterialSymbol {
                                 visible: member.modelData.muted && !member.modelData.deafened

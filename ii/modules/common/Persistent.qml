@@ -283,6 +283,9 @@ Singleton {
                 property JsonObject discordVoice: JsonObject {
                     property bool pinned: false
                     property bool clickthrough: true
+                    property bool background: true
+                    property string visibleOn: "always"
+                    property string visibleKey: ""
                     property real x: 40
                     property real y: 40
                     property real width: 240

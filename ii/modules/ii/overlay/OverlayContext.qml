@@ -1,6 +1,8 @@
 pragma Singleton
 pragma ComponentBehavior: Bound
+import QtQuick
 import Quickshell
+import Quickshell.Wayland
 
 Singleton {
     id: root
@@ -20,6 +22,18 @@ Singleton {
 
     property list<string> pinnedWidgetIdentifiers: []
     property list<var> clickableWidgets: []
+
+    /// The last app that held focus. A widget set to "only while this app is
+    /// focused" needs a name to record, and with the overlay open nothing is
+    /// focused, so it is remembered rather than asked for.
+    property string lastWindowClass: ""
+    Connections {
+        target: ToplevelManager
+        function onActiveToplevelChanged() {
+            const c = ToplevelManager.activeToplevel?.appId ?? "";
+            if (c.length > 0) root.lastWindowClass = c;
+        }
+    }
 
     function pin(identifier: string, pin = true) {
         if (pin) {
