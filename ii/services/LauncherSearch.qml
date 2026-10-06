@@ -522,6 +522,28 @@ Singleton {
 
     // Normalise a Config command ({ name, icon, description, exec, sub })
     // into the internal { action, icon, description, execute/sub } shape.
+    /// Pinned channels, then the way to add one. The adder is last so it does
+    /// not sit above the pins once there are some, and it is always there so
+    /// an empty /dc still tells you what to do.
+    function _discordSub() {
+        const pinned = ((Config.options.search.commands ?? [])
+            .find(c => c?.name === "dc")?.sub ?? []).map(c => root.mapConfigCommand(c));
+        const clip = root.discordIdsIn(Quickshell.clipboardText);
+        return pinned.concat([clip.length > 0 ? {
+            action: "pin",
+            icon: "push_pin",
+            description: Translation.tr("Pin %1 from the clipboard").arg(clip),
+            execute: () => Quickshell.execDetached(["bash", "-c",
+                `'${root.discordPinScript}' --from-stdin <<< '${clip}'`])
+        } : {
+            action: "scan",
+            icon: "content_paste_search",
+            description: Translation.tr("Scan clipboard history — copy a server id or channel link first"),
+            execute: () => Quickshell.execDetached(["bash", "-c",
+                `'${root.discordPinScript}' --harvest`])
+        }]);
+    }
+
     function mapConfigCommand(c) {
         const icon = c.icon ?? "terminal";
         // A config command's icon may be a Material symbol name (the default,
@@ -560,7 +582,18 @@ Singleton {
             description: Translation.tr("Launch a game"),
             sub: root.gameCommands
         }] : [])
-        .concat((Config.options.search.commands ?? []).map(c => root.mapConfigCommand(c)))
+        // Always present, so /dc is discoverable under / even before anything
+        // is pinned. Pins live inside it, which is why the config group of the
+        // same name is filtered out of the plain concat below.
+        .concat([{
+            action: "dc",
+            icon: "forum",
+            description: Translation.tr("Discord servers and channels"),
+            sub: root._discordSub()
+        }])
+        .concat((Config.options.search.commands ?? [])
+            .filter(c => c?.name !== "dc")
+            .map(c => root.mapConfigCommand(c)))
 
     // Emitted when a group result is selected — asks the search widget to
     // replace the query so the group's subcommands come into view.
@@ -942,10 +975,9 @@ Singleton {
         // A pasted link is an unambiguous intent, so it leads. Typing the dc
         // group with a link already copied is the other way in — which is what
         // makes an empty /dc useful before anything has been pinned.
-        const dcTyped = root.query.startsWith(Config.options.search.prefix.action + "dc");
-        // Typing the group always gets a row — the pin when a link is around,
-        // the scan when there is not. A link in the query leads on its own.
-        if (dcTyped || dcFromQuery.length > 0) {
+        // Only for a link typed or pasted into the query. Typing the group is
+        // handled by the /dc tree itself now, which also lists what is pinned.
+        if (dcFromQuery.length > 0) {
             result.push(discordPinObject);
         }
         if (startsWithTranslatePrefix) {
