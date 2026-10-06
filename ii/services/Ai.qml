@@ -59,19 +59,35 @@ Singleton {
     /// lives. Without the fallback a key present on disk still produced
     /// "403 Method doesn't allow unregistered callers", because the request
     /// went out with an empty key rather than none.
+    /// Keys never contain quotes, but `/key "abc"` stores them. One key sat
+    /// in the keyring with a trailing `"` and every request went out
+    /// malformed. Stripped on read as well as on write, so a key already
+    /// stored that way starts working without being re-entered.
+    function sanitizeKey(raw) {
+        let k = String(raw ?? "").trim();
+        while (k.length > 0 && (k[0] === '"' || k[0] === "'")) k = k.slice(1);
+        while (k.length > 0 && (k[k.length - 1] === '"' || k[k.length - 1] === "'"))
+            k = k.slice(0, -1);
+        return k.trim();
+    }
+
     function keyFor(keyId) {
-        const fromRing = root.apiKeys ? (root.apiKeys[keyId] ?? "") : "";
+        const fromRing = root.sanitizeKey(root.apiKeys ? (root.apiKeys[keyId] ?? "") : "");
         if (fromRing.length > 0) return fromRing;
         const name = root.secureKeyNames[keyId] ?? "";
-        return name.length > 0 ? ApiKeys.get(name) : "";
+        return name.length > 0 ? root.sanitizeKey(ApiKeys.get(name)) : "";
     }
     readonly property var apiKeysLoaded: KeyringStorage.loaded
     /// Both stores have to have settled before a missing key means anything.
     readonly property bool keysReady: apiKeysLoaded && ApiKeys.ready
+    /// Having a key is proof enough; readiness only governs the *absence*.
+    /// Gating the positive case on keysReady meant a LOCKED keyring — which
+    /// never sets KeyringStorage.loaded, see its exitCode 2 branch — left
+    /// this false forever, so the sidebar reported "No API key" while one sat
+    /// readable in ~/.secure/apikeys.
     readonly property bool currentModelHasApiKey: {
         const model = models[currentModelId];
         if (!model || !model.requires_key) return true;
-        if (!keysReady) return false;
         return root.keyFor(model.key_id).length > 0;
     }
     property var postResponseHook
@@ -829,7 +845,7 @@ Singleton {
             root.addApiKeyAdvice(model)
             return;
         }
-        KeyringStorage.setNestedField(["apiKeys", model.key_id], key.trim());
+        KeyringStorage.setNestedField(["apiKeys", model.key_id], root.sanitizeKey(key));
         root.addMessage(Translation.tr("API key set for %1").arg(model.name), Ai.interfaceRole);
     }
 
