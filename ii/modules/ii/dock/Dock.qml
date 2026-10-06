@@ -160,6 +160,19 @@ Scope { // Scope
                             spacing: Config.options?.dock.spacing ?? 6
                             property real padding: 5
 
+                            // Separators frame content, so they follow whether any
+                            // widget actually occupies space (apps with no windows
+                            // and media with no track take none).
+                            property bool hasWidgets: false
+                            function recount() {
+                                let any = false;
+                                for (let i = 0; i < dockWidgets.count; i++) {
+                                    const w = dockWidgets.itemAt(i);
+                                    if (w && w.visible && w.implicitWidth > 0) { any = true; break; }
+                                }
+                                dockRow.hasWidgets = any;
+                            }
+
                             VerticalButtonGroup {
                                 Layout.topMargin: Appearance.sizes.hyprlandGapsOut // why does this work
                                 visible: Config.options.dock.showPinButton
@@ -180,7 +193,7 @@ Scope { // Scope
                                     }
                                 }
                             }
-                            DockSeparator { visible: Config.options.dock.showPinButton }
+                            DockSeparator { visible: Config.options.dock.showPinButton && (dockRow.hasWidgets || Config.options.dock.showAppsButton) }
                             // One repeater for the whole row. Apps and media are
                             // catalog entries now, so their order is yours and
                             // there is no special case left to keep in step.
@@ -190,10 +203,14 @@ Scope { // Scope
                                 delegate: DockWidget {
                                     required property var modelData
                                     widgetId: modelData
+                                    onVisibleChanged: dockRow.recount()
+                                    onImplicitWidthChanged: dockRow.recount()
+                                    Component.onCompleted: dockRow.recount()
+                                    Component.onDestruction: Qt.callLater(dockRow.recount)
                                 }
                             }
 
-                            DockSeparator { visible: Config.options.dock.showAppsButton }
+                            DockSeparator { visible: Config.options.dock.showAppsButton && dockRow.hasWidgets }
                             DockButton {
                                 visible: Config.options.dock.showAppsButton
                                 Layout.fillHeight: true
