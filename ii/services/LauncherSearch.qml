@@ -608,9 +608,14 @@ Singleton {
     /// "<guild>/<channel>" or "<guild>" out of a web link, a deep link or a
     /// bare pair; empty when there is none.
     function discordIdsIn(text) {
-        const m = String(text ?? "").match(/channels\/(@me|\d{5,})(?:\/(\d{5,}))?/);
-        if (!m) return "";
-        return m[2] ? `${m[1]}/${m[2]}` : m[1];
+        const t = String(text ?? "").trim();
+        const m = t.match(/channels\/(@me|\d{5,})(?:\/(\d{5,}))?/);
+        if (m) return m[2] ? `${m[1]}/${m[2]}` : m[1];
+        // Developer Mode's "Copy ID" gives a bare snowflake and nothing else,
+        // which is what people actually copy. Whether it names a server or a
+        // channel the script decides, since only it can ask Discord.
+        if (/^\d{17,19}$/.test(t)) return t;
+        return "";
     }
 
     Timer {

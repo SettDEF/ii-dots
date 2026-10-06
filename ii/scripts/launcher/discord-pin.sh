@@ -176,15 +176,25 @@ case "${1:-}" in
         n=0; seen=""
         # Previews are truncated, so match on them cheaply and decode only the
         # few that look like links. Nothing else in the history is read.
+        skipped=0
         while read -r cid; do
             [ -n "$cid" ] || continue
-            ids=$(parse_ids "$(cliphist decode "$cid" 2>/dev/null | tr -d '[:space:]')")
+            raw=$(cliphist decode "$cid" 2>/dev/null | tr -d '[:space:]')
+            ids=$(parse_ids "$raw")
             [ -n "$ids" ] || continue
             case " $seen " in *" $ids "*) continue ;; esac
             seen="$seen $ids"
+            # A bare id needs classifying; a channel one cannot be opened
+            # without its server, so count it rather than pin a broken entry.
+            case "$raw" in
+                [0-9][0-9][0-9][0-9][0-9]*)
+                    [ "$(classify_snowflake "$ids")" = channel ] && {
+                        skipped=$((skipped+1)); continue; } ;;
+            esac
             pin "" "$ids" && n=$((n+1))
         done < <(cliphist list 2>/dev/null \
-                 | grep -aE 'discord\.com/channels|discord://' | cut -f1)
+                 | grep -aE 'discord\.com/channels|discord://|[[:space:]][0-9]{17,19}$' | cut -f1)
+        [ "$skipped" -gt 0 ] && echo "skipped $skipped channel id(s) — those need Copy Link, not Copy ID"
         [ "$n" -gt 0 ] && echo "harvested $n link(s) from the clipboard history" \
                        || echo "no Discord links in the clipboard history yet — copy some and run this again"
         exit 0 ;;
