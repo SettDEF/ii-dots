@@ -112,8 +112,14 @@ Singleton {
 
         onBrightnessChanged: if (monitor.ready) root.brightnessChanged()
 
+        /// Set while taking a value FROM the hardware, so it is never written back.
+        property bool adopting: false
+        property double lastWrite: 0
+
         Behavior on multipliedBrightness {
-            enabled: monitor.animateChanges
+            // Not before `ready`: a fresh monitor starts at 0, and animating
+            // up from there writes every step, dipping the panel to ~1%.
+            enabled: monitor.animateChanges && monitor.ready && !monitor.adopting
             NumberAnimation {
                 duration: 200
                 easing.type: Easing.BezierSpline
@@ -122,6 +128,7 @@ Singleton {
         }
 
         onMultipliedBrightnessChanged: {
+            if (!monitor.ready || monitor.adopting) return;
             if (monitor.isDdc) writeTimer.restart();
             else monitor.write();
         }
@@ -173,6 +180,7 @@ Singleton {
         }
 
         function write(): void {
+            monitor.lastWrite = Date.now();
             const value = Math.max(0, monitor.multipliedBrightness);
 
             if (monitor.isDdc) {
@@ -198,6 +206,39 @@ Singleton {
             // "1%" not "1": a bare number is RAW, so "1" means 1/65535.
             const arg = percent <= 0 ? "1%" : `${percent}%`;
             writeProc.exec(["brightnessctl", "--class", "backlight", "s", arg, "--quiet"]);
+        }
+
+        /// Takes a level someone else set (firmware, resume, a fallback key bind)
+        /// without writing it back.
+        function adopt(fraction: real): void {
+            monitor.adopting = true;
+            const scale = Config.options.light.antiFlashbang.enable
+                ? Math.max(0.05, monitor.brightnessMultiplier) : 1;
+            monitor.brightness = Math.max(0, Math.min(1, fraction / scale));
+            monitor.adopting = false;
+        }
+
+        /// Internal panel only: DDC reads are slow and can upset the bus. Skips
+        /// the seconds after our own write, while the panel is still ramping.
+        readonly property Process syncProc: Process {
+            command: ["sh", "-c", "cat /sys/class/backlight/*/brightness | head -n1"]
+            stdout: StdioCollector {
+                onStreamFinished: {
+                    const hw = parseInt(text);
+                    if (isNaN(hw) || !monitor.ready || monitor.isDdc) return;
+                    if (Date.now() - monitor.lastWrite < 2000) return;
+                    // What our own write would have left: capped like write().
+                    const expected = Math.min(0.98, monitor.multipliedBrightness);
+                    const actual = hw / monitor.rawMaxBrightness;
+                    if (Math.abs(actual - expected) > 0.03) monitor.adopt(actual);
+                }
+            }
+        }
+        readonly property Timer syncTimer: Timer {
+            interval: 3000
+            repeat: true
+            running: monitor.ready && !monitor.isDdc
+            onTriggered: if (!monitor.syncProc.running) monitor.syncProc.running = true
         }
 
         function setBrightness(value: real): void {
