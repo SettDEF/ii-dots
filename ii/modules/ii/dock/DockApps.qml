@@ -122,10 +122,11 @@ Item {
         // true, which re-showed the popup over the icon, which made the icon
         // fire onExited, which cleared buttonHovered — measured as a 2ms
         // flip-flop between the two on every hover after the first.
-        // The context menu takes the pointer off the icon, firing onExited.
-        property bool hovered: (previewPopup.show && popupMouseArea.containsMouse)
-            || root.buttonHovered
-            || appMenu.visible
+        // The context menu takes the pointer off the icon, firing onExited, and an
+        // open menu replaces the preview rather than sharing the screen with it:
+        // the preview used to stay up behind the menu, covering the same spot.
+        property bool hovered: !appMenu.visible
+            && ((previewPopup.show && popupMouseArea.containsMouse) || root.buttonHovered)
         // A file manager is worth hovering even with nothing open.
         property bool shouldShow: previewPopup.hovered
             && (previewPopup.previewCount > 0 || root.showFolderGrid)
@@ -137,7 +138,9 @@ Item {
             // Appearing is what the user is waiting for; disappearing is what
             // needs damping so a pass along the dock does not strobe. One
             // delay for both made every appearance feel late.
-            interval: previewPopup.shouldShow ? 35 : 160
+            // No damping when a menu is what dismissed it: that is a decision, not a
+            // pointer passing along the dock.
+            interval: previewPopup.shouldShow ? 35 : (appMenu.visible ? 0 : 160)
             onTriggered: {
                 previewPopup.show = previewPopup.shouldShow
             }
