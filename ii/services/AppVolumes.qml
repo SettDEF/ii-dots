@@ -28,16 +28,20 @@ Singleton {
     readonly property var _ignoredClasses: ["qs", "quickshell", "qml"]
 
     property var storedVolumes: ({})
+    /// appKey -> -1 (left) .. 1 (right). Absent = centred.
+    property var storedBalances: ({})
 
     function _loadStored() {
         try {
             root.storedVolumes = JSON.parse(Persistent.states.audio.appVolumes || "{}") ?? ({});
+            root.storedBalances = JSON.parse(Persistent.states.audio.appBalances || "{}") ?? ({});
         } catch (e) {
             root.storedVolumes = ({});
         }
     }
     function _persist() {
         Persistent.states.audio.appVolumes = JSON.stringify(root.storedVolumes);
+        Persistent.states.audio.appBalances = JSON.stringify(root.storedBalances);
     }
     Component.onCompleted: {
         root._loadStored();
@@ -121,9 +125,16 @@ Singleton {
         return out;
     }
 
+    /// The loudest channel. `audio.volume` is their average, which reads a
+    /// balanced stream as quieter than the level that was set.
+    function _peak(audio) {
+        const v = audio?.volumes ?? [];
+        return v.length > 0 ? Math.max.apply(null, v) : (audio?.volume ?? 1);
+    }
+
     function volumeFor(row) {
         if (row?.live && row.node?.audio)
-            return row.node.audio.volume;
+            return root._peak(row.node.audio);
         const v = root.storedVolumes[row?.key];
         return v === undefined ? 1.0 : v;
     }
@@ -131,13 +142,48 @@ Singleton {
     function setVolume(row, value) {
         const v = Math.max(0, Math.min(1, value));
         if (row?.live && row.node?.audio) {
-            row.node.audio.volume = v;
+            root._writeLive(row.node.audio, v, root.balanceFor(row));
             return;
         }
         const next = Object.assign({}, root.storedVolumes);
         next[row.key] = v;
         root.storedVolumes = next;
         root._persist();
+    }
+
+    /// Writes a level and a balance together. Assigning `audio.volume` alone sets
+    /// every channel equal, which would silently undo the balance.
+    function _writeLive(audio, volume, balance) {
+        const count = audio?.volumes?.length ?? 0;
+        if (count === 2) audio.volumes = AudioLayout.volumesForBalance([volume, volume], balance);
+        else audio.volume = volume;
+    }
+
+    /// Only a stereo stream can be moved left or right. An app with no stream
+    /// yet can: the balance is applied when its stream opens.
+    function canBalance(row) {
+        return !(row?.live && row.node?.audio) || (row.node.audio.volumes?.length ?? 0) === 2;
+    }
+
+    function balanceFor(row) {
+        const audio = (row?.live) ? row.node?.audio : null;
+        const v = audio?.volumes ?? [];
+        // Zero volume has no direction, so fall back to what was chosen.
+        if (v.length === 2 && Math.max(v[0], v[1]) > 0.001) return AudioLayout.balanceOf(v);
+        return root.storedBalances[row?.key] ?? 0;
+    }
+
+    /// -1 (left) .. 1 (right). Snaps to the middle near it, so centre is easy to
+    /// hit with a slider.
+    function setBalance(row, value) {
+        let b = Math.max(-1, Math.min(1, value));
+        if (Math.abs(b) < 0.05) b = 0;
+        const next = Object.assign({}, root.storedBalances);
+        if (b === 0) delete next[row.key]; else next[row.key] = b;
+        root.storedBalances = next;
+        root._persist();
+        if (row?.live && row.node?.audio)
+            root._writeLive(row.node.audio, root._peak(row.node.audio), b);
     }
 
     function mutedFor(row) {
@@ -160,8 +206,9 @@ Singleton {
                 const key = root.keyForNode(node);
                 if (root._applied[key]) continue;
                 const want = root.storedVolumes[key];
-                if (want === undefined) continue;
-                node.audio.volume = want;
+                const pan = root.storedBalances[key];
+                if (want === undefined && pan === undefined) continue;
+                root._writeLive(node.audio, want ?? root._peak(node.audio), pan ?? 0);
                 root._applied[key] = true;
             }
         }

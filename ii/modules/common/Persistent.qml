@@ -160,6 +160,8 @@ Singleton {
                 // hold dynamic keys. Applied to the app's stream as soon as
                 // one appears.
                 property string appVolumes: "{}"
+                // Left/right balance per app, -1..1, keyed like appVolumes.
+                property string appBalances: "{}"
             }
 
             property JsonObject mic: JsonObject {

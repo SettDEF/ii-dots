@@ -145,7 +145,8 @@ Rectangle {
                     StyledText {
                         Layout.preferredWidth: 34
                         horizontalAlignment: Text.AlignRight
-                        text: Math.round(rowSlider.value * 100) + "%"
+                        text: row.modelData.valueText ? row.modelData.valueText(rowSlider.value)
+                              : Math.round(rowSlider.value * 100) + "%"
                         font.pixelSize: Appearance.font.pixelSize.smaller
                         font.family: Appearance.font.family.monospace
                         color: Appearance.colors.colSubtext

@@ -195,6 +195,33 @@ PopupWindow {
                 onTriggered: () => AppVolumes.setVolume(root.volRow, pct / 100)
             });
 
+        // Left/right. A stereo stream only; the slider's middle is centre, and
+        // the three presets are there because centre is the one you come back to.
+        if (AppVolumes.canBalance(root.volRow)) {
+            const bal = AppVolumes.balanceFor(root.volRow);
+            const side = Math.abs(bal) < 0.05 ? 0 : (bal < 0 ? -1 : 1);
+            out.push({ separator: true }, {
+                slider: true,
+                icon: "swap_horiz",
+                value: (bal + 1) / 2,
+                valueText: v => {
+                    const b = v * 2 - 1;
+                    if (Math.abs(b) < 0.05) return Translation.tr("Mid");
+                    return (b < 0 ? "L " : "R ") + Math.round(Math.abs(b) * 100);
+                },
+                onMoved: v => AppVolumes.setBalance(root.volRow, v * 2 - 1)
+            });
+            for (const [label, target, dir] of [
+                    [Translation.tr("Left"), -1, -1],
+                    [Translation.tr("Centre"), 0, 0],
+                    [Translation.tr("Right"), 1, 1]])
+                out.push({
+                    icon: root._check(side === dir), iconColor: root._tick(side === dir),
+                    label: label,
+                    onTriggered: () => AppVolumes.setBalance(root.volRow, target)
+                });
+        }
+
         // An app with no stream open has nothing to be loud with. The level
         // is still worth setting — it is applied the moment the app starts
         // playing — but without saying so, a slider that changes nothing
