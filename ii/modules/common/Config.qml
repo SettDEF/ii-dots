@@ -739,6 +739,8 @@ Singleton {
                 // honours the user's sound theme). e.g. "message-new-instant",
                 // "bell", "dialog-information".
                 property string soundName: "message-new-instant"
+                // Where the default sound sits: -1 left, 0 centre, 1 right.
+                property real soundPan: 0
             }
 
             property JsonObject osd: JsonObject {

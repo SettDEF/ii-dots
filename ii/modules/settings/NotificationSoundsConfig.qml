@@ -26,6 +26,40 @@ ColumnLayout {
 
     function indexOfRef(ref) { return root.lib.findIndex(s => s.ref === ref); }
 
+    /// Left/right placement of a sound. Snaps to quarters with a notch at the
+    /// centre, and plays a preview when released so the position is heard, not
+    /// guessed.
+    component PanControl: RowLayout {
+        id: pc
+        property real pan: 0
+        signal panMoved(real pan)
+        signal released()
+        spacing: 6
+
+        StyledText {
+            text: "L"
+            color: Appearance.colors.colSubtext
+            font.pixelSize: Appearance.font.pixelSize.smaller
+        }
+        StyledSlider {
+            id: slider
+            Layout.preferredWidth: 110
+            from: -1; to: 1; stepSize: 0.25
+            value: pc.pan
+            usePercentTooltip: false
+            tooltipContent: Math.abs(value) < 0.01 ? Translation.tr("Centre")
+                : value < 0 ? Translation.tr("Left %1%").arg(Math.round(-value * 100))
+                : Translation.tr("Right %1%").arg(Math.round(value * 100))
+            onMoved: pc.panMoved(slider.value)
+            onPressedChanged: if (!slider.pressed) pc.released()
+        }
+        StyledText {
+            text: "R"
+            color: Appearance.colors.colSubtext
+            font.pixelSize: Appearance.font.pixelSize.smaller
+        }
+    }
+
     ConfigSwitch {
         buttonIcon: "volume_up"
         text: Translation.tr("Play a sound for notifications")
@@ -55,13 +89,33 @@ ColumnLayout {
         RippleButton {
             implicitWidth: 36; implicitHeight: 36
             buttonRadius: Appearance.rounding.full
-            onClicked: NotificationSounds.play(Config.options.notifications.soundName)
+            onClicked: NotificationSounds.play(Config.options.notifications.soundName,
+                                                  Config.options.notifications.soundPan)
             contentItem: MaterialSymbol {
                 anchors.centerIn: parent
                 text: "play_arrow"; iconSize: 20
                 color: Appearance.colors.colOnLayer1
             }
             StyledToolTip { text: Translation.tr("Preview") }
+        }
+    }
+
+    RowLayout {
+        Layout.fillWidth: true
+        spacing: 8
+        enabled: Config.options.notifications.sound
+
+        StyledText {
+            text: Translation.tr("Default position")
+            color: Appearance.colors.colOnLayer1
+            font.pixelSize: Appearance.font.pixelSize.small
+        }
+        Item { Layout.fillWidth: true }
+        PanControl {
+            pan: Config.options.notifications.soundPan
+            onPanMoved: p => Config.options.notifications.soundPan = p
+            onReleased: NotificationSounds.play(Config.options.notifications.soundName,
+                                                Config.options.notifications.soundPan)
         }
     }
 
@@ -136,7 +190,8 @@ ColumnLayout {
             spacing: 8
             enabled: Config.options.notifications.sound
 
-            readonly property string ownRef: NotificationSounds.appSounds[appRow.modelData] ?? ""
+            readonly property string ownRef: NotificationSounds.ownSound(appRow.modelData)
+            readonly property var ownPan: NotificationSounds.ownPan(appRow.modelData)
 
             StyledText {
                 Layout.fillWidth: true
@@ -153,10 +208,16 @@ ColumnLayout {
                 currentIndex: appRow.ownRef.length > 0 ? root.indexOfRef(appRow.ownRef) : -1
                 onActivated: idx => NotificationSounds.setAppSound(appRow.modelData, root.lib[idx].ref)
             }
+            PanControl {
+                // Shows the default's position until the app gets its own.
+                pan: appRow.ownPan ?? Config.options.notifications.soundPan
+                onPanMoved: p => NotificationSounds.setAppPan(appRow.modelData, p)
+                onReleased: NotificationSounds.playForApp(appRow.modelData)
+            }
             RippleButton {
                 implicitWidth: 32; implicitHeight: 32
                 buttonRadius: Appearance.rounding.full
-                onClicked: NotificationSounds.play(NotificationSounds.soundFor(appRow.modelData))
+                onClicked: NotificationSounds.playForApp(appRow.modelData)
                 contentItem: MaterialSymbol {
                     anchors.centerIn: parent
                     text: "play_arrow"; iconSize: 17
@@ -166,8 +227,8 @@ ColumnLayout {
             RippleButton {
                 implicitWidth: 32; implicitHeight: 32
                 buttonRadius: Appearance.rounding.full
-                enabled: appRow.ownRef.length > 0
-                onClicked: NotificationSounds.setAppSound(appRow.modelData, "")
+                enabled: appRow.ownRef.length > 0 || appRow.ownPan !== null
+                onClicked: NotificationSounds.resetApp(appRow.modelData)
                 contentItem: MaterialSymbol {
                     anchors.centerIn: parent
                     text: "restart_alt"; iconSize: 17
