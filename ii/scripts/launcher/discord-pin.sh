@@ -24,11 +24,16 @@
 #       gives you under Settings > Data & Privacy > Request all of my data.
 #       Their export, their names, nothing touched that is not yours.
 #
+#   discord-pin.sh --harvest
+#       Copy a pile of links in Discord (Copy Link), then run this once. It
+#       reads them back out of the clipboard history Hyprland already keeps,
+#       so there is no second watcher to run and it reaches backwards as well
+#       as forwards. Names come from the PUBLIC widget endpoint, which needs
+#       no auth; servers with the widget off fall back to their id.
+#
 #   discord-pin.sh --watch
-#       Copy channel or server links in Discord (Copy Link) and each one is
-#       pinned as it lands on the clipboard. Names come from the PUBLIC
-#       widget endpoint, which needs no auth; servers with the widget off
-#       fall back to their id and can be renamed.
+#       The live version of the same thing, for pinning as you go. Costs a
+#       wl-paste process for as long as it runs, which --harvest does not.
 #
 # With one account a pin is a flat leaf: /dc <name>. With several it becomes a
 # group, one leaf per account: /dc <name> <account>. Re-pinning an existing
@@ -146,6 +151,27 @@ case "${1:-}" in
             pin "$gname" "$gid" >/dev/null && n=$((n+1))
         done < <(jq -r 'to_entries[] | "\(.key)\t\(.value)"' "$src")
         echo "imported $n server(s) into /$GROUP"
+        exit 0 ;;
+    --harvest)
+        # The cheap one. Hyprland already runs a clipboard watcher, so a second
+        # daemon of our own would be duplicated work: cliphist's history IS the
+        # watch, and it reaches backwards as well as forwards.
+        command -v cliphist >/dev/null || die "--harvest needs cliphist"
+        [ -f "$CONFIG" ] || die "no config at $CONFIG"
+        n=0; seen=""
+        # Previews are truncated, so match on them cheaply and decode only the
+        # few that look like links. Nothing else in the history is read.
+        while read -r cid; do
+            [ -n "$cid" ] || continue
+            ids=$(parse_ids "$(cliphist decode "$cid" 2>/dev/null | tr -d '[:space:]')")
+            [ -n "$ids" ] || continue
+            case " $seen " in *" $ids "*) continue ;; esac
+            seen="$seen $ids"
+            pin "" "$ids" && n=$((n+1))
+        done < <(cliphist list 2>/dev/null \
+                 | grep -aE 'discord\.com/channels|discord://' | cut -f1)
+        [ "$n" -gt 0 ] && echo "harvested $n link(s) from the clipboard history" \
+                       || echo "no Discord links in the clipboard history yet — copy some and run this again"
         exit 0 ;;
     --watch)
         command -v wl-paste >/dev/null || die "--watch needs wl-clipboard"
