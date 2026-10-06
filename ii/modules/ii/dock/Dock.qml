@@ -77,7 +77,7 @@ Scope { // Scope
                 return (HyprlandData.workspaceById?.[wsId]?.windows ?? 0) === 0;
             }
 
-            property bool reveal: root.pinned || (Config.options?.dock.hoverToReveal && dockMouseArea.containsMouse) || dockApps.requestDockShow || dockMedia.requestDockShow || GlobalStates.dockEditMode || (!ToplevelManager.activeToplevel?.activated) || dockRoot.emptyHere || GlobalStates.dockOpen
+            property bool reveal: root.pinned || (Config.options?.dock.hoverToReveal && dockMouseArea.containsMouse) || DockWidgets.anyRequestShow || GlobalStates.dockEditMode || (!ToplevelManager.activeToplevel?.activated) || dockRoot.emptyHere || GlobalStates.dockOpen
 
             anchors {
                 bottom: true
@@ -181,22 +181,9 @@ Scope { // Scope
                                 }
                             }
                             DockSeparator { visible: Config.options.dock.showPinButton }
-                            DockApps {
-                                id: dockApps
-                                buttonPadding: dockRow.padding
-                            }
-                            // Hidden with the card: the card collapses to zero width
-                            // with no track, which left two lines touching.
-                            DockSeparator { visible: dockMedia.visible }
-                            DockMedia {
-                                id: dockMedia
-                                visible: Config.options.dock.showMedia && dockMedia.hasTrack
-                                Layout.fillHeight: true
-                                Layout.topMargin: 12
-                                Layout.bottomMargin: 8
-                                buttonPadding: dockRow.padding
-                            }
-                            DockSeparator { visible: dockWidgets.count > 0 }
+                            // One repeater for the whole row. Apps and media are
+                            // catalog entries now, so their order is yours and
+                            // there is no special case left to keep in step.
                             Repeater {
                                 id: dockWidgets
                                 model: DockWidgets.enabled

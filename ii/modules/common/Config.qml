@@ -567,6 +567,9 @@ Singleton {
 
             property JsonObject dock: JsonObject {
                 property bool enable: false
+                // Padding around a dock button. Was a literal on dockRow, which the
+                // widgets could not reach without being handed it.
+                property int buttonPadding: 5
                 // Which monitors get a dock. Empty means all of them, the same
                 // meaning bar.screenList has. Names like "eDP-1"; `hyprctl
                 // monitors` lists them.
@@ -600,7 +603,10 @@ Singleton {
                 // Enabled dock widgets, in order, as a JSON array of ids from
                 // DockWidgets.catalog. A string because JsonAdapter segfaults
                 // on a `property var` inside a JsonObject.
-                property string widgets: "[]"
+                // apps and media are widgets now; they were unconditional
+                // children of the row before, so they are on by default or a
+                // fresh dock would come up empty.
+                property string widgets: "[\"apps\", \"media\"]"
                 // Per-widget settings, { widgetId: { key: value } }. Defaults
                 // live in DockWidgets.catalog, so only overrides are stored.
                 property string widgetSettings: "{}"

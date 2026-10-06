@@ -23,7 +23,32 @@ Singleton {
         return e?.appName ?? "";
     }
 
+    /// A widget asking the dock to stay visible — a hovered app preview, a
+    /// playing track. Used to reach Dock.qml through the ids of the two
+    /// hardcoded children; they are behind loaders now, so it goes through
+    /// here. One flag per source rather than a counter, because a counter
+    /// drifts the moment a widget is reloaded mid-hover.
+    property bool appsRequestShow: false
+    property bool mediaRequestShow: false
+    readonly property bool anyRequestShow: root.appsRequestShow || root.mediaRequestShow
+
+    /// "tile" is a 35px square in a 50px button; "inline" sizes itself and
+    /// gets no button chrome. Apps and media were hardcoded siblings of the
+    /// widget row purely because the host only knew how to draw a tile.
+    function kindOf(id) {
+        const e = (root.catalog ?? []).find(w => w.id === id);
+        return e?.kind ?? "tile";
+    }
+
     readonly property var catalog: [
+        {
+            id: "apps", name: Translation.tr("Applications"), icon: "apps",
+            kind: "inline", noPanel: true
+        },
+        {
+            id: "media", name: Translation.tr("Now playing"), icon: "music_note",
+            kind: "inline", noPanel: true
+        },
         {
             id: "clock", name: Translation.tr("Clock"), icon: "schedule",
             app: "/mnt/storage/dev/projects/desktop/timos/timos.qml", appName: "Timos", w: Appearance.sizes.dockWidgetWindow.widthNarrow, h: Appearance.sizes.dockWidgetWindow.heightTall,
