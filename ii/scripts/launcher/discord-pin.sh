@@ -17,6 +17,19 @@
 #   discord-pin.sh --add-account alt 'vesktop --url --'
 #   discord-pin.sh --del-account alt
 #
+# Pinning one at a time is slow, so there are two bulk routes:
+#
+#   discord-pin.sh --import <dir|servers/index.json>
+#       Every server at once, correctly named, from the data package Discord
+#       gives you under Settings > Data & Privacy > Request all of my data.
+#       Their export, their names, nothing touched that is not yours.
+#
+#   discord-pin.sh --watch
+#       Copy channel or server links in Discord (Copy Link) and each one is
+#       pinned as it lands on the clipboard. Names come from the PUBLIC
+#       widget endpoint, which needs no auth; servers with the widget off
+#       fall back to their id and can be renamed.
+#
 # With one account a pin is a flat leaf: /dc <name>. With several it becomes a
 # group, one leaf per account: /dc <name> <account>. Re-pinning an existing
 # name rebuilds it, so adding an account and re-pinning upgrades it in place.
@@ -51,6 +64,20 @@ write_json() {   # $1 = destination; stdin = new content
 }
 
 # One leaf per account, or a single flat leaf when there is only one.
+# https://discord.com/api/guilds/<id>/widget.json is public: no token, no
+# account, nothing of Discord's that is not already open. Servers with the
+# widget disabled simply 403, and the id is used instead.
+guild_name() {   # $1 guild id -> name, or empty
+    [ "$1" = "@me" ] && { printf 'Direct messages'; return; }
+    curl -fsS --max-time 8 "https://discord.com/api/guilds/$1/widget.json" 2>/dev/null \
+        | jq -r '.name // empty' 2>/dev/null
+}
+
+auto_name() {    # $1 guild id, $2 channel id ("" for a whole server)
+    local g; g=$(guild_name "$1"); [ -n "$g" ] || g="Server $1"
+    if [ -n "${2:-}" ]; then printf '%s · %s' "$g" "${2: -4}"; else printf '%s' "$g"; fi
+}
+
 build_node() {   # $1 name, $2 deep link
     local name=$1 deep=$2
     jq -n --arg n "$name" --arg d "$deep" --argjson a "$(accounts_json)" '
@@ -62,6 +89,31 @@ build_node() {   # $1 name, $2 deep link
                  sub: [ $accs[] | { name:.key, icon:"person", description:$d,
                                     exec: (.value + " " + $d) } ] }
           end'
+}
+
+# Parses a link (web, deep, or bare ids) into "<guild>/<channel>" or "<guild>".
+parse_ids() {
+    printf '%s' "$1" | grep -oE '(@me|[0-9]{5,})(/[0-9]{5,})?$' || true
+}
+
+pin() {          # $1 name ("" = derive), $2 ids
+    local name=$1 ids=$2 guild channel deep node
+    guild=${ids%%/*}; channel=${ids#"$guild"}; channel=${channel#/}
+    [ "$channel" = "$guild" ] && channel=""
+    deep="discord://-/channels/${ids}"
+    [ -n "$name" ] || name=$(auto_name "$guild" "$channel")
+    node=$(build_node "$name" "$deep")
+    jq --arg g "$GROUP" --arg n "$name" --argjson node "$node" '
+        .search.commands //= []
+      | if ([.search.commands[]? | select(.name==$g)] | length) == 0
+        then .search.commands += [{name:$g, icon:"forum", description:"Discord", sub:[]}]
+        else . end
+      | .search.commands = [ .search.commands[]? |
+          if .name==$g
+          then .sub = ([ .sub[]? | select(.name != $n) ] + [$node])
+          else . end ]
+    ' "$CONFIG" | write_json "$CONFIG"
+    printf 'pinned: /%s %s  ->  %s\n' "$GROUP" "$name" "$deep"
 }
 
 [ $# -gt 0 ] || usage 2
@@ -81,6 +133,30 @@ case "${1:-}" in
         ensure_accounts
         jq --arg k "$2" 'del(.[$k])' "$ACCTS" | write_json "$ACCTS"
         echo "account removed: $2"; exit 0 ;;
+    --import)
+        [ $# -eq 2 ] || die "--import needs the export dir or its servers/index.json"
+        [ -f "$CONFIG" ] || die "no config at $CONFIG"
+        src=$2; [ -d "$src" ] && src="$src/servers/index.json"
+        [ -f "$src" ] || die "no servers/index.json at: $src"
+        jq -e 'type=="object"' "$src" >/dev/null 2>&1 || die "not a Discord servers index: $src"
+        n=0
+        # Names come from the export, so no network call and no rate limit.
+        while IFS=$'\t' read -r gid gname; do
+            [ -n "$gid" ] || continue
+            pin "$gname" "$gid" >/dev/null && n=$((n+1))
+        done < <(jq -r 'to_entries[] | "\(.key)\t\(.value)"' "$src")
+        echo "imported $n server(s) into /$GROUP"
+        exit 0 ;;
+    --watch)
+        command -v wl-paste >/dev/null || die "--watch needs wl-clipboard"
+        echo "watching the clipboard; copy channel or server links in Discord. Ctrl-C to stop."
+        exec wl-paste --watch "$0" --from-stdin ;;
+    --from-stdin)
+        url=$(cat); ids=$(parse_ids "$url")
+        [ -n "$ids" ] || exit 0          # not a Discord link, stay quiet
+        [ -f "$CONFIG" ] || exit 0
+        pin "" "$ids"
+        exit 0 ;;
     --list)
         [ -f "$CONFIG" ] || die "no config at $CONFIG"
         jq -r --arg g "$GROUP" '
@@ -101,24 +177,10 @@ case "${1:-}" in
         echo "removed: $2"; exit 0 ;;
 esac
 
+# Manual: a name you chose, one link.
 [ $# -eq 2 ] || usage 2
 [ -f "$CONFIG" ] || die "no config at $CONFIG"
-NAME=$1; URL=$2
-
-ids=$(printf '%s' "$URL" | grep -oE '(@me|[0-9]{5,})/[0-9]{5,}$' || true)
-[ -n "$ids" ] || die "no guild/channel ids in: $URL
-    expected .../channels/<guild|@me>/<channel>"
-DEEP="discord://-/channels/${ids}"
-
-jq --arg g "$GROUP" --arg n "$NAME" --argjson node "$(build_node "$NAME" "$DEEP")" '
-    .search.commands //= []
-  | if ([.search.commands[]? | select(.name==$g)] | length) == 0
-    then .search.commands += [{name:$g, icon:"forum", description:"Discord", sub:[]}]
-    else . end
-  | .search.commands = [ .search.commands[]? |
-      if .name==$g
-      then .sub = ([ .sub[]? | select(.name != $n) ] + [$node])
-      else . end ]
-' "$CONFIG" | write_json "$CONFIG"
-
-echo "pinned: /$GROUP $NAME  ->  $DEEP"
+ids=$(parse_ids "$2")
+[ -n "$ids" ] || die "no guild/channel ids in: $2
+    expected .../channels/<guild|@me>[/<channel>]"
+pin "$1" "$ids"
