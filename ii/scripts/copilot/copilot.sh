@@ -16,13 +16,20 @@ set -uo pipefail
 
 STATE="${XDG_RUNTIME_DIR:-/tmp}/quickshell-copilot"; mkdir -p "$STATE"
 WAV="$STATE/rec.wav"; PIDF="$STATE/rec.pid"
-GEMINI_MODEL="${COPILOT_GEMINI_MODEL:-gemini-2.5-flash}"
+# gemini-flash-latest, not a pinned version: 2.5-flash was retired for new
+# keys and started answering 404. The alias tracks whatever is current.
+GEMINI_MODEL="${COPILOT_GEMINI_MODEL:-gemini-flash-latest}"
 OPENAI_CHAT_MODEL="${COPILOT_OPENAI_CHAT_MODEL:-gpt-4o-mini}"
 OPENAI_STT_MODEL="${COPILOT_OPENAI_STT_MODEL:-whisper-1}"
 
 die() { echo "copilot: $*" >&2; exit 1; }
 
 # --- keys: env > flat file > gnome-keyring (the AI chat's store) -----------
+# Keys hold no quotes, but `/key "abc"` in the AI chat stored them: one Gemini
+# key sat in the keyring 40 chars long where the key is 39, and every request
+# came back HTTP 400. Ai.qml strips them now; so does this.
+dequote() { local s=${1#\"}; s=${s%\"}; s=${s#\'}; s=${s%\'}; printf '%s' "$s"; }
+
 load_keys() {
     set -a; . "$HOME/.secure/apikeys" 2>/dev/null; set +a
     if [ -z "${OPENAI_API_KEY:-}" ] || [ -z "${GEMINI_API_KEY:-}" ]; then
@@ -33,6 +40,9 @@ load_keys() {
             export OPENAI_API_KEY GEMINI_API_KEY
         fi
     fi
+    OPENAI_API_KEY=$(dequote "${OPENAI_API_KEY:-}")
+    GEMINI_API_KEY=$(dequote "${GEMINI_API_KEY:-}")
+    export OPENAI_API_KEY GEMINI_API_KEY
 }
 provider() {
     [ -n "${COPILOT_PROVIDER:-}" ] && { echo "$COPILOT_PROVIDER"; return; }

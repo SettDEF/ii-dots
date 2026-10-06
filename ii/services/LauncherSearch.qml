@@ -20,7 +20,7 @@ Singleton {
     property string clipboardSort: "newest"
 
     function ensurePrefix(prefix) {
-        if ([Config.options.search.prefix.action, Config.options.search.prefix.app, Config.options.search.prefix.clipboard, Config.options.search.prefix.emojis, Config.options.search.prefix.math, Config.options.search.prefix.shellCommand, Config.options.search.prefix.webSearch,].some(i => root.query.startsWith(i))) {
+        if ([Config.options.search.prefix.action, Config.options.search.prefix.app, Config.options.search.prefix.clipboard, Config.options.search.prefix.emojis, Config.options.search.prefix.math, Config.options.search.prefix.shellCommand, Config.options.search.prefix.webSearch, Config.options.search.prefix.translate,].some(i => root.query.startsWith(i))) {
             root.query = prefix + root.query.slice(1);
         } else {
             root.query = prefix + root.query;
@@ -557,6 +557,7 @@ Singleton {
     signal requestQuery(string newQuery)
 
     property string mathResult: ""
+    property string translateResult: ""
     property bool clipboardWorkSafetyActive: {
         const enabled = Config.options.workSafety.enable.clipboard;
         const sensitiveNetwork = (StringUtils.stringListContainsSubstring(Network.networkName.toLowerCase(), Config.options.workSafety.triggerCondition.networkNameKeywords));
@@ -579,7 +580,40 @@ Singleton {
                 expr = expr.slice(Config.options.search.prefix.math.length);
             }
             mathProc.calculateExpression(expr);
+            translateProc.translate(root.query);
         }
+    }
+
+    // Only ever runs behind the prefix: every other query would be a network
+    // round trip per keystroke. Shares the sidebar translator's language
+    // settings rather than adding a second set that can disagree with it.
+    Process {
+        id: translateProc
+        property string buffer: ""
+        // The results binding reads translateResult AND restarts the timer, so
+        // the first answer re-triggers a second identical run. Harmless for
+        // qalc, a wasted network round trip here.
+        property string lastText: ""
+        function translate(query) {
+            const pfx = Config.options.search.prefix.translate;
+            if (!query.startsWith(pfx)) { root.translateResult = ""; translateProc.lastText = ""; return; }
+            const text = query.slice(pfx.length).trim();
+            if (text.length === 0) { root.translateResult = ""; translateProc.lastText = ""; return; }
+            if (text === translateProc.lastText) return;
+            translateProc.lastText = text;
+            const tr = Config.options.language.translator;
+            translateProc.running = false;
+            translateProc.buffer = "";
+            translateProc.command = ["bash", "-c", `trans -brief -no-bidi -no-ansi`
+                + ` -source '${StringUtils.shellSingleQuoteEscape(tr.sourceLanguage)}'`
+                + ` -target '${StringUtils.shellSingleQuoteEscape(tr.targetLanguage)}'`
+                + ` '${StringUtils.shellSingleQuoteEscape(text)}'`];
+            translateProc.running = true;
+        }
+        stdout: SplitParser {
+            onRead: data => { translateProc.buffer += (translateProc.buffer ? "\n" : "") + data; }
+        }
+        onExited: root.translateResult = translateProc.buffer.trim()
     }
 
     Process {
@@ -719,6 +753,16 @@ Singleton {
             iconType: LauncherSearchResult.IconType.Material,
             execute: () => {
                 Quickshell.clipboardText = root.mathResult;
+            }
+        });
+        const translateResultObject = resultComp.createObject(null, {
+            name: root.translateResult,
+            verb: Translation.tr("Copy"),
+            type: Translation.tr("Translation"),
+            iconName: 'translate',
+            iconType: LauncherSearchResult.IconType.Material,
+            execute: () => {
+                Quickshell.clipboardText = root.translateResult;
             }
         });
         const appResultObjects = AppSearch.fuzzyQuery(StringUtils.cleanPrefix(root.query, Config.options.search.prefix.app)).map(entry => {
@@ -911,7 +955,12 @@ Singleton {
         const startsWithMathPrefix = root.query.startsWith(Config.options.search.prefix.math);
         const startsWithShellCommandPrefix = root.query.startsWith(Config.options.search.prefix.shellCommand);
         const startsWithWebSearchPrefix = root.query.startsWith(Config.options.search.prefix.webSearch);
-        if (startsWithNumber || startsWithMathPrefix) {
+        const startsWithTranslatePrefix = root.query.startsWith(Config.options.search.prefix.translate);
+        if (startsWithTranslatePrefix) {
+            // Deliberately absent from the showDefaultActionsWithoutPrefix
+            // block below: an unprefixed row would translate every query typed.
+            if (root.translateResult.length > 0) result.push(translateResultObject);
+        } else if (startsWithNumber || startsWithMathPrefix) {
             result.push(mathResultObject);
         } else if (startsWithShellCommandPrefix) {
             result.push(commandResultObject);

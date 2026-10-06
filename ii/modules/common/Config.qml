@@ -829,6 +829,9 @@ Singleton {
                     property string shellCommand: "$"
                     property string webSearch: "?"
                     property string theme: ","
+                    // A word, not a symbol: the good single characters are
+                    // taken, and "tr " reads as what it does.
+                    property string translate: "tr "
                 }
                 property JsonObject imageSearch: JsonObject {
                     property string imageSearchEngineBaseUrl: "https://lens.google.com/uploadbyurl?url="
