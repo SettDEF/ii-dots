@@ -20,8 +20,12 @@ import Quickshell.Io
 Singleton {
     id: root
 
-    readonly property string dir: `${Directories.state}/quickshell/notification-sounds`
-    readonly property string mapPath: `${Directories.state}/quickshell/app-sounds.json`
+    // Directories.state is already .../state/quickshell — adding it again gave
+    // .../state/quickshell/quickshell and the map never loaded.
+    // The sound files' directory is the script's business alone; duplicating
+    // it here would be a second place for it to be wrong.
+    readonly property string mapPath:
+        FileUtils.trimFileProtocol(`${Directories.state}/app-sounds.json`)
     readonly property string addScript:
         FileUtils.trimFileProtocol(`${Directories.scriptPath}/notifications/sound-add.sh`)
 
