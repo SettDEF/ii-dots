@@ -22,6 +22,18 @@ Singleton {
     readonly property ClipboardRows clipboardRows: ClipboardRows {}
     readonly property EmojiRows emojiRows: EmojiRows {}
     readonly property NotificationRows notificationRows: NotificationRows {}
+
+    // Steam's non-Steam shortcuts. Created from its file rather than by type: a
+    // launcher that cannot load this reader should still be a launcher, and a
+    // missing type here would take the whole singleton down with it.
+    readonly property var steamShortcuts: {
+        const c = Qt.createComponent(Qt.resolvedUrl("launcher/SteamShortcuts.qml"));
+        if (c.status !== Component.Ready) {
+            console.warn("[LauncherSearch] Steam shortcuts unavailable: " + c.errorString());
+            return null;
+        }
+        return c.createObject(root);
+    }
     readonly property ClipboardActionRows clipboardActionRows: ClipboardActionRows {
         discordPinScript: root.discordPinScript
     }
@@ -113,6 +125,8 @@ Singleton {
                 execute: () => e.execute()
             };
         })
+        .sort((a, b) => String(a.action).localeCompare(String(b.action)))
+        .concat(root.steamShortcuts?.gameCommands ?? [])
         .sort((a, b) => String(a.action).localeCompare(String(b.action)))
 
     FolderListModel {
@@ -843,7 +857,12 @@ Singleton {
     }
 
     function _appRows() {
-        return AppSearch.fuzzyQuery(StringUtils.cleanPrefix(root.query, Config.options.search.prefix.app)).map(entry => {
+        const clean = StringUtils.cleanPrefix(root.query, Config.options.search.prefix.app);
+        return root._desktopAppRows(clean).concat(root.steamShortcuts?.rows(clean) ?? []);
+    }
+
+    function _desktopAppRows(clean) {
+        return AppSearch.fuzzyQuery(clean).map(entry => {
             return resultComp.createObject(null, {
                 type: Translation.tr("App"),
                 id: entry.id,
