@@ -22,6 +22,18 @@ Singleton {
                 // SysStats keeps only the 1- and 5-minute figures.
                 { key: "fiveMinute", label: Translation.tr("Use the 5-minute average"), type: "bool", def: false }
             ]
+        },
+        {
+            id: "battery", name: Translation.tr("Battery"), icon: "battery_full",
+            settings: [
+                { key: "showPercent", label: Translation.tr("Show percentage"), type: "bool", def: true }
+            ]
+        },
+        {
+            id: "resources", name: Translation.tr("CPU / RAM"), icon: "memory",
+            settings: [
+                { key: "showMemory", label: Translation.tr("Show memory beside CPU"), type: "bool", def: true }
+            ]
         }
     ]
 

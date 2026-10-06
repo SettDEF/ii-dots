@@ -112,7 +112,7 @@ FloatingWindow {
                         Layout.fillWidth: true
                         active: !DockWidgetPanel.showSettings && win.widgetId.length > 0
                         source: active
-                            ? Qt.resolvedUrl(`widgets/${win.widgetId.charAt(0).toUpperCase()}${win.widgetId.slice(1)}Panel.qml`)
+                            ? Qt.resolvedUrl(`../../common/widgets/${win.widgetId.charAt(0).toUpperCase()}${win.widgetId.slice(1)}Panel.qml`)
                             : ""
                     }
 
