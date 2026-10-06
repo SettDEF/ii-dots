@@ -642,13 +642,160 @@ Singleton {
         }
     }
 
-    property list<var> results: {
-        // Search results are handled here
-        ////////////////// Skip? //////////////////
-        if (root.query == "")
-            return [];
+    /// Walks commandTree by the query tokens. A group token followed by a
+    /// space descends into it; a group as the last (unspaced) token shows the
+    /// group itself — selecting it drills in (requestQuery). A leaf token
+    /// consumes the rest of the line as its arguments.
+    function _launcherActionRows() {
+        const actionPrefix = Config.options.search.prefix.action;
+        if (!root.query.startsWith(actionPrefix)) return [];
+        const body = root.query.slice(actionPrefix.length);
+        const tokens = body.length > 0 ? body.split(" ") : [""];
 
-        ///////////// Special cases ///////////////
+        let level = root.commandTree;
+        let pathPrefix = "";          // completed group path, space-terminated
+        let partial = "";             // last (in-progress) token to filter by
+        let targetLeaf = null;        // a fully-typed leaf, if any
+        let leafArgs = "";
+        let valid = true;
+
+        // `--flag=value` is the same as `--flag value`, just typed in one
+        // token. Splitting it here means every node gets the syntax for
+        // free instead of each one parsing its own arguments — and for a
+        // group, the value selects a subcommand, so `--shader=crt` and
+        // `--shader crt` land in the same place.
+        const eqSplit = tok => {
+            const at = tok.indexOf("=");
+            return at > 0 ? [tok.slice(0, at), tok.slice(at + 1)] : [tok, null];
+        };
+
+        for (let i = 0; i < tokens.length; i++) {
+            const raw = tokens[i];
+            const [token, inlineVal] = eqSplit(raw);
+            const isLast = (i === tokens.length - 1);
+
+            // A trailing `--flag=` with nothing after it should prompt with
+            // the possible values rather than resolve to nothing.
+            if (isLast && inlineVal === null) { partial = raw; break; }
+
+            const child = (level ?? []).find(n => n.action === token);
+            if (!child) { valid = false; break; }
+
+            if (inlineVal !== null) {
+                if (child.sub && child.sub.length > 0) {
+                    const kids = child.sub;
+                    if (inlineVal.length === 0) {
+                        // `--flag=` → offer the values.
+                        level = kids;
+                        pathPrefix += token + " ";
+                        partial = "";
+                        break;
+                    }
+                    const picked = kids.find(n => n.action === inlineVal);
+                    if (picked && !(picked.sub && picked.sub.length > 0)) {
+                        targetLeaf = picked;
+                        leafArgs = tokens.slice(i + 1).join(" ");
+                        break;
+                    }
+                    // Partial value: keep prompting from the value list.
+                    level = kids;
+                    pathPrefix += token + " ";
+                    partial = inlineVal;
+                    break;
+                }
+                // Leaf: the value IS the argument.
+                targetLeaf = child;
+                leafArgs = ([inlineVal].concat(tokens.slice(i + 1))).join(" ").trim();
+                break;
+            }
+
+            if (isLast) { partial = raw; break; }
+
+            if (child.sub && child.sub.length > 0) {
+                level = child.sub;
+                pathPrefix += token + " ";
+            } else {
+                targetLeaf = child;
+                leafArgs = tokens.slice(i + 1).join(" ");
+                break;
+            }
+        }
+        if (!valid) return [];
+
+
+        const makeLeaf = (n, full) => resultComp.createObject(null, {
+            name: full,
+            verb: Translation.tr("Run"),
+            type: Translation.tr("Action"),
+            comment: n.description ?? "",
+            iconName: n.icon ?? 'settings_suggest',
+            iconType: n.iconType ?? LauncherSearchResult.IconType.Material,
+            execute: () => n.execute(leafArgs)
+        });
+
+        if (targetLeaf) {
+            return [makeLeaf(targetLeaf, root.query)];
+        }
+        const p = partial.toLowerCase();
+        return (level ?? [])
+            .filter(n => n.action.toLowerCase().startsWith(p))
+            .map(n => {
+                const full = actionPrefix + pathPrefix + n.action;
+                if (n.sub && n.sub.length > 0) {
+                    return resultComp.createObject(null, {
+                        name: full,
+                        verb: Translation.tr("Open"),
+                        type: Translation.tr("Group"),
+                        comment: n.description ?? "",
+                        iconName: n.icon ?? 'folder',
+                        iconType: n.iconType ?? LauncherSearchResult.IconType.Material,
+                        execute: () => root.requestQuery(full + " ")
+                    });
+                }
+                return makeLeaf(n, full);
+            });
+    }
+
+    function _commandRow() {
+        return resultComp.createObject(null, {
+            name: StringUtils.cleanPrefix(root.query, Config.options.search.prefix.shellCommand).replace("file://", ""),
+            verb: Translation.tr("Run"),
+            type: Translation.tr("Command"),
+            fontType: LauncherSearchResult.FontType.Monospace,
+            iconName: 'terminal',
+            iconType: LauncherSearchResult.IconType.Material,
+            execute: () => {
+                let cleanedCommand = root.query.replace("file://", "");
+                cleanedCommand = StringUtils.cleanPrefix(cleanedCommand, Config.options.search.prefix.shellCommand);
+                if (cleanedCommand.startsWith(Config.options.search.prefix.shellCommand)) {
+                    cleanedCommand = cleanedCommand.slice(Config.options.search.prefix.shellCommand.length);
+                }
+                Quickshell.execDetached(["bash", "-c", root.query.startsWith('sudo') ? `${Config.options.apps.terminal} fish -C '${cleanedCommand}'` : cleanedCommand]);
+            }
+        });
+    }
+
+    function _webSearchRow() {
+        return resultComp.createObject(null, {
+            name: StringUtils.cleanPrefix(root.query, Config.options.search.prefix.webSearch),
+            verb: Translation.tr("Search"),
+            type: Translation.tr("Web search"),
+            iconName: 'travel_explore',
+            iconType: LauncherSearchResult.IconType.Material,
+            execute: () => {
+                let query = StringUtils.cleanPrefix(root.query, Config.options.search.prefix.webSearch);
+                let url = Config.options.search.engineBaseUrl + query;
+                for (let site of Config.options.search.excludedSites) {
+                    url += ` -site:${site}`;
+                }
+                Qt.openUrlExternally(url);
+            }
+        });
+    }
+
+    /// Clipboard and emoji queries own the whole result list, so they
+    /// return early. null means "not a special case, carry on".
+    function _specialCaseRows() {
         if (root.query.startsWith(Config.options.search.prefix.clipboard)) {
             // Clipboard
             const searchString = StringUtils.cleanPrefix(root.query, Config.options.search.prefix.clipboard);
@@ -753,50 +900,11 @@ Singleton {
             }).filter(Boolean);
         }
 
-        ////////////////// Init ///////////////////
-        nonAppResultsTimer.restart();
-        const mathResultObject = resultComp.createObject(null, {
-            name: root.mathResult,
-            verb: Translation.tr("Copy"),
-            type: Translation.tr("Math result"),
-            fontType: LauncherSearchResult.FontType.Monospace,
-            iconName: 'calculate',
-            iconType: LauncherSearchResult.IconType.Material,
-            execute: () => {
-                Quickshell.clipboardText = root.mathResult;
-            }
-        });
-        const translateResultObject = resultComp.createObject(null, {
-            name: root.translateResult,
-            verb: Translation.tr("Copy"),
-            type: Translation.tr("Translation"),
-            iconName: 'translate',
-            iconType: LauncherSearchResult.IconType.Material,
-            execute: () => {
-                Quickshell.clipboardText = root.translateResult;
-            }
-        });
-        // Pin a Discord channel without leaving the launcher. clipboardText is
-        // a plain reactive property, so this costs no process and the row
-        // appears the moment a link is pasted or copied — no watcher needed.
-        const dcFromQuery = root.discordIdsIn(root.query);
-        const dcFromClip  = root.discordIdsIn(Quickshell.clipboardText);
-        const dcIds       = dcFromQuery || dcFromClip;
-        const dcSource    = dcFromQuery ? Translation.tr("from what you typed")
-                                        : Translation.tr("from the clipboard");
-        const discordPinObject = resultComp.createObject(null, {
-            name: Translation.tr("Pin %1 to /%2").arg(dcIds).arg("dc"),
-            verb: Translation.tr("Pin"),
-            type: Translation.tr("Discord · %1").arg(dcSource),
-            iconName: 'forum',
-            iconType: LauncherSearchResult.IconType.Material,
-            execute: () => {
-                Quickshell.execDetached(["bash", "-c",
-                    `'${root.discordPinScript}' --from-stdin <<< 'https://discord.com/channels/${dcIds}'`]);
-            }
-        });
+        return null;
+    }
 
-        const appResultObjects = AppSearch.fuzzyQuery(StringUtils.cleanPrefix(root.query, Config.options.search.prefix.app)).map(entry => {
+    function _appRows() {
+        return AppSearch.fuzzyQuery(StringUtils.cleanPrefix(root.query, Config.options.search.prefix.app)).map(entry => {
             return resultComp.createObject(null, {
                 type: Translation.tr("App"),
                 id: entry.id,
@@ -834,151 +942,77 @@ Singleton {
                 })
             });
         });
-        const commandResultObject = resultComp.createObject(null, {
-            name: StringUtils.cleanPrefix(root.query, Config.options.search.prefix.shellCommand).replace("file://", ""),
-            verb: Translation.tr("Run"),
-            type: Translation.tr("Command"),
+    }
+
+    // ── Row builders ────────────────────────────────────────────────────
+    // One per source. The results binding assembles; it no longer builds.
+
+    function _mathRow() {
+        return resultComp.createObject(null, {
+            name: root.mathResult,
+            verb: Translation.tr("Copy"),
+            type: Translation.tr("Math result"),
             fontType: LauncherSearchResult.FontType.Monospace,
-            iconName: 'terminal',
+            iconName: 'calculate',
+            iconType: LauncherSearchResult.IconType.Material,
+            execute: () => { Quickshell.clipboardText = root.mathResult; }
+        });
+    }
+
+    function _translateRow() {
+        return resultComp.createObject(null, {
+            name: root.translateResult,
+            verb: Translation.tr("Copy"),
+            type: Translation.tr("Translation"),
+            iconName: 'translate',
+            iconType: LauncherSearchResult.IconType.Material,
+            execute: () => { Quickshell.clipboardText = root.translateResult; }
+        });
+    }
+
+    /// Pin a Discord channel without leaving the launcher. clipboardText is a
+    /// plain reactive property, so this costs no process and the row appears
+    /// the moment a link is pasted or copied — no watcher needed.
+    function _discordPin() {
+        const fromQuery = root.discordIdsIn(root.query);
+        const ids = fromQuery || root.discordIdsIn(Quickshell.clipboardText);
+        const source = fromQuery ? Translation.tr("from what you typed")
+                                 : Translation.tr("from the clipboard");
+        return { ids, fromQuery, row: resultComp.createObject(null, {
+            name: Translation.tr("Pin %1 to /%2").arg(ids).arg("dc"),
+            verb: Translation.tr("Pin"),
+            type: Translation.tr("Discord · %1").arg(source),
+            iconName: 'forum',
             iconType: LauncherSearchResult.IconType.Material,
             execute: () => {
-                let cleanedCommand = root.query.replace("file://", "");
-                cleanedCommand = StringUtils.cleanPrefix(cleanedCommand, Config.options.search.prefix.shellCommand);
-                if (cleanedCommand.startsWith(Config.options.search.prefix.shellCommand)) {
-                    cleanedCommand = cleanedCommand.slice(Config.options.search.prefix.shellCommand.length);
-                }
-                Quickshell.execDetached(["bash", "-c", root.query.startsWith('sudo') ? `${Config.options.apps.terminal} fish -C '${cleanedCommand}'` : cleanedCommand]);
+                Quickshell.execDetached(["bash", "-c",
+                    `'${root.discordPinScript}' --from-stdin <<< 'https://discord.com/channels/${ids}'`]);
             }
-        });
-        const webSearchResultObject = resultComp.createObject(null, {
-            name: StringUtils.cleanPrefix(root.query, Config.options.search.prefix.webSearch),
-            verb: Translation.tr("Search"),
-            type: Translation.tr("Web search"),
-            iconName: 'travel_explore',
-            iconType: LauncherSearchResult.IconType.Material,
-            execute: () => {
-                let query = StringUtils.cleanPrefix(root.query, Config.options.search.prefix.webSearch);
-                let url = Config.options.search.engineBaseUrl + query;
-                for (let site of Config.options.search.excludedSites) {
-                    url += ` -site:${site}`;
-                }
-                Qt.openUrlExternally(url);
-            }
-        });
-        // ── Launcher actions — tree navigation ───────────────────────────
-        // Walks commandTree by the query tokens. A group token followed by a
-        // space descends into it; a group as the last (unspaced) token shows
-        // the group itself — selecting it drills in (requestQuery). A leaf
-        // token consumes the rest of the line as its arguments.
-        const launcherActionObjects = (() => {
-            const actionPrefix = Config.options.search.prefix.action;
-            if (!root.query.startsWith(actionPrefix)) return [];
-            const body = root.query.slice(actionPrefix.length);
-            const tokens = body.length > 0 ? body.split(" ") : [""];
+        })};
+    }
 
-            let level = root.commandTree;
-            let pathPrefix = "";          // completed group path, space-terminated
-            let partial = "";             // last (in-progress) token to filter by
-            let targetLeaf = null;        // a fully-typed leaf, if any
-            let leafArgs = "";
-            let valid = true;
+    property list<var> results: {
+        // Search results are handled here
+        ////////////////// Skip? //////////////////
+        if (root.query == "")
+            return [];
 
-            // `--flag=value` is the same as `--flag value`, just typed in one
-            // token. Splitting it here means every node gets the syntax for
-            // free instead of each one parsing its own arguments — and for a
-            // group, the value selects a subcommand, so `--shader=crt` and
-            // `--shader crt` land in the same place.
-            const eqSplit = tok => {
-                const at = tok.indexOf("=");
-                return at > 0 ? [tok.slice(0, at), tok.slice(at + 1)] : [tok, null];
-            };
+        ///////////// Special cases ///////////////
+        const specialCaseRows = root._specialCaseRows();
+        if (specialCaseRows !== null) return specialCaseRows;
+        ////////////////// Init ///////////////////
+        nonAppResultsTimer.restart();
+        const mathResultObject      = root._mathRow();
+        const translateResultObject = root._translateRow();
+        const dc                    = root._discordPin();
+        const dcIds                 = dc.ids;
+        const dcFromQuery           = dc.fromQuery;
+        const discordPinObject      = dc.row;
 
-            for (let i = 0; i < tokens.length; i++) {
-                const raw = tokens[i];
-                const [token, inlineVal] = eqSplit(raw);
-                const isLast = (i === tokens.length - 1);
-
-                // A trailing `--flag=` with nothing after it should prompt with
-                // the possible values rather than resolve to nothing.
-                if (isLast && inlineVal === null) { partial = raw; break; }
-
-                const child = (level ?? []).find(n => n.action === token);
-                if (!child) { valid = false; break; }
-
-                if (inlineVal !== null) {
-                    if (child.sub && child.sub.length > 0) {
-                        const kids = child.sub;
-                        if (inlineVal.length === 0) {
-                            // `--flag=` → offer the values.
-                            level = kids;
-                            pathPrefix += token + " ";
-                            partial = "";
-                            break;
-                        }
-                        const picked = kids.find(n => n.action === inlineVal);
-                        if (picked && !(picked.sub && picked.sub.length > 0)) {
-                            targetLeaf = picked;
-                            leafArgs = tokens.slice(i + 1).join(" ");
-                            break;
-                        }
-                        // Partial value: keep prompting from the value list.
-                        level = kids;
-                        pathPrefix += token + " ";
-                        partial = inlineVal;
-                        break;
-                    }
-                    // Leaf: the value IS the argument.
-                    targetLeaf = child;
-                    leafArgs = ([inlineVal].concat(tokens.slice(i + 1))).join(" ").trim();
-                    break;
-                }
-
-                if (isLast) { partial = raw; break; }
-
-                if (child.sub && child.sub.length > 0) {
-                    level = child.sub;
-                    pathPrefix += token + " ";
-                } else {
-                    targetLeaf = child;
-                    leafArgs = tokens.slice(i + 1).join(" ");
-                    break;
-                }
-            }
-            if (!valid) return [];
-
-
-            const makeLeaf = (n, full) => resultComp.createObject(null, {
-                name: full,
-                verb: Translation.tr("Run"),
-                type: Translation.tr("Action"),
-                comment: n.description ?? "",
-                iconName: n.icon ?? 'settings_suggest',
-                iconType: n.iconType ?? LauncherSearchResult.IconType.Material,
-                execute: () => n.execute(leafArgs)
-            });
-
-            if (targetLeaf) {
-                return [makeLeaf(targetLeaf, root.query)];
-            }
-            const p = partial.toLowerCase();
-            return (level ?? [])
-                .filter(n => n.action.toLowerCase().startsWith(p))
-                .map(n => {
-                    const full = actionPrefix + pathPrefix + n.action;
-                    if (n.sub && n.sub.length > 0) {
-                        return resultComp.createObject(null, {
-                            name: full,
-                            verb: Translation.tr("Open"),
-                            type: Translation.tr("Group"),
-                            comment: n.description ?? "",
-                            iconName: n.icon ?? 'folder',
-                            iconType: n.iconType ?? LauncherSearchResult.IconType.Material,
-                            execute: () => root.requestQuery(full + " ")
-                        });
-                    }
-                    return makeLeaf(n, full);
-                });
-        })();
+        const appResultObjects = root._appRows();
+        const commandResultObject   = root._commandRow();
+        const webSearchResultObject = root._webSearchRow();
+        const launcherActionObjects = root._launcherActionRows();
 
         //////// Prioritized by prefix /////////
         let result = [];
