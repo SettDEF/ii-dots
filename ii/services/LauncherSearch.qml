@@ -1007,7 +1007,11 @@ Singleton {
         if (Config.options.search.prefix.showDefaultActionsWithoutPrefix) {
             if (!startsWithShellCommandPrefix)
                 result.push(commandResultObject);
-            if (!startsWithNumber && !startsWithMathPrefix)
+            // qalc answers anything, so "/dc" came back "25902068371 km" and
+            // sat under every unrelated query. Without the prefix, show it
+            // only when the query actually looks like arithmetic.
+            if (!startsWithNumber && !startsWithMathPrefix
+                && /[0-9]/.test(root.query) && /[-+*/^%()]|\b(to|in)\b/.test(root.query))
                 result.push(mathResultObject);
             if (!startsWithWebSearchPrefix)
                 result.push(webSearchResultObject);

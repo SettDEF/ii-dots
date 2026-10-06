@@ -87,10 +87,12 @@ build_node() {   # $1 name, $2 deep link
     local name=$1 deep=$2
     jq -n --arg n "$name" --arg d "$deep" --argjson a "$(accounts_json)" '
         ($a | to_entries) as $accs
+        # A whole server and one channel are not the same thing to look at.
+        | (if ($d | test("/channels/[^/]+/")) then "tag" else "forum" end) as $ico
         | if ($accs | length) <= 1
-          then { name:$n, icon:"tag", description:$d,
+          then { name:$n, icon:$ico, description:$d,
                  exec: (($accs[0].value // "discord-open") + " " + $d) }
-          else { name:$n, icon:"tag", description:$d,
+          else { name:$n, icon:$ico, description:$d,
                  sub: [ $accs[] | { name:.key, icon:"person", description:$d,
                                     exec: (.value + " " + $d) } ] }
           end'
@@ -134,6 +136,12 @@ pin() {          # $1 name ("" = derive), $2 ids
           else . end ]
     ' "$CONFIG" | write_json "$CONFIG"
     printf 'pinned: /%s %s  ->  %s\n' "$GROUP" "$name" "$deep"
+    # Only servers with the widget enabled publish a name, so the rest fall
+    # back to the id. Say how to replace it rather than leaving it looking broken.
+    case "$name" in
+        "Server "*) printf 'no public name for that server — rename it with:\n  %s "Your name" %s\n' \
+            "$(basename "$0")" "$deep" ;;
+    esac
 }
 
 [ $# -gt 0 ] || usage 2
