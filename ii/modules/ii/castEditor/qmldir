@@ -1,0 +1,13 @@
+CastDoc 1.0 CastDoc.qml
+CastTopBar 1.0 CastTopBar.qml
+CastPreview 1.0 CastPreview.qml
+CastInspector 1.0 CastInspector.qml
+CastTimeline 1.0 CastTimeline.qml
+CastBlock 1.0 CastBlock.qml
+CastExportDialog 1.0 CastExportDialog.qml
+CastSwatch 1.0 CastSwatch.qml
+CastTester 1.0 CastTester.qml
+CastToast 1.0 CastToast.qml
+CastStart 1.0 CastStart.qml
+CastReveal 1.0 CastReveal.qml
+CastLayers 1.0 CastLayers.qml
