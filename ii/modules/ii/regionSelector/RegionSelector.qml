@@ -34,8 +34,70 @@ Scope {
             sourceComponent: RegionSelection {
                 screen: regionSelectorLoader.modelData
                 onDismiss: root.dismiss()
+                onDelayed: seconds => root.startDelayed(seconds)
                 action: root.action
                 selectionMode: root.selectionMode
+            }
+        }
+    }
+
+    // ── Delay timer ──────────────────────────────────────────────────────
+    // Close the overlay, count down, then open it again with a FRESH capture
+    // (menus, hover states). Same action and selection mode as before.
+    property int countdown: 0
+    function startDelayed(seconds) {
+        GlobalStates.regionSelectorOpen = false;
+        root.countdown = Math.max(1, seconds);
+        countdownTimer.restart();
+    }
+    Timer {
+        id: countdownTimer
+        interval: 1000
+        repeat: true
+        onTriggered: {
+            root.countdown -= 1;
+            if (root.countdown > 0) return;
+            stop();
+            // Let the pill unmap first, or it lands in the capture.
+            reopenTimer.restart();
+        }
+    }
+    Timer {
+        id: reopenTimer
+        interval: 150
+        onTriggered: GlobalStates.regionSelectorOpen = true
+    }
+    Variants {
+        model: Quickshell.screens
+        delegate: Loader {
+            id: countdownLoader
+            required property var modelData
+            active: root.countdown > 0 && Hyprland.focusedMonitor?.name === countdownLoader.modelData.name
+            sourceComponent: PanelWindow {
+                screen: countdownLoader.modelData
+                WlrLayershell.namespace: "quickshell:shotCountdown"
+                WlrLayershell.layer: WlrLayer.Overlay
+                exclusionMode: ExclusionMode.Ignore
+                color: "transparent"
+                anchors.top: true
+                margins.top: 60
+                implicitWidth: 72
+                implicitHeight: 72
+                mask: Region {}
+                Rectangle {
+                    anchors.fill: parent
+                    radius: width / 2
+                    color: Qt.alpha(Appearance.colors.colLayer0, 0.85)
+                    border.width: 1
+                    border.color: Appearance.colors.colLayer0Border
+                    StyledText {
+                        anchors.centerIn: parent
+                        text: root.countdown
+                        font.pixelSize: Appearance.font.pixelSize.huge
+                        font.weight: Font.DemiBold
+                        color: Appearance.colors.colOnLayer0
+                    }
+                }
             }
         }
     }
@@ -94,6 +156,12 @@ Scope {
 
         function screenshot() {
             root.screenshot()
+        }
+        /// `region screenshotIn 5`: a region shot whose capture waits N seconds.
+        function screenshotIn(seconds: int) {
+            root.action = RegionSelection.SnipAction.Copy
+            root.selectionMode = RegionSelection.SelectionMode.RectCorners
+            root.startDelayed(seconds)
         }
         function snap() {
             root.snapWindow()

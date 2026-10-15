@@ -47,6 +47,7 @@ PanelWindow {
     property var action: RegionSelection.SnipAction.Copy
     property var selectionMode: RegionSelection.SelectionMode.RectCorners
     signal dismiss()
+    signal delayed(int seconds)
 
     property string screenshotDir: Directories.screenshotTemp
     property color overlayColor: ColorUtils.transparentize("#000000", 0.4)
@@ -218,7 +219,8 @@ PanelWindow {
     Process {
         id: checkRecordingProc
         running: isRecording
-        command: ["pidof", "wf-recorder"]
+        // A file recording, not the replay buffer (its -o is a folder, not an .mp4).
+        command: ["pgrep", "-f", "^gpu-screen-recorder .* -o .*\\.mp4$"]
         onExited: (exitCode, exitStatus) => {
             if (root._gone) return;
             root.preparationDone = !screenshotProc.running
@@ -281,9 +283,11 @@ PanelWindow {
 
     function snip() {
         // Validity check
-        if (root.regionWidth <= 0 || root.regionHeight <= 0) {
-            console.warn("[Region Selector] Invalid region size, skipping snip.");
-            root.dismiss();
+        // Under 4 px is a slipped click, not a selection: it used to copy a
+        // 1x1 image. Stay open so the drag can simply be tried again.
+        if (root.regionWidth < 4 || root.regionHeight < 4) {
+            console.warn("[Region Selector] Selection too small, ignoring.");
+            root.dragging = false;
             // Load-bearing return: a zero-size crop must not reach the crop step.
             return;
         }
@@ -357,9 +361,16 @@ PanelWindow {
             smooth: true
             mipmap: false
         }
-        Keys.onPressed: (event) => { // Esc to close
+        Keys.onPressed: (event) => {
             if (event.key === Qt.Key_Escape) {
                 root.dismiss();
+            } else if (event.key === Qt.Key_Left || event.key === Qt.Key_Right) {
+                // The toolbar, without the mouse.
+                optionsToolbar.moveKey(event.key === Qt.Key_Right ? 1 : -1);
+                event.accepted = true;
+            } else if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter || event.key === Qt.Key_Space) {
+                optionsToolbar.activateKey();
+                event.accepted = true;
             }
         }
 
@@ -519,6 +530,9 @@ PanelWindow {
             Row {
                 id: regionSelectionControls
                 z: 10
+                // The selection area sets a crosshair for the whole screen; over the
+                // controls it read as "not clickable". A hand says they are buttons.
+                HoverHandler { cursorShape: Qt.PointingHandCursor }
                 anchors {
                     horizontalCenter: parent.horizontalCenter
                     bottom: parent.bottom
@@ -542,6 +556,7 @@ PanelWindow {
                 spacing: 6
 
                 OptionsToolbar {
+                    id: optionsToolbar
                     Synchronizer on action {
                         property alias source: root.action
                     }
@@ -549,6 +564,7 @@ PanelWindow {
                         property alias source: root.selectionMode
                     }
                     onDismiss: root.dismiss();
+                    onDelayed: seconds => root.delayed(seconds)
                 }
                 Item {
                     anchors {
