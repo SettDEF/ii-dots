@@ -369,5 +369,23 @@ Scope {
         onPressed: GlobalStates.kinetixOpen = !GlobalStates.kinetixOpen
     }
 
+    // ── Dotos ───────────────────────────────────────────────────────────
+    GlobalShortcut {
+        name: "dotosCapture"
+        description: "Dotos: quick capture from anywhere"
+        onPressed: GlobalStates.dotosCaptureOpen = !GlobalStates.dotosCaptureOpen
+    }
+    // `qs -c ii ipc call dotos capture` / `add "line"` (scripts, Neovim, the phone bridge)
+    IpcHandler {
+        target: "dotos"
+        function capture(): void { GlobalStates.dotosCaptureOpen = true }
+        function add(line: string): void { Todo.capture(line, "") }
+        function reload(): void { Todo.reload() }
+        function status(): string {
+            return JSON.stringify({ loaded: Todo.loaded, error: Todo.error, open: Todo.open.length,
+                overdue: Todo.overdue, today: Todo.dueToday, next: Todo.next?.title ?? null, active: Todo.active })
+        }
+    }
+
     // Lock + suspend (with the suspending popup) lives in modules/ii/lock/Lock.qml.
 }

@@ -116,6 +116,7 @@ Singleton {
     property bool kbPickerOpen: false        // XKB layout picker (opened from the OSK chips)
     property bool kbSettingsOpen: false      // Keyboard settings popup (repeat rate, etc — opened from the OSK)
     property bool wallTuneOpen: false
+    property bool dotosCaptureOpen: false     // Dotos quick capture (Super+R)
     property bool skwdWallOpen: false
     property bool wallpaperAdjusterOpen: false
     property bool mouseMenuOpen: false

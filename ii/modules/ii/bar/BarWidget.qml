@@ -10,6 +10,13 @@ Loader {
 
     visible: status === Loader.Ready
     Layout.alignment: Qt.AlignVCenter
+    // A widget with `minimumWidth` gives up width when the bar is full, down
+    // to that, instead of pushing the row over the clock. Others stay fixed.
+    readonly property bool shrinks: (root.item?.minimumWidth ?? -1) >= 0
+    Layout.fillWidth: root.shrinks
+    Layout.minimumWidth: root.shrinks ? root.item.minimumWidth : -1
+    Layout.preferredWidth: root.implicitWidth
+    Layout.maximumWidth: root.shrinks ? root.implicitWidth : -1
 
     // setSource, not a `source` binding: a required property must be set at
     // construction, and only setSource takes initial properties.

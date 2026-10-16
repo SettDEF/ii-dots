@@ -7,93 +7,179 @@ import Quickshell.Io;
 import QtQuick;
 
 /**
- * Simple to-do list manager.
- * Each item is an object with "content" and "done" properties.
+ * The shell's to-do list, backed by Dotos — so the sidebar, the desktop
+ * widget, the clock popup, the bar and the Dotos window are one list, not
+ * two. Reads `dotos snapshot --no-git` (a few ms), stays fresh through
+ * inotify on the store, and every change goes through the `dotos` CLI.
+ *
+ * `list` keeps the old item shape ({ title, content, done }) plus the Dotos
+ * fields, so the existing widgets work unchanged; their index-based calls
+ * are mapped to the task's uid here.
+ *
+ * The old JSON list (Directories.todoPath) is moved into Dotos once, then
+ * renamed to todo.json.migrated.
  */
 Singleton {
     id: root
-    property var filePath: Directories.todoPath
+    readonly property string bin: Quickshell.env("HOME") + "/.local/bin/dotos"
+    property var snap: null
+    property bool loaded: false
+    property string error: ""
+
+    /// open tasks (most urgent first), then what was finished this week
     property var list: []
-    
-    function addItem(item) {
-        list.push(item)
-        // Reassign to trigger onListChanged
-        root.list = list.slice(0)
-        todoFileView.setText(JSON.stringify(root.list))
+    readonly property var open: root.list.filter(t => !t.done)
+    readonly property int overdue: root.open.filter(t => t.overdue).length
+    readonly property int dueToday: root.open.filter(t => t.bucket === "today").length
+    readonly property var doing: root.open.filter(t => t.state === "doing")
+    /// the one thing to show when there is room for one: doing, overdue, today, then the rest
+    readonly property var next: root.open.length > 0 ? root.open[0] : null
+    /// timewarrior: { uid, title, since } while a task is tracked
+    readonly property var active: root.snap?.time?.active ?? null
+
+    readonly property var _rank: ({ doing: 0, overdue: 1, today: 2, tomorrow: 3, week: 4, later: 5, someday: 6, inbox: 7 })
+    function _sort(a, b) {
+        const ra = a.state === "doing" ? 0 : (a.overdue ? 1 : (root._rank[a.bucket] ?? 6));
+        const rb = b.state === "doing" ? 0 : (b.overdue ? 1 : (root._rank[b.bucket] ?? 6));
+        if (ra !== rb) return ra - rb;
+        const pa = a.priority === "high" ? 0 : a.priority === "low" ? 2 : 1;
+        const pb = b.priority === "high" ? 0 : b.priority === "low" ? 2 : 1;
+        if (pa !== pb) return pa - pb;
+        return String(a.due ?? "9999").localeCompare(String(b.due ?? "9999")) || String(a.created).localeCompare(String(b.created));
+    }
+    function _apply(s) {
+        const weekAgo = new Date(Date.now() - 7 * 86400000).toISOString().slice(0, 10);
+        const all = (s.tasks ?? []).filter(t => !t.parent && t.state !== "cancelled");
+        const open = all.filter(t => t.state !== "done").sort(root._sort);
+        const done = all.filter(t => t.state === "done" && String(t.completed ?? "") >= weekAgo)
+            .sort((a, b) => String(b.completed).localeCompare(String(a.completed)));
+        root.list = open.concat(done).map(t => Object.assign({}, t, { content: t.notes, done: t.state === "done" }));
+        root.snap = s;
+        root.loaded = true;
+        root.error = "";
+        // here, not in onExited: the process can exit before its output is parsed
+        if (!watcher.running) watcher.running = true;
+        if (!root._migrated) root._migrate();
     }
 
-    // title is the task name (required); desc is an optional description.
-    // Legacy items stored only "content" (no "title"); the delegate treats
-    // a title-less item's content as its title, so old tasks still render.
+    function _run(args, after) {
+        const p = runner.createObject(root, { command: [root.bin].concat(args) });
+        p.after = after ?? null;
+        p.running = true;
+    }
+    Component {
+        id: runner
+        Process {
+            id: proc
+            property var after: null
+            stderr: StdioCollector { id: err }
+            onExited: code => {
+                if (code !== 0) root.error = err.text.trim() || ("dotos exited " + code);
+                if (proc.after) proc.after(code);
+                root.reload();
+                proc.destroy();
+            }
+        }
+    }
+    function _uid(index) { return root.list[index]?.uid ?? ""; }
+    function _patch(index, fields) {
+        if (index < 0 || index >= root.list.length) return;
+        const next = root.list.slice(0);
+        next[index] = Object.assign({}, next[index], fields);
+        root.list = next;
+    }
+
+    // ── the old API, kept for the widgets ──
+    function addItem(item) { root.addTask(item.title ?? item.content ?? "", item.title ? item.content : ""); }
+    /// title takes the capture syntax: "call mum @fri 18:00 !high #family ~15m"
     function addTask(title, desc) {
-        const item = {
-            "title": title,
-            "content": desc ?? "",
-            "done": false,
-        }
-        addItem(item)
+        if (!String(title).trim()) return;
+        root.capture(title, desc);
     }
-
-    function markDone(index) {
-        if (index >= 0 && index < list.length) {
-            list[index].done = true
-            // Reassign to trigger onListChanged
-            root.list = list.slice(0)
-            todoFileView.setText(JSON.stringify(root.list))
-        }
-    }
-
-    function markUnfinished(index) {
-        if (index >= 0 && index < list.length) {
-            list[index].done = false
-            // Reassign to trigger onListChanged
-            root.list = list.slice(0)
-            todoFileView.setText(JSON.stringify(root.list))
-        }
-    }
-
+    function markDone(index) { const u = root._uid(index); if (!u) return; root._patch(index, { done: true, state: "done" }); root._run(["done", u]); }
+    function markUnfinished(index) { const u = root._uid(index); if (!u) return; root._patch(index, { done: false, state: "todo" }); root._run(["undone", u]); }
     function deleteItem(index) {
-        if (index >= 0 && index < list.length) {
-            list.splice(index, 1)
-            // Reassign to trigger onListChanged
-            root.list = list.slice(0)
-            todoFileView.setText(JSON.stringify(root.list))
-        }
+        const u = root._uid(index);
+        if (!u) return;
+        const next = root.list.slice(0);
+        next.splice(index, 1);
+        root.list = next;
+        root._run(["rm", u]);
     }
+    function refresh() { root.reload(); }
 
-    function refresh() {
-        todoFileView.reload()
+    // ── Dotos verbs ──
+    function capture(line, note, after) {
+        const args = ["capture", String(line).trim()];
+        if (note && String(note).trim()) args.push("--note", String(note).trim());
+        root._run(args, after);
     }
+    function setState(uid, state) { root._run(["state", uid, state]); }
+    function track(uid) { root._run(["track", uid]); }
+    function stop() { root._run(["stop"]); }
+    function undo() { root._run(["undo"]); }
+    /// the Dotos window, optionally on a page (home, inbox, tasks, board, …)
+    function openApp(page) { Quickshell.execDetached(["dotos-gui"].concat(page ? [page] : [])); }
 
-    Component.onCompleted: {
-        refresh()
+    // ── reading ──
+    property bool _again: false
+    function reload() {
+        if (snapProc.running) { root._again = true; return; }
+        snapProc.running = true;
     }
-
-    FileView {
-        id: todoFileView
-        path: Qt.resolvedUrl(root.filePath)
-        onLoaded: {
-            const fileContents = todoFileView.text()
-            // See Notifications: an unguarded parse loses the list silently,
-            // and the next save writes the loss to disk.
-            try {
-                const parsed = JSON.parse(fileContents);
-                if (!Array.isArray(parsed)) throw new Error("not an array");
-                root.list = parsed;
-                console.log("[To Do] File loaded")
-            } catch (e) {
-                console.log("[To Do] file unreadable, keeping what is in memory:", e);
+    Process {
+        id: snapProc
+        command: [root.bin, "snapshot", "--no-git"]
+        stdout: StdioCollector {
+            onStreamFinished: {
+                try { root._apply(JSON.parse(text)); }
+                catch (e) { root.error = "dotos snapshot: " + e; }
             }
         }
-        onLoadFailed: (error) => {
-            if(error == FileViewError.FileNotFound) {
-                console.log("[To Do] File not found, creating new file.")
-                root.list = []
-                todoFileView.setText(JSON.stringify(root.list))
-            } else {
-                console.log("[To Do] Error loading file: " + error)
+        onExited: code => {
+            if (code !== 0 && !root.loaded) root.error = "dotos is not installed or failed (" + code + ")";
+            if (root._again) { root._again = false; root.reload(); }
+        }
+    }
+    // changes from the window, the terminal, Neovim, extensions, phone sync
+    Process {
+        id: watcher
+        command: ["sh", "-c", 'mkdir -p "$1" && exec inotifywait -m -q -e close_write,moved_to,delete --format %f "$1" 2>/dev/null',
+            "watch", root.snap?.store ?? (Quickshell.env("HOME") + "/.local/share/dotos/lists")]
+        stdout: SplitParser {
+            onRead: line => { if (!/\.tmp~?$|~$/.test(line)) debounce.restart(); }
+        }
+        onExited: restartWatch.start()
+    }
+    Timer { id: debounce; interval: 150; onTriggered: root.reload() }
+    Timer { id: restartWatch; interval: 5000; onTriggered: watcher.running = true }
+    // buckets move at midnight, the timer counts up
+    Timer { interval: 60000; running: true; repeat: true; onTriggered: root.reload() }
+
+    // ── one-time move of the old JSON list ──
+    property bool _migrated: false
+    function _migrate() {
+        root._migrated = true;
+        legacy.running = true;
+    }
+    Process {
+        id: legacy
+        command: ["cat", Directories.todoPath]
+        stdout: StdioCollector {
+            onStreamFinished: {
+                let items = [];
+                try { items = JSON.parse(text); } catch (e) { return; }
+                if (!Array.isArray(items) || items.length === 0) return;
+                // finished items stay behind in the .migrated file
+                for (const it of items.filter(i => !i.done)) {
+                    const title = String(it.title || it.content || "").trim();
+                    if (title) root.capture(title, it.title ? String(it.content ?? "") : "");
+                }
+                Quickshell.execDetached(["mv", "-n", Directories.todoPath, Directories.todoPath + ".migrated"]);
+                console.log("[To Do] moved", items.length, "items into Dotos");
             }
         }
     }
+
+    Component.onCompleted: root.reload()
 }
-

@@ -25,7 +25,7 @@ StyledPopup {
         // Limit to first 5 todos to keep popup manageable
         const limitedTodos = unfinishedTodos.slice(0, 5);
         let todoText = limitedTodos.map(function (item, index) {
-            return `  ${index + 1}. ${item.content}`;
+            return `  ${index + 1}. ${item.title || item.content}`;
         }).join('\n');
 
         if (unfinishedTodos.length > 5) {

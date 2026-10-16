@@ -59,6 +59,7 @@ ShellRoot {
         Cliphist.refresh()
         Wallpapers.load()
         Updates.load()
+        Todo.refresh()   // Dotos: the bar and quick capture read it, and it moves the old list over once
         // Instantiate every eager singleton declared above.
         for (let i = 0; i < eagerSingletons.length; ++i) {
             const e = eagerSingletons[i]

@@ -183,7 +183,7 @@ AbstractBackgroundWidget {
                                 StyledText {
                                     Layout.fillWidth: true
                                     color: taskCard.fg
-                                    text: taskCard.modelData.content
+                                    text: taskCard.modelData.title || taskCard.modelData.content
                                     elide: Text.ElideRight
                                     maximumLineCount: 1
                                     font.strikeout: taskCard.modelData.done
