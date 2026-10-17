@@ -163,7 +163,23 @@ Singleton {
     }
 
     function setDefaultSink(node) {
+        const old = Pipewire.defaultAudioSink?.name ?? "";
         Pipewire.preferredDefaultAudioSink = node;
+        // streams already playing stay on the old device unless moved
+        if (old && node?.name && old !== node.name)
+            moveStreams.exec(["sh", "-c", moveStreams.script, "move", old, node.name]);
+    }
+
+    Process {
+        id: moveStreams
+        // voice apps are never moved (a device change under Discord crashes it),
+        // nor streams without an app (the mic-share loopbacks)
+        readonly property string script: "old=$(pactl list short sinks | awk -v n=\"$1\" '$2==n {print $1}'); [ -n \"$old\" ] || exit 0; "
+            + "pactl -f json list sink-inputs | jq -r --arg s \"$old\" '.[] | select((.sink|tostring)==$s) "
+            + "| select(.properties[\"application.name\"] != null) "
+            + "| select((.properties[\"media.role\"] // \"\") | test(\"phone|communication\") | not) "
+            + "| select((.properties[\"application.process.binary\"] // \"\") | test(\"(?i)discord|vesktop|webcord|zoom|teams|telegram|signal|element\") | not) "
+            + "| .index' | while read -r i; do pactl move-sink-input \"$i\" \"$2\"; done"
     }
 
     function setDefaultSource(node) {
