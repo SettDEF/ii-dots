@@ -138,6 +138,30 @@ Singleton {
     readonly property list<var> outputDevices: root.devices(true)
     readonly property list<var> inputDevices: root.devices(false)
 
+    // ---- A JBL speaker plugged in by cable becomes the output at once ------
+    // The Xtreme 5 only offers audio over USB-C when ▶ is held while plugging
+    // in; then it appears as a USB sound card, and this switches to it (moving
+    // what plays, voice apps excepted). Bluetooth JBLs are left alone: they
+    // must never take the audio by themselves.
+    property var _seenOutputs: null
+    function isWiredJbl(node) {
+        const name = String(node?.name ?? "")
+        return name.startsWith("alsa_output.usb-") && /jbl|harman/i.test(name + " " + (node?.description ?? ""))
+    }
+    onOutputDevicesChanged: {
+        const names = root.outputDevices.map(n => n.name)
+        // the first look is what was there at start: nothing is new yet
+        if (root._seenOutputs !== null) {
+            const fresh = root.outputDevices.find(n => root.isWiredJbl(n) && !root._seenOutputs.includes(n.name))
+            if (fresh) {
+                root.setDefaultSink(fresh)
+                Quickshell.execDetached(["notify-send", "-a", "Audio", "-i", "audio-speakers",
+                    root.friendlyDeviceName(fresh), Translation.tr("Connected by cable: playing there now")])
+            }
+        }
+        root._seenOutputs = names
+    }
+
     // Signals
     signal sinkProtectionTriggered(string reason);
 
