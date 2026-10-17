@@ -41,6 +41,18 @@ Singleton {
                 { key: "showNext", label: Translation.tr("Show the next task's title"), type: "bool", def: true },
                 { key: "maxWidth", label: Translation.tr("Title width (px)"), type: "int", def: 220, min: 80, max: 500 }
             ]
+        },
+        {
+            id: "zeit", name: Translation.tr("zeit: running jobs"), icon: "terminal",
+            settings: [
+                { key: "showResult", label: Translation.tr("Show a finished job's result until dismissed"), type: "bool", def: true }
+            ]
+        },
+        {
+            id: "ai", name: Translation.tr("AI chats"), icon: "forum",
+            settings: [
+                { key: "showIdle", label: Translation.tr("Show when no chat is running"), type: "bool", def: false }
+            ]
         }
     ]
 
