@@ -135,7 +135,8 @@ Singleton {
      */
     property Loader _socket: Loader {
         id: socketLoader
-        active: true
+        // no QUARRY_SOCK: no daemon to reach, nothing tried (an empty path failed twice a second)
+        active: root.socketPath !== ""
 
         sourceComponent: Socket {
             path: root.socketPath
@@ -197,7 +198,7 @@ Singleton {
     property Timer _retry: Timer {
         interval: 1500
         repeat: true
-        running: !root.connected
+        running: !root.connected && root.socketPath !== ""
         onTriggered: {
             interval = Math.min(30000, interval * 2);
             socketLoader.active = false;
@@ -270,7 +271,11 @@ Singleton {
             return;
         }
         const ids = items.map(i => i.id);
-        root.call("thumbs", { ids: ids, size: root.thumbSize }, function (err, payload) {
+        // cachedOnly: answer at once with what is on disk; tiles not cached yet load
+        // straight from the web, each as it arrives. The second call fetches them
+        // into the cache for next time without holding the page back.
+        root.call("thumbs", { ids: ids, size: root.thumbSize, cachedOnly: true }, function (err, payload) {
+            root.call("thumbs", { ids: ids, size: root.thumbSize }, function () {});
             const ready = (payload && payload.thumbs) || {};
             const data = items.map(function (item) {
                 const local = ready[item.id] || "";
