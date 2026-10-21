@@ -57,6 +57,17 @@ Scope {
         description: "Toggle the ROG control panel"
         onPressed: GlobalStates.rogPowerOpen = !GlobalStates.rogPowerOpen
     }
+    /// `walltune open [wallpaper|colour|glass]`, `walltune close`, `walltune toggle`.
+    /// Here, not in WallTune: that only exists while the panel is open.
+    IpcHandler {
+        target: "walltune"
+        function open(tab: string): void {
+            if (tab) GlobalStates.wallTuneTab = tab;
+            GlobalStates.wallTuneOpen = true;
+        }
+        function close(): void { GlobalStates.wallTuneOpen = false }
+        function toggle(): void { GlobalStates.wallTuneOpen = !GlobalStates.wallTuneOpen }
+    }
     IpcHandler {
         target: "wallpaperRotation"
         function next(): void { WallpaperRotation.next() }
@@ -161,6 +172,16 @@ Scope {
         onPressed: AudioRecorder.toggle()
     }
 
+    // the corner popup from outside, always there (its own "cornerPopup" target exists only
+    // while it is loaded): open <media|sources|files|window>, close
+    IpcHandler {
+        target: "corner"
+        function open(tab: string): void {
+            if (["media", "sources", "files", "window"].includes(tab)) GlobalStates.cornerPopupTab = tab;
+            GlobalStates.cornerPopupOpen = true;
+        }
+        function close(): void { GlobalStates.cornerPopupOpen = false }
+    }
     // ── CornerPopup (media) ─────────────────────────────────────────────
     GlobalShortcut {
         name: "cornerPopupToggle"

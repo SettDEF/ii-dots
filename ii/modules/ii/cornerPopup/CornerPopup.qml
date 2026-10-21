@@ -23,7 +23,7 @@ Scope {
         function open(): void   { GlobalStates.cornerPopupOpen = true }
         function close(): void  { GlobalStates.cornerPopupOpen = false }
         function tab(name: string): void {
-            if (["media", "sources", "files"].includes(name))
+            if (["media", "sources", "files", "window"].includes(name))
                 GlobalStates.cornerPopupTab = name;
         }
     }
@@ -60,19 +60,21 @@ Scope {
         // that internal streams are filtered out and the list is short.
         readonly property int _audioHeight: Math.max(76, audioLoader.item?.contentHeight ?? 76)
         readonly property int _filesHeight: filesLoader.item?.contentHeight ?? 232
+        readonly property int _windowHeight: windowLoader.item?.contentHeight ?? 300
+        // the tab strip at the top, inside the popup (it was in the bar)
+        readonly property int _tabsHeight: 44
         // Surface height follows the active tab. Tab switches are user actions
         // (not per-frame), so an occasional resize here is fine.
         readonly property int _bodyHeight: tab === "media" ? _mediaHeight
-            : tab === "sources" ? _audioHeight : _filesHeight
-        // No tab-strip allowance any more: the strip moved to the bar, so the
-        // surface is exactly its body plus the 2px inset above and below.
-        implicitHeight: _bodyHeight + 8
+            : tab === "sources" ? _audioHeight : tab === "window" ? _windowHeight : _filesHeight
+        // the tabs, the body, and the 2px inset above and below
+        implicitHeight: _tabsHeight + _bodyHeight + 8
         color: "transparent"
         WlrLayershell.namespace: "quickshell:cornerPopup"
 
         anchors.top: true
         anchors.right: true
-        margins.top: Appearance.sizes.barHeight + Appearance.sizes.hyprlandGapsOut
+        margins.top: (ScreenFit.reservedTop(panelWindow) || Appearance.sizes.barHeight) + Appearance.sizes.hyprlandGapsOut
             + (GlobalStates.shelfOpen ? Math.round(panelWindow.screen.height * 0.20) : 0)
         margins.right: Appearance.sizes.hyprlandGapsOut
         Behavior on margins.top { NumberAnimation { duration: 340; easing.type: Easing.OutCubic } }
@@ -119,9 +121,36 @@ Scope {
                 anchors.fill: parent
                 spacing: 0
 
-                // The tab strip is rendered by the bar (BarContent's
-                // _cornerPopupMode) so the popup reads as one clean surface
-                // instead of repeating chrome the bar already has room for.
+                // ── Tabs: in the popup itself (the user, 2026-10-21; they were in the bar) ──
+                PillTabBar {
+                    Layout.alignment: Qt.AlignHCenter
+                    Layout.topMargin: 8
+                    Layout.bottomMargin: 6
+                    implicitHeight: 30
+                    tabs: [
+                        { id: "media",   icon: "music_note",  label: Translation.tr("Media") },
+                        { id: "sources", icon: "graphic_eq",  label: Translation.tr("Sources") },
+                        { id: "files",   icon: "folder_open", label: Translation.tr("Files") },
+                        { id: "window",  icon: "web_asset",   label: Translation.tr("Window") },
+                    ]
+                    current: GlobalStates.cornerPopupTab
+                    onTabSelected: id => GlobalStates.cornerPopupTab = id
+                }
+
+                // ── Window tab: the title bars' switches ──────────────────
+                Item {
+                    Layout.fillWidth: true
+                    Layout.fillHeight: true
+                    visible: panelWindow.tab === "window"
+                    clip: true
+                    Loader {
+                        id: windowLoader
+                        anchors.fill: parent
+                        active: panelWindow.tab === "window"
+                        sourceComponent: WindowView {}
+                    }
+                }
+
 
                 // ── Audio sources tab ──────────────────────────────────────
                 Item {
@@ -160,6 +189,8 @@ Scope {
             // Player card + name/dots strip all in one rounded rect
             Rectangle {
                 id: playerCard
+                // below the tab strip (the column above starts with it)
+                y: panelWindow._tabsHeight
                 visible: panelWindow.tab === "media" && PlayerService.players.length > 0
                 implicitWidth: root.popupWidth
                 // Height is computed from the options panel's *current* height
@@ -462,6 +493,8 @@ Scope {
             // No player fallback
             Item {
                 visible: panelWindow.tab === "media" && PlayerService.players.length === 0
+                y: panelWindow._tabsHeight
+                width: parent.width
                 Layout.fillWidth: true
                 implicitHeight: 72
                 RowLayout {

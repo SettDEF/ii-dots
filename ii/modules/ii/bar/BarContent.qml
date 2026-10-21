@@ -315,6 +315,23 @@ Item { // Bar content region
             anchors.verticalCenter: parent.verticalCenter
         }
 
+        // The dark "island" now sits behind battery + Wi-Fi + Bluetooth (the
+        // status cluster) instead of the tray. Declared before the row so it
+        // draws under it; spans from the battery to the end of the button.
+        Rectangle {
+            readonly property bool hasBattery: batteryInd.visible
+            readonly property real startX: hasBattery ? batteryInd.x : rightSidebarButton.x
+            visible: rightSidebarButton.visible
+            x: rightSectionRowLayout.x + startX - (hasBattery ? 8 : 0)
+            width: rightSidebarButton.x + rightSidebarButton.width - startX + (hasBattery ? 8 : 0)
+            anchors.verticalCenter: rightSectionRowLayout.verticalCenter
+            height: Appearance.sizes.barIslandHeight
+            radius: Appearance.rounding.full
+            color: Appearance.colors.colBarIsland
+            border.width: 1
+            border.color: Appearance.colors.colBarIslandBorder
+        }
+
         RowLayout {
             id: rightSectionRowLayout
             anchors.fill: parent
@@ -331,12 +348,9 @@ Item { // Bar content region
             readonly property bool _torrentsMode: GlobalStates.shelfOpen
                                                 && GlobalStates.shelfTab === "files"
                                                 && GlobalStates.shelfFilesSubTab === "torrents"
-            // While the corner popup is open its tab strip is rendered here
-            // instead of inside the popup, so the popup reads as one clean
-            // surface and the strip sits in space the bar already has.
-            readonly property bool _cornerPopupMode: GlobalStates.cornerPopupOpen
             // Any swap-mode hides the standard right cluster.
-            readonly property bool _swapMode: _battleMode || _torrentsMode || _cornerPopupMode
+            // (the corner popup has its tabs inside it now: the bar keeps its cluster while it is open)
+            readonly property bool _swapMode: _battleMode || _torrentsMode
 
             RippleButton { // Right sidebar button
                 id: rightSidebarButton
@@ -353,11 +367,14 @@ Item { // Bar content region
                 colBackground: barRightSideMouseArea.hovered ? Appearance.colors.colLayer1Hover : ColorUtils.transparentize(Appearance.colors.colLayer1Hover, 1)
                 colBackgroundHover: Appearance.colors.colLayer1Hover
                 colRipple: Appearance.colors.colLayer1Active
-                colBackgroundToggled: Appearance.colors.colSecondaryContainer
-                colBackgroundToggledHover: Appearance.colors.colSecondaryContainerHover
-                colRippleToggled: Appearance.colors.colSecondaryContainerActive
+                // No "open" fill: it sat on top of the status island as a second
+                // shape. The island already marks this group; the sidebar itself
+                // shows it is open.
+                colBackgroundToggled: ColorUtils.transparentize(Appearance.colors.colLayer1Hover, 1)
+                colBackgroundToggledHover: Appearance.colors.colLayer1Hover
+                colRippleToggled: Appearance.colors.colLayer1Active
                 toggled: GlobalStates.sidebarRightOpen
-                property color colText: toggled ? Appearance.m3colors.m3onSecondaryContainer : Appearance.colors.colOnLayer0
+                property color colText: Appearance.colors.colOnLayer0
 
                 Behavior on colText {
                     animation: Appearance.animation.elementMoveFast.colorAnimation.createObject(this)
@@ -422,22 +439,40 @@ Item { // Bar content region
                      * it in a glance. Red while recording is the same
                      * convention every OS uses for "you are live".
                      */
+                    // Muted in Discord counts too (its own tray icon is hidden
+                    // meanwhile, TrayService): the same red icon, with a small
+                    // Discord badge saying where the mute is.
                     MaterialSymbol {
                         id: micIndicator
+                        readonly property bool discordMuted: DiscordVoice.inVoice && !!DiscordVoice.settings?.mute
                         Layout.rightMargin: visible ? indicatorsRowLayout.realSpacing : 0
-                        visible: Mic.muted || Mic.recordingStreams.length > 0
-                        text: Mic.muted ? "mic_off" : "mic"
+                        visible: Mic.muted || discordMuted || Mic.recordingStreams.length > 0
+                        text: Mic.muted || discordMuted ? "mic_off" : "mic"
                         iconSize: Appearance.font.pixelSize.larger
-                        color: Mic.muted ? Appearance.m3colors.m3error
+                        color: Mic.muted || discordMuted ? Appearance.m3colors.m3error
                              : Mic.recordingStreams.length > 0 ? Appearance.m3colors.m3error
                              : rightSidebarButton.colText
+                        Rectangle {
+                            visible: micIndicator.discordMuted
+                            anchors { right: parent.right; bottom: parent.bottom; rightMargin: -4; bottomMargin: -2 }
+                            width: 12; height: 12; radius: 6
+                            color: Appearance.colors.colLayer0
+                            CustomIcon {
+                                anchors.centerIn: parent
+                                width: 10; height: 10
+                                source: "discord-symbolic.svg"
+                                colorize: true
+                                color: Appearance.m3colors.m3error
+                            }
+                        }
                         TapHandler {
                             gesturePolicy: TapHandler.ReleaseWithinBounds
                             onTapped: GlobalStates.micOpen = !GlobalStates.micOpen
                         }
                         StyledToolTip {
-                            text: Mic.muted
-                                ? Translation.tr("Microphone muted")
+                            text: Mic.muted && micIndicator.discordMuted ? Translation.tr("Microphone muted, and muted in Discord")
+                                : Mic.muted ? Translation.tr("Microphone muted")
+                                : micIndicator.discordMuted ? Translation.tr("Muted in Discord")
                                 : Translation.tr("%1 app(s) recording").arg(Mic.recordingStreams.length)
                         }
                     }
@@ -471,21 +506,8 @@ Item { // Bar content region
             // to it (just left of the network/bluetooth cluster in RTL flow).
             // Negative right margin closes the row's spacing-induced gap so
             // it doesn't read as a separator.
-            // Pluggable widgets; empty by default. Beside the battery because
-            // these are readouts, not buttons.
-            Repeater {
-                model: BarWidgets.enabled
-                delegate: BarWidget {
-                    required property var modelData
-                    widgetId: modelData
-                    visible: !rightSectionRowLayout._swapMode
-                    Layout.alignment: Qt.AlignVCenter
-                    Layout.leftMargin: 4
-                    Layout.rightMargin: 4
-                }
-            }
-
             BatteryIndicator {
+                id: batteryInd
                 Layout.alignment: Qt.AlignVCenter
                 Layout.leftMargin: 0
                 Layout.rightMargin: -rightSectionRowLayout.spacing
@@ -494,10 +516,27 @@ Item { // Bar content region
                        && !rightSectionRowLayout._swapMode
             }
 
+            // Pluggable widgets (Dotos, AI chats…): left of the battery, so the
+            // battery stays at the right edge with the status pill.
+            Repeater {
+                model: BarWidgets.enabled
+                delegate: BarWidget {
+                    required property var modelData
+                    widgetId: modelData
+                    visible: !rightSectionRowLayout._swapMode
+                    Layout.alignment: Qt.AlignVCenter
+                    Layout.leftMargin: shown ? 3 : 0   // 3 + 3 = the 6 px the chips use inside
+                    Layout.rightMargin: shown ? 3 : 0
+                }
+            }
+
             // Separator dot outside the SysTray's dark background capsule
             StyledText {
                 id: traySeparator
                 Layout.alignment: Qt.AlignVCenter
+                // Clear of the status island, which reaches 8px past the battery.
+                Layout.leftMargin: 6
+                Layout.rightMargin: 14
                 font.pixelSize: Appearance.font.pixelSize.larger
                 color: Appearance.colors.colSubtext
                 text: "•"
@@ -510,17 +549,23 @@ Item { // Bar content region
                 visible: root.useShortenedForm === 0 && !rightSectionRowLayout._swapMode
                        && trayInner.implicitWidth > 0
                 Layout.fillHeight: false
+                // gives way when the bar is full: icons that do not fit go to the
+                // overflow popup (SysTray.availableWidth), down to that button alone
+                Layout.fillWidth: true
+                Layout.minimumWidth: trayInner._buttonW + 14
+                Layout.preferredWidth: trayInner.fullWidth + 14
+                Layout.maximumWidth: trayInner.fullWidth + 14
                 Layout.alignment: Qt.AlignVCenter
                 Layout.preferredHeight: Appearance.sizes.barIslandHeight
                 implicitWidth: trayInner.implicitWidth > 0 ? trayInner.implicitWidth + 14 : 0
                 radius: Appearance.rounding.full
-                color: Appearance.colors.colBarIsland
-                border.width: 1
-                border.color: Appearance.colors.colBarIslandBorder
+                // The island moved to the status cluster (battery, Wi-Fi, Bluetooth).
+                color: "transparent"
 
                 SysTray {
                     id: trayInner
                     anchors.centerIn: parent
+                    availableWidth: parent.width - 14
                     Layout.fillWidth: false
                     Layout.fillHeight: true
                     invertSide: Config?.options.bar.bottom
@@ -591,27 +636,6 @@ Item { // Bar content region
                         }
                     }
                 }
-            }
-
-            // ── Corner-popup tabs — shown on the bar's right side while the
-            //    corner popup is open, in place of the network/bluetooth
-            //    cluster. Same swap pattern as the pills below.
-            PillTabBar {
-                id: cornerPopupTabs
-                Layout.alignment: Qt.AlignVCenter | Qt.AlignRight
-                Layout.rightMargin: Appearance.rounding.screenRounding
-                implicitHeight: 30
-                opacity: rightSectionRowLayout._cornerPopupMode ? 1 : 0
-                visible: opacity > 0
-                Behavior on opacity { NumberAnimation { duration: 180; easing.type: Easing.OutCubic } }
-
-                tabs: [
-                    { id: "media",   icon: "music_note",  label: Translation.tr("Media") },
-                    { id: "sources", icon: "graphic_eq",  label: Translation.tr("Sources") },
-                    { id: "files",   icon: "folder_open", label: Translation.tr("Files") },
-                ]
-                current: GlobalStates.cornerPopupTab
-                onTabSelected: id => GlobalStates.cornerPopupTab = id
             }
 
             // ── Torrents filter pills — shown on the bar's right side
