@@ -106,7 +106,8 @@ PanelWindow {
     }
 
     implicitWidth: ScreenFit.panelWidth
-    implicitHeight: card.implicitHeight
+    // the full height, see through below the card: the card grows and shrinks in it (PanelStack)
+    implicitHeight: ScreenFit.maxHeight(win)
     // Empty region (item: null) while a screenshot region-select is up, so the
     // panel stays visible but the drag passes through instead of being eaten.
     mask: Region { item: GlobalStates.regionSelectorOpen ? null : card }
@@ -168,16 +169,11 @@ PanelWindow {
         }
         width: parent.width
         // As tall as its content alone, as the tallest open panel beside others (PanelStack), never past
-        // the screen. Its content height is told once it settles: a section opening must not resize the
-        // window every frame. Not animated.
+        // the screen; animated inside the full-height window, so no surface is resized.
         readonly property real wantHeight: 13 + header.implicitHeight + 10 + col.implicitHeight + 16
-        implicitHeight: PanelStack.heightFor(wantHeight, ScreenFit.maxHeight(win))
-        onWantHeightChanged: heightSettle.restart()
-        Timer {
-            id: heightSettle
-            interval: 220
-            onTriggered: PanelStack.setHeight(win.panelId, card.wantHeight)
-        }
+        height: PanelStack.heightFor(wantHeight, ScreenFit.maxHeight(win))
+        Behavior on height { NumberAnimation { duration: 220; easing.type: Easing.OutCubic } }
+        onWantHeightChanged: PanelStack.setHeight(win.panelId, card.wantHeight)
         // Height is NOT animated. Animating it resizes the layer-shell surface on
         // every frame of the tween, which the compositor must honour each time —
         // that cost is what made expanding a section feel like dragging.

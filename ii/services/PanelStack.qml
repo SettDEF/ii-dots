@@ -49,11 +49,11 @@ Singleton {
             if (root.widths[k] !== undefined) m = Math.max(m, root.heights[k]);
         return m;
     }
-    /// The height a panel takes: the tallest reported (its own included), at most `max`; its content's
-    /// `want` only before anything is reported (reports settle first, so no frame of a growing
-    /// section resizes the window)
+    /// The height a panel's card takes: its content's or the tallest open one's, at most `max`. The
+    /// windows stay full height (transparent, clicks through below the card): only the card
+    /// animates, so a section opening grows the panel with it and no surface is resized.
     function heightFor(want, max) {
-        return Math.min(max, root.tallest > 0 ? root.tallest : want);
+        return Math.min(max, Math.max(want, root.tallest));
     }
 
     function register(id, w) {

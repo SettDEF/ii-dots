@@ -62,17 +62,11 @@ Scope {
             // still works out how many panels fit beside each other.
             implicitWidth: Math.min(ScreenFit.panelWidth + 190,
                                     Math.max(ScreenFit.panelWidth, win.screen.width * 0.42))
-            // as tall as its content alone, as the tallest open panel beside others (PanelStack), never past
-            // the screen; told once the content settles
-            implicitHeight: PanelStack.heightFor(panel.wantHeight, ScreenFit.maxHeight(win))
-            Timer {
-                id: wtHeightSettle
-                interval: 220
-                onTriggered: PanelStack.setHeight("walltune", panel.wantHeight)
-            }
+            // the full height, see through below the card (PanelStack decides the card's height)
+            implicitHeight: ScreenFit.maxHeight(win)
             Connections {
                 target: panel
-                function onWantHeightChanged() { wtHeightSettle.restart(); }
+                function onWantHeightChanged() { PanelStack.setHeight("walltune", panel.wantHeight); }
             }
 
             mask: Region { item: panel }
@@ -80,9 +74,10 @@ Scope {
             WallTuneContent {
                 id: panel
                 width: parent.width
-                // Fill the taller window rather than floating at its natural
-                // height inside it, so the card matches its neighbours.
-                height: parent.height
+                // as tall as its content alone, as the tallest open panel beside others, animated inside the
+                // full-height window (no surface resized)
+                height: PanelStack.heightFor(panel.wantHeight, parent.height)
+                Behavior on height { NumberAnimation { duration: 220; easing.type: Easing.OutCubic } }
             }
         }
     }

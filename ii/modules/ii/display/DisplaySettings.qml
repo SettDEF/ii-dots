@@ -470,7 +470,8 @@ Scope {
             }
 
             implicitWidth: ScreenFit.panelWidth
-            implicitHeight: mainCard.implicitHeight
+            // the full height, see through below the card: the card grows and shrinks in it
+            implicitHeight: ScreenFit.maxHeight(win)
 
             mask: Region { item: mainCard }
 
@@ -533,14 +534,10 @@ Scope {
                 // As tall as its content alone, as the tallest open panel beside others (PanelStack),
                 // never past the screen; the height is told once the content settles (sections animate).
                 readonly property real wantHeight: 16 + header.implicitHeight + 10 + contentColumn.implicitHeight + 16
-                implicitHeight: PanelStack.heightFor(wantHeight, maxHeight)
-                onWantHeightChanged: dispHeightSettle.restart()
+                height: PanelStack.heightFor(wantHeight, maxHeight)
+                Behavior on height { NumberAnimation { duration: 220; easing.type: Easing.OutCubic } }
+                onWantHeightChanged: PanelStack.setHeight("display", wantHeight)
                 Component.onCompleted: PanelStack.setHeight("display", wantHeight)
-                Timer {
-                    id: dispHeightSettle
-                    interval: 220
-                    onTriggered: PanelStack.setHeight("display", mainCard.wantHeight)
-                }
                 radius: Appearance.rounding.large
                 // See StackedSettingsPanel: a literal here does not retheme
                 // and mismatches every themed child by a hair.
