@@ -34,9 +34,10 @@ Scope {
         // shortcuts (e.g. Super+arrow workspace switches) while still routing
         // text keystrokes here. Was previously commented out, which produced
         // the intermittent "can't type in overview" bug.
-        WlrLayershell.keyboardFocus: GlobalStates.overviewOpen
-            ? WlrKeyboardFocus.OnDemand
-            : WlrKeyboardFocus.None
+        // Always OnDemand: the window is unmapped while closed, so it takes nothing then. Switched
+        // None→OnDemand on open, the change could land after the map, and Hyprland focuses an
+        // on-demand layer only when it maps: the keys stayed with the window (the user, 2026-10-21).
+        WlrLayershell.keyboardFocus: WlrKeyboardFocus.OnDemand
         color: "transparent"
 
         // Input region: the bar strip, the (narrow) dropdown and the workspace
@@ -180,9 +181,22 @@ Scope {
     }
 
     IpcHandler {
+        id: searchIpc
         target: "search"
 
         function toggle() {
+            GlobalStates.overviewOpen = !GlobalStates.overviewOpen;
+        }
+        /// Bound to the Super RELEASE. Toggles only for a real tap: nothing else
+        /// (key, modifier, click) since Super went down, and not held long. The
+        /// plain toggle() fired after Ctrl/Shift+Super or Super+click too: the
+        /// launcher opened unseen and its focus grab ate the next click and
+        /// the typing.
+        function releaseToggle() {
+            const now = Date.now();
+            const interrupted = GlobalStates.superInterruptTime >= GlobalStates.superPressTime - 30;
+            const held = now - GlobalStates.superPressTime;
+            if (interrupted || held > 800) return;
             GlobalStates.overviewOpen = !GlobalStates.overviewOpen;
         }
         function workspacesToggle() {
@@ -193,6 +207,11 @@ Scope {
         }
         function open() {
             GlobalStates.overviewOpen = true;
+        }
+        /// `qs ipc call search find firefox`: the launcher open with that query (scripts, timing)
+        function find(text: string): void {
+            GlobalStates.overviewOpen = true;
+            LauncherSearch.query = text;
         }
         function toggleReleaseInterrupt() {
             GlobalStates.superReleaseMightTrigger = false;
@@ -243,6 +262,23 @@ Scope {
             GlobalStates.overviewOpen = !GlobalStates.overviewOpen;
         }
     }
+    // The Super RELEASE bind, as a global instead of `exec qs ipc call search
+    // releaseToggle`: spawning a process per tap put ~650 ms between letting go
+    // of Super and the launcher. A global on a RELEASE bind arrives as a
+    // release event only, so it is handled in onReleased (onPressed never fires).
+    GlobalShortcut {
+        name: "searchReleaseTap"
+        description: "Super tap released: toggle the launcher unless it was a combo"
+        // Whichever event arrives, once per Super press.
+        property real handledPress: -1
+        function handle() {
+            if (GlobalStates.superPressTime === handledPress) return;
+            handledPress = GlobalStates.superPressTime;
+            searchIpc.releaseToggle();
+        }
+        onPressed: handle()
+        onReleased: handle()
+    }
     GlobalShortcut {
         name: "superComboInterrupt"
         description: "Cancels the pending Super-tap toggle because another key was pressed while Super was held. Bound per-combo (see hypr lua/hyprland/super_interrupts.lua) since 0.56 restricts catchall binds to submaps."
@@ -252,6 +288,7 @@ Scope {
             // ever fires from a real SUPER+<key> bind, so there is no
             // self-fire from the Super press to filter out.
             GlobalStates.superReleaseMightTrigger = false;
+            GlobalStates.superInterruptTime = Date.now();
         }
     }
     GlobalShortcut {
@@ -265,6 +302,8 @@ Scope {
             if (Date.now() - GlobalStates.superPressTime > 80) {
                 GlobalStates.superReleaseMightTrigger = false;
             }
+            // Ctrl was held when Super went down (CTRL+Super bind): not a tap.
+            GlobalStates.superInterruptTime = Date.now();
         }
     }
     GlobalShortcut {

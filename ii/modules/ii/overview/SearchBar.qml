@@ -15,6 +15,8 @@ RowLayout {
     property bool animateWidth: false
     property alias searchInput: searchInput
     property string searchingText
+    /// the launcher mode's colour (SearchModes)
+    property color modeHue: Appearance.colors.colPrimary
 
     // Sort & filter dropdown state. Owned by SearchWidget (which hosts the
     // dropdown); mirrored here so the toolbar button can show its toggled
@@ -84,6 +86,8 @@ RowLayout {
         id: searchIcon
         Layout.alignment: Qt.AlignVCenter
         iconSize: Appearance.font.pixelSize.huge
+        color: ColorUtils.transparentize(root.modeHue, 0.78)
+        colSymbol: root.modeHue
         shape: {
             if (root.skwdMode) return MaterialShape.Shape.Sunny;
             switch(root.searchPrefixType) {

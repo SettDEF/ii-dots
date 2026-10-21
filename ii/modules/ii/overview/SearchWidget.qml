@@ -284,6 +284,7 @@ Item { // Wrapper
                 // only reflects it (for the button's toggled look) and asks to
                 // flip it.
                 sortSettingsOpen: root.sortSettingsOpen
+                modeHue: searchModes.hue
                 onSortSettingsToggled: GlobalStates.launcherSortOpen = !GlobalStates.launcherSortOpen
                 onTabNavigate: back => root.stepResult(back)
                 Layout.fillWidth: true
@@ -294,6 +295,16 @@ Item { // Wrapper
                 Synchronizer on searchingText {
                     property alias source: root.searchingText
                 }
+            }
+
+            // the modes (pairs of hue toggles) and the selected mode's keys
+            SearchModes {
+                id: searchModes
+                visible: !root.skwdMode
+                bar: searchBar
+                entry: appResults.currentItem?.entry ?? null
+                Layout.fillWidth: true
+                Layout.bottomMargin: 6
             }
 
             Rectangle {
