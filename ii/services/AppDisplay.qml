@@ -606,8 +606,13 @@ Singleton {
 
     function pushNow(path) {
         root.applied = path;
-        // Startup guard: don't wipe a screen_shader set in hyprland.conf on restart.
-        if (path.length === 0 && root.everPushed === false) return;
+        // Startup guard: don't wipe a screen_shader set in hyprland.conf on restart. But one of the
+        // shell's own (an effect or the grading file) left from before the restart goes: it stayed
+        // on while the panel said "no effect" (chromatic, 2026-10-21)
+        if (path.length === 0 && root.everPushed === false) {
+            staleCheck.running = true;
+            return;
+        }
         root.everPushed = true;
         // Not `hyprctl keyword`: under a Lua config it silently answers "unknown request".
         // `eval` with hl.config is the live transport; an empty string clears the shader.
@@ -616,6 +621,24 @@ Singleton {
             `hl.config({ decoration = { screen_shader = "${esc}" } })`]);
     }
     property bool everPushed: false
+
+    // what Hyprland has at startup: cleared when it is the shell's own, kept when hyprland.conf set it
+    Process {
+        id: staleCheck
+        command: ["hyprctl", "getoption", "decoration:screen_shader", "-j"]
+        stdout: StdioCollector {
+            onStreamFinished: {
+                let cur = "";
+                try { cur = JSON.parse(text).str ?? ""; } catch (e) { return; }
+                const home = Quickshell.env("HOME");
+                const ours = cur.startsWith(home + "/.config/hypr/shaders/") || cur.startsWith("/dev/shm/");
+                if (ours && root.applied === "" && !root.everPushed) {
+                    root.everPushed = true;
+                    root.pushNow("");
+                }
+            }
+        }
+    }
 
     Process {
         id: writer
