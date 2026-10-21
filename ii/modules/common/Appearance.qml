@@ -28,7 +28,7 @@ Singleton {
         id: wallColorQuant
         property string wallpaperPath: Config.options.background.wallpaperPath
         property bool wallpaperIsVideo: wallpaperPath.endsWith(".mp4") || wallpaperPath.endsWith(".webm") || wallpaperPath.endsWith(".mkv") || wallpaperPath.endsWith(".avi") || wallpaperPath.endsWith(".mov")
-        source: Qt.resolvedUrl(wallpaperIsVideo ? Config.options.background.thumbnailPath : Config.options.background.wallpaperPath)
+        source: FileUtils.fileUrl(wallpaperIsVideo ? Config.options.background.thumbnailPath : Config.options.background.wallpaperPath)
         depth: 0 // 2^0 = 1 color
         rescaleSize: 10
     }
@@ -160,6 +160,14 @@ Singleton {
         property color colLayer4Active: ColorUtils.solveOverlayColor(colLayer3Base, ColorUtils.mix(colLayer4Base, colOnLayer4, 0.80), 1 - root.contentTransparency);
         property color colOnLayer4: m3colors.m3onSurface;
         // Primary
+        // The theme's own named hues (tinct's terminal colours: Catppuccin's red is its red), for
+        // things that each need their own colour; never hard-code these.
+        property color colHueRed: m3colors.term1
+        property color colHueGreen: m3colors.term2
+        property color colHueYellow: m3colors.term3
+        property color colHueBlue: m3colors.term4
+        property color colHueMagenta: m3colors.term5
+        property color colHueCyan: m3colors.term6
         property color colPrimary: m3colors.m3primary
         property color colOnPrimary: m3colors.m3onPrimary
         property color colPrimaryHover: ColorUtils.mix(colors.colPrimary, colLayer1Hover, 0.87)

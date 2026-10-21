@@ -215,9 +215,13 @@ Variants {
             wallpaperPrev.source = wallpaper.source
             wallpaperPrevContainer.state = "visible"
 
+            // Only a crossfade simulates the load by dimming the new wallpaper: a push
+            // (slide, rise) or a mask (iris, blinds, diagonal) moves it, and the dip
+            // showed as a dim flash in the middle of the motion.
+            const moves = ["slide", "rise", "iris", "blinds", "diagonal"].includes(GlobalStates.wallTransition)
             // Defer so wallpaperPrev's source update lands before the fade-out starts
             Qt.callLater(() => {
-                wallpaper.previewOpacityMultiplier = 0
+                wallpaper.previewOpacityMultiplier = moves ? 1 : 0
                 wallpaper.state = "loading"
                 previewTimer.token = wallpaper.transitionToken
                 previewTimer.start()
@@ -277,6 +281,7 @@ Variants {
                 // Entry animation based on transition type
                 property real entryScale: 1
                 property real entryX: 0
+                property real entryY: 0
                 scale: entryScale
                 transformOrigin: Item.Center
                 Behavior on opacity { NumberAnimation { duration: 500; easing.type: Easing.OutCubic } }
@@ -344,14 +349,16 @@ Variants {
                             target: wallpaper
                             entryScale: 1
                             entryX: 0
+                            entryY: 0
                         }
                     },
                     State {
                         name: "loading"
                         PropertyChanges {
                             target: wallpaper
-                            entryScale: GlobalStates.wallTransition === "zoom" ? 1.08 : 1
+                            entryScale: GlobalStates.wallTransition === "zoom" ? 1.08 : GlobalStates.wallTransition === "depth" ? 1.14 : 1
                             entryX: GlobalStates.wallTransition === "slide" ? 1 : 0
+                            entryY: GlobalStates.wallTransition === "rise" ? 1 : 0
                         }
                     }
                 ]
@@ -367,15 +374,15 @@ Variants {
                                 easing.type: Easing.OutCubic
                             }
                             NumberAnimation {
-                                properties: "entryX"
+                                properties: "entryX,entryY"
                                 duration: 700
-                                easing.type: Easing.OutCubic
+                                easing.type: Easing.InOutCubic  // same curve as the old one: they move as one
                             }
                         }
                     },
                     Transition {
                         from: "active"; to: "loading"
-                        PropertyAction { target: wallpaper; properties: "entryScale,entryX" }
+                        PropertyAction { target: wallpaper; properties: "entryScale,entryX,entryY" }
                     }
                 ]
 
@@ -407,8 +414,8 @@ Variants {
                 property real effectiveValueX: Math.max(0, Math.min(1, valueX))
                 property real effectiveValueY: Math.max(0, Math.min(1, valueY))
                 x: -(bgRoot.movableXSpace) - (effectiveValueX - 0.5) * 2 * bgRoot.movableXSpace + bgRoot.userOffsetX * bgRoot.movableXSpace + (GlobalStates.wallTransition === "slide" ? entryX * parent.width : 0)
-                y: -(bgRoot.movableYSpace) - (effectiveValueY - 0.5) * 2 * bgRoot.movableYSpace + bgRoot.userOffsetY * bgRoot.movableYSpace
-                source: bgRoot.wallpaperSafetyTriggered ? "" : bgRoot.wallpaperPath
+                y: -(bgRoot.movableYSpace) - (effectiveValueY - 0.5) * 2 * bgRoot.movableYSpace + bgRoot.userOffsetY * bgRoot.movableYSpace + (GlobalStates.wallTransition === "rise" ? entryY * parent.height : 0)
+                source: bgRoot.wallpaperSafetyTriggered ? "" : CF.FileUtils.fileUrl(bgRoot.wallpaperPath)
                 fillMode: bgRoot.userFit ? Image.PreserveAspectFit : Image.PreserveAspectCrop
                 Behavior on x {
                     enabled: wallpaper.state === "active" && !activeTransition.running && !GameMode.active
@@ -436,9 +443,19 @@ Variants {
             Item {
                 id: wallpaperPrevContainer
                 
+                // Slide is a push: the old wallpaper stays opaque and moves out in
+                // step with the new one moving in. Under the new one, so the
+                // wallpaper's parallax overhang never covers the incoming image.
+                z: GlobalStates.wallTransition === "slide" || GlobalStates.wallTransition === "rise" ? -1 : 0
                 // Position and size match wallpaper exactly to preserve parallax
                 property real slideOffset: 0
                 property real wipeProgress: 1
+                property real slideOffsetY: 0
+                /// 1 = the old wallpaper fully there, 0 = gone (iris, blinds, diagonal).
+                property real maskProgress: 1
+                property real blurAmount: 0
+                readonly property string kind: GlobalStates.wallTransition
+                readonly property bool masked: kind === "iris" || kind === "blinds" || kind === "diagonal"
                 
                 readonly property real baseWallpaperX: -(bgRoot.movableXSpace) - (wallpaper.effectiveValueX - 0.5) * 2 * bgRoot.movableXSpace
                 readonly property real baseWallpaperY: -(bgRoot.movableYSpace) - (wallpaper.effectiveValueY - 0.5) * 2 * bgRoot.movableYSpace
@@ -446,7 +463,7 @@ Variants {
                 readonly property real wallpaperHeightVal: bgRoot.wallpaperHeight / bgRoot.wallpaperToScreenRatio * bgRoot.effectiveWallpaperScale
                 
                 x: baseWallpaperX + (GlobalStates.wallTransition === "slide" ? slideOffset * parent.width : 0)
-                y: baseWallpaperY
+                y: baseWallpaperY + (GlobalStates.wallTransition === "rise" ? slideOffsetY * parent.height : 0)
                 width: wallpaperWidthVal * (GlobalStates.wallTransition === "wipe" ? wipeProgress : 1)
                 height: wallpaperHeightVal
                 clip: true
@@ -472,6 +489,80 @@ Variants {
                 }
 
 
+                // Shapes that cut the old wallpaper away for iris / blinds /
+                // diagonal. Drawn only into the mask, never on screen. Placed
+                // in screen terms (the container is the larger parallax canvas).
+                Item {
+                    id: prevMask
+                    anchors.fill: parent
+                    visible: false
+                    layer.enabled: wallpaperPrevContainer.masked && wallpaperPrevContainer.inTransition
+                    readonly property real cx: (wallpaperPrevContainer.parent?.width ?? width) / 2 - wallpaperPrevContainer.x
+                    readonly property real cy: (wallpaperPrevContainer.parent?.height ?? height) / 2 - wallpaperPrevContainer.y
+                    readonly property real reach: Math.hypot(width, height)
+                    readonly property real p: wallpaperPrevContainer.maskProgress
+
+                    // iris: a hole that opens from the middle (mask inverted)
+                    Rectangle {
+                        visible: wallpaperPrevContainer.kind === "iris"
+                        width: prevMask.reach * (1 - prevMask.p)
+                        height: width
+                        radius: width / 2
+                        x: prevMask.cx - width / 2
+                        y: prevMask.cy - height / 2
+                        color: "black"
+                    }
+                    // blinds: twelve slats that each close to nothing, top-down stagger
+                    Repeater {
+                        model: wallpaperPrevContainer.kind === "blinds" ? 12 : 0
+                        delegate: Rectangle {
+                            required property int index
+                            readonly property real slat: prevMask.height / 12
+                            // later slats start late: a ripple, not a single snap
+                            readonly property real local: Math.max(0, Math.min(1, prevMask.p * 1.5 - (11 - index) / 22))
+                            y: index * slat
+                            width: prevMask.width
+                            height: slat * local
+                            color: "black"
+                        }
+                    }
+                    // diagonal: an edge that sweeps from bottom-left to top-right.
+                    // A square of side 2·reach turned 35°, moved along its own
+                    // up-right axis (sin, -cos). It must travel 1.5·reach (its half
+                    // side + half the canvas diagonal) to clear the canvas; 1.2/0.8
+                    // fell short and left a corner of the old wallpaper behind,
+                    // which popped away only when its texture was freed.
+                    Rectangle {
+                        readonly property real travel: (1 - prevMask.p) * prevMask.reach * 1.6
+                        visible: wallpaperPrevContainer.kind === "diagonal"
+                        width: prevMask.reach * 2
+                        height: prevMask.reach * 2
+                        rotation: 35
+                        transformOrigin: Item.Center
+                        x: prevMask.width / 2 - width / 2 + travel * Math.sin(35 * Math.PI / 180)
+                        y: prevMask.height / 2 - height / 2 - travel * Math.cos(35 * Math.PI / 180)
+                        color: "black"
+                    }
+                }
+                // Only while a transition shows: kept on, the mask/blur held a
+                // full-size offscreen copy for good, and blur switched it on a
+                // frame into the animation (a hitch).
+                readonly property bool inTransition: state === "visible" || prevHide.running
+                layer.enabled: (wallpaperPrevContainer.masked || wallpaperPrevContainer.kind === "blur")
+                    && wallpaperPrevContainer.inTransition
+                layer.effect: wallpaperPrevContainer.masked ? prevMaskEffect : prevBlurEffect
+                Component {
+                    id: prevMaskEffect
+                    OpacityMask {
+                        maskSource: prevMask
+                        invert: wallpaperPrevContainer.kind === "iris"
+                    }
+                }
+                Component {
+                    id: prevBlurEffect
+                    FastBlur { radius: 64 * wallpaperPrevContainer.blurAmount }
+                }
+
                 /// Frees the previous wallpaper's texture once the crossfade
                 /// is over. It is a second full-resolution copy — ~16 MB on
                 /// this display — and it was held for the life of the shell
@@ -493,14 +584,20 @@ Variants {
                             scale: 1
                             slideOffset: 0
                             wipeProgress: 1
+                            slideOffsetY: 0
+                            maskProgress: 1
+                            blurAmount: 0
                         }
                     },
                     State {
                         name: "hidden"
                         PropertyChanges {
                             target: wallpaperPrevContainer
-                            opacity: 0
-                            scale: GlobalStates.wallTransition === "zoom" ? 1.08 : 1
+                            opacity: ["slide", "rise", "iris", "blinds", "diagonal"].includes(GlobalStates.wallTransition) ? 1 : 0
+                            scale: GlobalStates.wallTransition === "zoom" ? 1.08 : GlobalStates.wallTransition === "depth" ? 0.86 : 1
+                            slideOffsetY: GlobalStates.wallTransition === "rise" ? -1 : 0
+                            maskProgress: wallpaperPrevContainer.masked ? 0 : 1
+                            blurAmount: GlobalStates.wallTransition === "blur" ? 1 : 0
                             slideOffset: GlobalStates.wallTransition === "slide" ? -1 : 0
                             wipeProgress: GlobalStates.wallTransition === "wipe" ? 0 : 1
                         }
@@ -509,6 +606,7 @@ Variants {
 
                 transitions: [
                     Transition {
+                        id: prevHide
                         from: "visible"; to: "hidden"
                         ParallelAnimation {
                             NumberAnimation {
@@ -531,11 +629,26 @@ Variants {
                                 duration: 700
                                 easing.type: Easing.InOutCubic
                             }
+                            NumberAnimation {
+                                properties: "slideOffsetY"
+                                duration: 700
+                                easing.type: Easing.InOutCubic
+                            }
+                            NumberAnimation {
+                                properties: "maskProgress"
+                                duration: 850
+                                easing.type: Easing.InOutCubic
+                            }
+                            NumberAnimation {
+                                properties: "blurAmount"
+                                duration: 700
+                                easing.type: Easing.OutCubic
+                            }
                         }
                     },
                     Transition {
                         from: "hidden"; to: "visible"
-                        PropertyAction { target: wallpaperPrevContainer; properties: "opacity,scale,slideOffset,wipeProgress" }
+                        PropertyAction { target: wallpaperPrevContainer; properties: "opacity,scale,slideOffset,wipeProgress,slideOffsetY,maskProgress,blurAmount" }
                     }
                 ]
                 

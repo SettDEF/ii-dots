@@ -5,6 +5,7 @@
 import qs
 import qs.services
 import qs.modules.common
+import qs.modules.common.functions
 import qs.modules.common.widgets
 import QtQuick
 import QtQuick.Controls
@@ -141,7 +142,7 @@ Scope {
                         Image {
                             anchors.fill: parent
                             visible: !panel.isVideo
-                            source: panel.isVideo ? "" : ("file://" + panel.wallpaperPath)
+                            source: panel.isVideo ? "" : (FileUtils.fileUrl(panel.wallpaperPath))
                             // Fill the wpContent box exactly — wpContent
                             // is now sized to the media's natural aspect.
                             fillMode: Image.Stretch
@@ -165,7 +166,7 @@ Scope {
                             sourceComponent: Item {
                                 MediaPlayer {
                                     id: wpPlayer
-                                    source: "file://" + panel.wallpaperPath
+                                    source: FileUtils.fileUrl(panel.wallpaperPath)
                                     loops: MediaPlayer.Infinite
                                     audioOutput: AudioOutput { muted: true; volume: 0 }
                                     videoOutput: wpVidOut

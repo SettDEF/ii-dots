@@ -31,6 +31,18 @@ Singleton {
      * @param {string} str
      * @returns {string}
      */
+    /**
+     * A path as a file:// address that keeps ? # % and spaces in file names (a bare path is read as
+     * an address, so "Forgive Me? .png" lost everything after its ?). Other addresses pass as they are.
+     */
+    function fileUrl(path) {
+        if (!path) return "";
+        const s = String(path);
+        if (/^[a-z][a-z0-9+.-]*:\/\//i.test(s) && !s.startsWith("file://")) return s;
+        const p = s.startsWith("file://") ? s.slice(7) : s;
+        return "file://" + p.split("/").map(encodeURIComponent).join("/");
+    }
+
     function trimFileProtocol(str) {
         let s = str;
         if (typeof s !== "string") s = str.toString(); // Convert to string if it's an url or whatever
@@ -119,6 +131,31 @@ Singleton {
      * @returns {string}
      */
     property string defaultDownloadUserAgent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36"
+    /// Like fetchToFileCommand, but patient: for "apply this wallpaper" while
+    /// the network is down or flaky. It keeps retrying until the network is
+    /// back (up to `waitSeconds`, default 300), gives up on an attempt only
+    /// when the transfer STALLS (under 1 KB/s for 20 s) rather than after a
+    /// fixed time — a big image on a slow link is not a failure — and writes
+    /// to a temp file that is renamed only when complete, so a cut-off attempt
+    /// never leaves a half image behind to be applied.
+    /// `waitingNotice`: a command run once when the first attempt fails.
+    function fetchToFileWaitingCommand(url, targetPath, opts) {
+        const o = opts ?? {};
+        const ua = o.userAgent ?? root.defaultDownloadUserAgent;
+        const wait = o.waitSeconds ?? 300;
+        const tmp = targetPath + ".part";
+        const notice = o.waitingNotice ? `${o.waitingNotice}; ` : "";
+        return `mkdir -p ${root.shQuote(root.parentDirectory(targetPath))} && `
+             + `[ -s ${root.shQuote(targetPath)} ] || { `
+             + `deadline=$(( $(date +%s) + ${wait} )); warned=0; `
+             + `until curl -sLf --connect-timeout 10 --speed-limit 1024 --speed-time 20 -A ${root.shQuote(ua)} `
+             + `-o ${root.shQuote(tmp)} ${root.shQuote(url)}; do `
+             + `rm -f ${root.shQuote(tmp)}; `
+             + `[ $(date +%s) -ge $deadline ] && exit 1; `
+             + `[ $warned = 0 ] && { warned=1; ${notice}true; }; `
+             + `sleep 4; done; mv -f ${root.shQuote(tmp)} ${root.shQuote(targetPath)}; }`;
+    }
+
     function fetchToFileCommand(url, targetPath, opts) {
         const o = opts ?? {};
         const ua = o.userAgent ?? root.defaultDownloadUserAgent;
