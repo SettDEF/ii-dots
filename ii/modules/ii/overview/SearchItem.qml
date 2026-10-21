@@ -120,6 +120,10 @@ RippleButton {
         // launcher must stay open; closing it first made selecting a group
         // look like it did nothing.
         if (!root.isGroup) {
+            // an app launched: its window takes the focus, the launcher must not hand it back to
+            // the previous window (a fast or already-running app lost that race)
+            if (root.isApp)
+                GlobalFocusGrab.cancelRestore()
             GlobalStates.overviewOpen = false
             // Also reused by the Start Menu (modules/ii/startMenu/), whose
             // own flag this row knows nothing else about.
