@@ -30,6 +30,20 @@ IFS=$'\n'
 colorlist=($colornames)     # Array of color names
 colorvalues=($colorstrings) # Array of color values
 
+# The terminal's own background and text (OSC 11 and 10, and wezterm's file): with an exact theme
+# its background and on_background (term0 and term7 are its palette's black and white there:
+# Catppuccin's surface1, a raised-surface colour, made every terminal too bright); else term0, term7
+termbg=""
+termfg=""
+if [ -n "$(jq -r '.appearance.wallpaperTheming.exactTheme // ""' "$XDG_CONFIG_HOME/illogical-impulse/config.json" 2>/dev/null)" ]; then
+  termbg=$(jq -r '.background // empty' "$colors_json_path" 2>/dev/null)
+  termfg=$(jq -r '.on_background // empty' "$colors_json_path" 2>/dev/null)
+fi
+for i in "${!colorlist[@]}"; do
+  [ "${colorlist[$i]}" = '$term0' ] && [ -z "$termbg" ] && termbg="${colorvalues[$i]}"
+  [ "${colorlist[$i]}" = '$term7' ] && [ -z "$termfg" ] && termfg="${colorvalues[$i]}"
+done
+
 apply_term() {
   # Check if terminal escape sequence template exists
   if [ ! -f "$SCRIPT_DIR/terminal/sequences.txt" ]; then
@@ -37,8 +51,9 @@ apply_term() {
     return
   fi
 
-  local temp_seq="/tmp/matugen-temp-sequences.txt"
+  local temp_seq="/tmp/tinct-temp-sequences.txt"
   cp "$SCRIPT_DIR/terminal/sequences.txt" "$temp_seq"
+  sed -i "s/\$termbg #/${termbg#\#}/g; s/\$termfg #/${termfg#\#}/g" "$temp_seq"
 
   # Apply colors
   for i in "${!colorlist[@]}"; do
@@ -147,7 +162,7 @@ apply_qt() {
 # has both the rendered files and the term values, and it runs last.
 apply_term_configs() {
   local kitty_theme="$STATE_DIR/user/generated/terminal/kitty-theme.conf"
-  local wezterm_colors="$XDG_CONFIG_HOME/wezterm/matugen_colors.lua"
+  local wezterm_colors="$XDG_CONFIG_HOME/wezterm/tinct_colors.lua"
 
   # term0..15 out of the same SCSS the sequences came from. The array is `tc`,
   # not `term`: a literal "$term0" has to survive the shell, and writing it
@@ -200,11 +215,10 @@ fi
 # (terminal pty + dbus broadcast) get the new theme in one synchronous pass.
 broadcast_color_scheme
 
-# Rebuild all matugen templates (including Bitwig Studio theme.bte)
+# Render every tinct template (including Bitwig Studio theme.bte)
 # using the final transformed, high-contrast, or preset-remapped colors.json.
 if [[ "${TINCT:-1}" == "1" ]] && command -v tinct >/dev/null 2>&1; then
-    # Rust template renderer — byte-identical to rebuild_templates.py+matugen,
-    # ~1ms instead of ~400ms. TINCT=0 falls back to the python path.
+    # About 1ms for every template.
     #
     # --image is passed explicitly from the live config. Without it the
     # renderer falls back to reading the path.txt it also WRITES, so a single
@@ -213,10 +227,16 @@ if [[ "${TINCT:-1}" == "1" ]] && command -v tinct >/dev/null 2>&1; then
     # wallpaper path stuck on a dead value.
     wallpaper_now=$(jq -r '.background.wallpaperPath // empty' \
         "$XDG_CONFIG_HOME/illogical-impulse/config.json" 2>/dev/null)
-    if [ -n "$wallpaper_now" ] && [ -e "$wallpaper_now" ]; then
-        tinct render --colors "$colors_json_path" --image "$wallpaper_now" >/dev/null 2>&1 || true
-    else
-        tinct render --colors "$colors_json_path" >/dev/null 2>&1 || true
+    render_args=(--colors "$colors_json_path")
+    [ -n "$wallpaper_now" ] && [ -e "$wallpaper_now" ] && render_args+=(--image "$wallpaper_now")
+    # Only templates whose output really changes: `tinct render` rewrites every
+    # file and runs every post_hook otherwise, so one wallpaper change reloaded
+    # kitty, tmux, cava, qutebrowser... even when their colours were the same.
+    # The dry run says which ones would change; render just those.
+    changed=$(tinct render --dry-run --no-cmus "${render_args[@]}" 2>/dev/null \
+        | awk '$1 == "WOULD" { print $3 }' | paste -sd, -)
+    if [ -n "$changed" ]; then
+        tinct render "${render_args[@]}" --only "$changed" >/dev/null 2>&1 || true
     fi
 else
     echo "applycolor: tinct not available — templates not rendered" >&2
@@ -227,10 +247,9 @@ fi
 # that can only see colors.json, and term0..15 are not in it.
 apply_term_configs
 
-# Substitute $term0 into nvim's matugen palette and live-reload running nvims.
-# Runs here (not as matugen post_hook) because $term0 is only written into
-# material_colors.scss by generate_colors_material.py, which fires *after*
-# matugen. MUST run AFTER rebuild_templates.py above — that re-renders
+# Substitute $term0 into nvim's palette and live-reload running nvims.
+# Runs here, not as a template post_hook, because $term0 lives only in
+# material_colors.scss. MUST run AFTER the render above — that re-renders
 # nvim_colors.lua from the template, re-introducing the A0 = "__TERM0__"
 # placeholder. Running before it (the old order) left the placeholder in the
 # final file, which crashes cocoa.nvim ("arithmetic on nil" in blend()).
@@ -239,12 +258,12 @@ if [ -x "$HOME/.config/tinct/templates/neovim/post-hook.sh" ]; then
 fi
 
 # Keep wezterm's config-level background in sync with the OSC palette.
-# The wezterm matugen template uses {{colors.surface}}, which is a different
+# The wezterm template uses {{colors.surface}}, which is a different
 # colour than the terminal-tuned $term0 that the live OSC path applies —
 # without this, a freshly-started wezterm window settles on a different
 # background than the already-running, OSC-themed ones. Must run AFTER
-# rebuild_templates.py above, because that re-renders matugen_colors.lua.
-wezterm_colors="$XDG_CONFIG_HOME/wezterm/matugen_colors.lua"
+# the render above, because that re-renders tinct_colors.lua.
+wezterm_colors="$XDG_CONFIG_HOME/wezterm/tinct_colors.lua"
 if [ -f "$wezterm_colors" ]; then
     term0=""
     for i in "${!colorlist[@]}"; do
@@ -252,6 +271,7 @@ if [ -f "$wezterm_colors" ]; then
     done
     # Only the top-level `    background    = "#xxxxxx",` (4-space indent);
     # the deeper-indented tab_bar.background is intentionally left alone.
+    [ -n "$termbg" ] && term0="$termbg"
     [ -n "$term0" ] && \
         sed -i -E "s|^(    background[[:space:]]+= )\"[^\"]*\"|\1\"${term0}\"|" "$wezterm_colors"
 fi
