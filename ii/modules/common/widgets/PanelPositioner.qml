@@ -141,20 +141,26 @@ Item {
                 preventStealing: true
                 cursorShape: Qt.SizeAllCursor
 
+                // the pointer on the screen: where the window is plus where in it the pointer is; a drag
+                // measured on the handle alone (it moves with the window) took every snap for a move,
+                // and the window jumped between snapped and not
+                function onScreen(mouse) {
+                    const p = dragMa.mapToItem(null, mouse.x, mouse.y);
+                    return Qt.point(root.window.margins.left + p.x, root.window.margins.top + p.y);
+                }
                 onPressed: (mouse) => {
-                    root.dragStartX = mouse.x;
-                    root.dragStartY = mouse.y;
+                    const p = onScreen(mouse);
+                    root.dragStartX = p.x;
+                    root.dragStartY = p.y;
                     root.windowStartX = root.window.margins.left;
                     root.windowStartY = root.window.margins.top;
                 }
 
                 onPositionChanged: (mouse) => {
                     if (!pressed) return;
-                    var dx = mouse.x - root.dragStartX;
-                    var dy = mouse.y - root.dragStartY;
-
-                    var targetX = root.window.margins.left + dx;
-                    var targetY = root.window.margins.top + dy;
+                    const now = onScreen(mouse);
+                    var targetX = root.windowStartX + now.x - root.dragStartX;
+                    var targetY = root.windowStartY + now.y - root.dragStartY;
 
                     var screenWidth = root.window.screen.width;
                     var screenHeight = root.window.screen.height;
