@@ -264,19 +264,25 @@ Scope {
                 // Overlay layer and this one maps second (you open it from
                 // WallTune), so it lands above without needing a layer bump.
                 readonly property real inset: 12
-                width: ScreenFit.panelWidth - card.inset * 2
+                // Palette is wider than a standard panel (its tab rail): sized for
+                // 400 and pinned right, this sat off-centre over it. Use its real
+                // width and centre on it.
+                readonly property real hostWidth: PanelStack.widths["walltune"] ?? ScreenFit.panelWidth
+                width: Math.round(Math.min(card.hostWidth - card.inset * 2, 480))
                 // 540 is what the connectivity popup (Wi-Fi / Bluetooth / VPN)
                 // uses, and this should not read as a bigger thing than those.
                 // The old cap was 880, which on this screen was nearly full
                 // height — a column, not a popup. The body already scrolls, so
                 // the extra height bought very little.
-                height: Math.min(540, win.height - y - Appearance.sizes.hyprlandGapsOut * 2)
+                height: Math.round(Math.min(540, win.height - y - Appearance.sizes.hyprlandGapsOut * 2))
                 anchors.right: parent.right
-                anchors.rightMargin: Appearance.sizes.hyprlandGapsOut + 8
+                // Whole pixels: at 1.6x a half-pixel edge blurs the 1px border on
+                // some sides only, which read as an uneven outline.
+                anchors.rightMargin: Math.round(Appearance.sizes.hyprlandGapsOut + 8
                     + PanelStack.offsetFor("walltune")
-                    + card.inset
-                y: Appearance.sizes.barHeight + Appearance.sizes.hyprlandGapsOut + 2
-                    + card.inset
+                    + (card.hostWidth - card.width) / 2)
+                y: Math.round((ScreenFit.reservedTop(win) || Appearance.sizes.barHeight) + Appearance.sizes.hyprlandGapsOut + 2
+                    + card.inset)
 
                 radius: Appearance.rounding.large
                 color: Appearance.colors.colLayer0
@@ -295,37 +301,11 @@ Scope {
                     spacing: 8
 
                     // ── header ───────────────────────────────────────────
-                    RowLayout {
+                    PanelHeader {
                         Layout.fillWidth: true
-                        spacing: 7
-                        MaterialSymbol {
-                            text: "palette"
-                            iconSize: 18
-                            color: Appearance.colors.colOnLayer0
-                        }
-                        StyledText {
-                            Layout.fillWidth: true
-                            text: qsTr("App colours")
-                            font.pixelSize: Appearance.font.pixelSize.normal
-                            color: Appearance.colors.colOnLayer0
-                        }
-                        Rectangle {
-                            implicitWidth: 26; implicitHeight: 26
-                            radius: 13
-                            color: closeHov.hovered ? Appearance.colors.colLayer1Hover : ColorUtils.transparentize(Appearance.colors.colLayer1Hover)
-                            Behavior on color { ColorAnimation { duration: 140 } }
-                            HoverHandler { id: closeHov; margin: Appearance.sizes.touchSlop; cursorShape: Qt.PointingHandCursor }
-                            TapHandler {
-                                margin: Appearance.sizes.touchSlop
-                                onTapped: GlobalStates.appColorsOpen = false
-                            }
-                            MaterialSymbol {
-                                anchors.centerIn: parent
-                                text: "close"
-                                iconSize: 15
-                                color: Appearance.colors.colOnLayer0
-                            }
-                        }
+                        icon: "palette"
+                        title: qsTr("App colours")
+                        onClose: GlobalStates.appColorsOpen = false
                     }
 
                     StyledText {

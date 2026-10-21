@@ -461,7 +461,7 @@ Scope {
 
             anchors.top: true
             anchors.right: true
-            margins.top: Appearance.sizes.barHeight + Appearance.sizes.hyprlandGapsOut + 8
+            margins.top: (ScreenFit.reservedTop(win) || Appearance.sizes.barHeight) + Appearance.sizes.hyprlandGapsOut + 8
             // Side by side rather than stacked on top: the offset is the
             // total width of the panels open to our right.
             margins.right: (Appearance.sizes.hyprlandGapsOut + 8) + PanelStack.offsetFor("display")
@@ -557,39 +557,18 @@ Scope {
                     spacing: 14
 
                     // ── Header ──────────────────────────────────────────
-                    RowLayout {
+                    PanelHeader {
                         Layout.fillWidth: true
-                        spacing: 8
-                        MaterialSymbol {
-                            text: "display_settings"
-                            iconSize: 20
-                            color: Appearance.colors.colPrimary
-                        }
-                        StyledText {
-                            Layout.fillWidth: true
-                            text: "Display"
-                            font.pixelSize: Appearance.font.pixelSize.larger
-                            font.bold: true
-                            color: Appearance.colors.colOnLayer0
-                        }
-                        StyledText {
-                            text: win.mon ? win.mon.name : ""
-                            font.pixelSize: Appearance.font.pixelSize.smaller
-                            color: Appearance.colors.colSubtext
-                        }
-                        Rectangle {
-                            width: 26; height: 26; radius: 13
-                            color: closeHov.hovered ? Appearance.colors.colLayer1Hover : ColorUtils.transparentize(Appearance.colors.colLayer1Hover)
-                            Behavior on color { ColorAnimation { duration: 160 } }
-                            HoverHandler { margin: Appearance.sizes.touchSlop; id: closeHov }
-                            TapHandler { margin: Appearance.sizes.touchSlop; onTapped: GlobalStates.displayOpen = false }
-                            MaterialSymbol {
-                                anchors.centerIn: parent
-                                text: "close"
-                                iconSize: 16
+                        icon: "display_settings"
+                        title: "Display"
+                        onClose: GlobalStates.displayOpen = false
+                        middle: [
+                            StyledText {
+                                text: win.mon ? win.mon.name : ""
+                                font.pixelSize: Appearance.font.pixelSize.smaller
                                 color: Appearance.colors.colSubtext
                             }
-                        }
+                        ]
                     }
 
                     // ── Per-app strip ───────────────────────────────────
