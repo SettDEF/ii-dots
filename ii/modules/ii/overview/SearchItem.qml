@@ -57,10 +57,13 @@ RippleButton {
     implicitHeight: rowLayout.implicitHeight + root.buttonVerticalPadding * 2
     implicitWidth: rowLayout.implicitWidth + root.buttonHorizontalPadding * 2
     buttonRadius: Appearance.rounding.normal
-    colBackground: (root.down || root.keyboardDown) ? Appearance.colors.colPrimaryContainerActive : 
-        ((root.hovered || root.focus) ? Appearance.colors.colPrimaryContainer : 
-        ColorUtils.transparentize(Appearance.colors.colPrimaryContainer, 1))
-    colBackgroundHover: Appearance.colors.colPrimaryContainer
+    // the selected row (Enter opens it) is solid; a row under the mouse only tinted, so the two
+    // never look the same
+    colBackground: (root.down || root.keyboardDown) ? Appearance.colors.colPrimaryContainerActive :
+        root.focus ? Appearance.colors.colPrimaryContainer :
+        ColorUtils.transparentize(Appearance.colors.colPrimaryContainer, 1)
+    colBackgroundHover: root.focus ? Appearance.colors.colPrimaryContainerHover
+        : ColorUtils.transparentize(Appearance.colors.colPrimaryContainer, 0.65)
     colRipple: Appearance.colors.colPrimaryContainerActive
 
     property string highlightPrefix: `<u><font color="${Appearance.colors.colPrimary}">`
@@ -131,12 +134,19 @@ RippleButton {
     // shell commands, clipboard rows) are skipped by openFor().
     altAction: () => {
         if (root.itemType === Translation.tr("App"))
-            entryMenu.openFor(root.entry?.id ?? "", root.itemName)
+            entryMenu.open(root.entry?.id ?? "", root.itemName)
     }
 
-    LauncherEntryMenu {
+    // made on the first right-click, not with every row: a PopupWindow per row (15 per keystroke)
+    // was most of the time it took the results to show
+    Loader {
         id: entryMenu
-        anchorItem: root
+        active: false
+        sourceComponent: LauncherEntryMenu { anchorItem: root }
+        function open(id, name) {
+            entryMenu.active = true;
+            entryMenu.item?.openFor(id, name);
+        }
     }
     Keys.onPressed: (event) => {
         if (event.key === Qt.Key_Delete && event.modifiers === Qt.ShiftModifier) {
