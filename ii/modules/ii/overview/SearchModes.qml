@@ -8,9 +8,10 @@ import qs.modules.common
 import qs.modules.common.functions
 import qs.modules.common.widgets
 
-// The launcher's modes as the capture bar's toggles (pairs of hue buttons) and each mode's keys:
-// Ctrl+1…0 / Ctrl+Tab pick a mode, Alt+1…4 run the selected result's own actions, plus a mode's extras.
-ColumnLayout {
+// The launcher's modes: over the search field, its text giving way to them, as the capture bar's
+// toggles (pairs of hue buttons). Ctrl+1…0 / Ctrl+Tab pick a mode, Alt+1…4 run the selected result's
+// own actions, plus a mode's extras; the keys show faintly at the field's end (hintText).
+Item {
     id: root
     required property var bar
     /// the selected result (its verb and actions are this mode's keys)
@@ -60,6 +61,7 @@ ColumnLayout {
     readonly property color hue: root.active ? root.active.hue : Appearance.colors.colPrimary
 
     function pick(m) {
+        root.picking = false;
         const t = root.input.text;
         const body = root.active ? t.slice(root.p[root.active.id].length) : t;
         root.input.text = !m || root.active === m ? body : root.p[m.id] + body;
@@ -104,11 +106,60 @@ ColumnLayout {
         return out.concat(root.extras);
     }
 
-    spacing: 2
+    /// the field is the pairs of modes now (a click on the search icon, scrolling on it, Ctrl+Space)
+    property bool picking: false
+    /// the mode the arrows are on while picking
+    property int sel: 0
+    onPickingChanged: if (picking) root.sel = Math.max(0, root.modes.indexOf(root.active))
+    /// the keys, faint at the field's right end (SearchBar draws them)
+    readonly property string hintText: root.hints.map(h => "<b><font color='%1'>%2</font></b> %3".arg(root.hue).arg(h.key).arg(StringUtils.escapeHtml(h.label))).join("  ·  ")
+    readonly property real stripWidth: strip.implicitWidth + 16
+    /// where the search icon is, from this item's left, and its size: the pill grows out of it
+    property real origin: 0
+    property real originSize: height
 
+    /// The arrows, Enter and Esc while picking; any other key closes the pairs and types on.
+    function pickerKey(event) {
+        if (!root.picking) return false;
+        const n = root.modes.length;
+        switch (event.key) {
+        case Qt.Key_Left: root.sel = (root.sel + n - 1) % n; return true;
+        case Qt.Key_Right: case Qt.Key_Tab: root.sel = (root.sel + 1) % n; return true;
+        case Qt.Key_Return: case Qt.Key_Enter: case Qt.Key_Space: root.pick(root.modes[root.sel]); return true;
+        case Qt.Key_Escape: root.picking = false; return true;
+        default: root.picking = false; return false;
+        }
+    }
+
+    // the icon's shape grows out across the field, with a bounce, and the pairs stand on it
+    Rectangle {
+        id: pill
+        z: -1
+        readonly property real full: root.width - root.origin
+        x: root.origin
+        anchors.verticalCenter: parent.verticalCenter
+        width: root.picking ? full : root.originSize
+        height: root.picking ? root.height : root.originSize
+        radius: height / 2
+        color: ColorUtils.transparentize(root.hue, 0.8)
+        opacity: root.picking ? 1 : 0
+        Behavior on width { NumberAnimation { duration: 460; easing.type: Easing.OutBack; easing.overshoot: 1.4 } }
+        Behavior on height { NumberAnimation { duration: 460; easing.type: Easing.OutBack; easing.overshoot: 1.4 } }
+        Behavior on opacity { NumberAnimation { duration: root.picking ? 90 : 260; easing.type: Easing.OutCubic } }
+        Behavior on color { ColorAnimation { duration: 160 } }
+    }
+
+    // the pairs, where the text was: they come in as the text goes
     RowLayout {
-        Layout.alignment: Qt.AlignHCenter
+        id: strip
+        anchors.centerIn: parent
         spacing: 6
+        opacity: root.picking ? 1 : 0
+        scale: root.picking ? 1 : 0.94
+        visible: opacity > 0
+        // a moment after the pill, so they ride in on it
+        Behavior on opacity { SequentialAnimation { PauseAnimation { duration: root.picking ? 110 : 0 } NumberAnimation { duration: 200; easing.type: Easing.OutCubic } } }
+        Behavior on scale { NumberAnimation { duration: 380; easing.type: Easing.OutBack; easing.overshoot: 1.6 } }
         Repeater {
             model: root.groups
             delegate: RowLayout {
@@ -121,7 +172,7 @@ ColumnLayout {
                     Layout.alignment: Qt.AlignVCenter
                     Layout.rightMargin: 4
                     implicitWidth: 1
-                    implicitHeight: 22
+                    implicitHeight: 20
                     color: Appearance.colors.colOutlineVariant
                 }
                 Repeater {
@@ -129,41 +180,31 @@ ColumnLayout {
                     delegate: HueToolbarButton {
                         id: btn
                         required property var modelData
-                        readonly property int n: root.modes.indexOf(btn.modelData) + 1
-                        implicitHeight: 36
-                        implicitWidth: 38
+                        readonly property int n: root.modes.indexOf(btn.modelData)
+                        implicitHeight: 32
+                        implicitWidth: 34
                         hue: btn.modelData.hue
                         symbol: btn.modelData.icon
                         toggled: root.active === btn.modelData
                         onClicked: root.pick(btn.modelData)
-                        StyledToolTip { text: "%1   %2   Ctrl+%3".arg(btn.modelData.label).arg(root.p[btn.modelData.id].trim()).arg(btn.n % 10) }
+                        StyledToolTip { text: "%1   %2   Ctrl+%3".arg(btn.modelData.label).arg(root.p[btn.modelData.id].trim()).arg((btn.n + 1) % 10) }
+                        // where the arrows are
+                        Rectangle {
+                            anchors { horizontalCenter: parent.horizontalCenter; bottom: parent.bottom; bottomMargin: 1 }
+                            width: 14
+                            height: 2
+                            radius: 1
+                            color: btn.modelData.hue
+                            visible: root.picking && root.sel === btn.n
+                        }
                     }
                 }
             }
         }
     }
 
-    // this mode's keys, in its hue
-    StyledText {
-        Layout.fillWidth: true
-        Layout.leftMargin: 14
-        Layout.rightMargin: 14
-        Layout.preferredWidth: 0
-        visible: root.hints.length > 0
-        elide: Text.ElideRight
-        // one line: StyledText wraps, and at no width of its own it was measured as a tall block
-        wrapMode: Text.NoWrap
-        maximumLineCount: 1
-        textFormat: Text.StyledText
-        font.pixelSize: Appearance.font.pixelSize.smaller
-        color: Appearance.colors.colSubtext
-        text: root.hints.map(h => "<b><font color='%1'>%2</font></b> %3".arg(root.hue).arg(h.key).arg(StringUtils.escapeHtml(h.label))).join("   ")
-    }
-
-    // the keys (the launcher's window only), in one item of no height: the column spaces every item
+    Shortcut { sequences: ["Ctrl+Space"]; enabled: GlobalStates.overviewOpen; onActivated: root.picking = !root.picking }
     Item {
-        Layout.preferredHeight: 0
-        Layout.topMargin: -root.spacing
         Shortcut { sequences: ["Ctrl+Tab"]; enabled: GlobalStates.overviewOpen; onActivated: root.step(1) }
         Shortcut { sequences: ["Ctrl+Shift+Tab", "Ctrl+Backtab"]; enabled: GlobalStates.overviewOpen; onActivated: root.step(-1) }
         Repeater {

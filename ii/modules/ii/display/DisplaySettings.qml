@@ -542,9 +542,25 @@ Scope {
                 border.width: 1
                 border.color: Appearance.colors.colLayer0Border
 
+                // the header stays put, the content scrolls under it (the bar beside the content only)
+                PanelHeader {
+                    id: header
+                    anchors { top: parent.top; left: parent.left; right: parent.right; margins: 16 }
+                    icon: "display_settings"
+                    title: "Display"
+                    onClose: GlobalStates.displayOpen = false
+                    middle: [
+                        StyledText {
+                            text: win.mon ? win.mon.name : ""
+                            font.pixelSize: Appearance.font.pixelSize.smaller
+                            color: Appearance.colors.colSubtext
+                        }
+                    ]
+                }
+
                 StyledFlickable {
                     id: scroller
-                    anchors.fill: parent
+                    anchors { top: header.bottom; left: parent.left; right: parent.right; bottom: parent.bottom; topMargin: 10 }
                     anchors.margins: 16
                     contentHeight: contentColumn.implicitHeight
                     contentWidth: width
@@ -556,20 +572,6 @@ Scope {
                     width: scroller.width
                     spacing: 14
 
-                    // ── Header ──────────────────────────────────────────
-                    PanelHeader {
-                        Layout.fillWidth: true
-                        icon: "display_settings"
-                        title: "Display"
-                        onClose: GlobalStates.displayOpen = false
-                        middle: [
-                            StyledText {
-                                text: win.mon ? win.mon.name : ""
-                                font.pixelSize: Appearance.font.pixelSize.smaller
-                                color: Appearance.colors.colSubtext
-                            }
-                        ]
-                    }
 
                     // ── Per-app strip ───────────────────────────────────
                     // Sits above everything: it answers "is something other

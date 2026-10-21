@@ -15,8 +15,9 @@ RowLayout {
     property bool animateWidth: false
     property alias searchInput: searchInput
     property string searchingText
-    /// the launcher mode's colour (SearchModes)
-    property color modeHue: Appearance.colors.colPrimary
+    /// the selected result (its actions are the mode's keys) and the mode's colour (SearchModes)
+    property var entry: null
+    readonly property color modeHue: modes.hue
 
     // Sort & filter dropdown state. Owned by SearchWidget (which hosts the
     // dropdown); mirrored here so the toolbar button can show its toggled
@@ -134,10 +135,12 @@ RowLayout {
             acceptedButtons: Qt.LeftButton | Qt.RightButton
             cursorShape: Qt.PointingHandCursor
             hoverEnabled: true
-            onClicked: root.sortSettingsToggled()
+            // the modes take the field's place (a click), one after another (the wheel); the right button: settings
+            onClicked: mouse => mouse.button === Qt.RightButton ? root.sortSettingsToggled() : (modes.picking = !modes.picking)
+            onWheel: wheel => modes.step(wheel.angleDelta.y > 0 ? -1 : 1)
 
             StyledToolTip {
-                text: Translation.tr("Launcher settings")
+                text: Translation.tr("Modes: click or Ctrl+Space, scroll to step · right-click: launcher settings")
             }
         }
     }
@@ -187,8 +190,41 @@ RowLayout {
         // In skwd mode the input shares the bar with the pickers and actions,
         // so it takes a fixed width — wide enough to read a full `r/subreddit`
         // and to fill the middle of the bar rather than leaving a gap.
-        implicitWidth: root.skwdMode ? 330
-            : (root.searchingText == "" ? Appearance.sizes.searchWidthCollapsed : Appearance.sizes.searchWidth)
+        implicitWidth: Math.max(modes.picking ? modes.stripWidth : 0, root.skwdMode ? 330
+            : (root.searchingText == "" ? Appearance.sizes.searchWidthCollapsed : Appearance.sizes.searchWidth))
+        // the text gives way to the modes while they are picked (SearchModes, over the field)
+        color: ColorUtils.transparentize(Appearance.colors.colOnLayer1, modes.picking ? 1 : 0)
+        placeholderTextColor: ColorUtils.transparentize(Appearance.colors.colSubtext, modes.picking ? 1 : 0)
+        Behavior on color { ColorAnimation { duration: 160 } }
+        Behavior on placeholderTextColor { ColorAnimation { duration: 160 } }
+
+        SearchModes {
+            id: modes
+            anchors.fill: parent
+            bar: root
+            entry: root.entry
+            // the pill grows out of the search icon (left of the field, in the same row)
+            origin: searchIcon.x - searchInput.x
+            originSize: searchIcon.height
+        }
+
+        // the mode's keys, faint at the field's end: fainter while typing, gone when the text reaches them
+        TextMetrics { id: typedWidth; font: searchInput.font; text: searchInput.text }
+        Timer { id: typing; interval: 700 }
+        Connections {
+            target: searchInput
+            function onTextChanged() { typing.restart(); }
+        }
+        StyledText {
+            anchors { right: parent.right; rightMargin: 14; verticalCenter: parent.verticalCenter }
+            textFormat: Text.StyledText
+            text: modes.hintText
+            font.pixelSize: Appearance.font.pixelSize.smaller
+            color: Appearance.colors.colSubtext
+            readonly property bool room: typedWidth.advanceWidth + implicitWidth + 40 < searchInput.width
+            opacity: modes.picking || !room || text === "" ? 0 : (typing.running ? 0.3 : 0.65)
+            Behavior on opacity { NumberAnimation { duration: 200 } }
+        }
 
         Behavior on implicitWidth {
             id: searchWidthBehavior
@@ -239,6 +275,11 @@ RowLayout {
         }
 
         Keys.onPressed: event => {
+            // picking a mode: the arrows, Enter, Esc (SearchModes)
+            if (modes.pickerKey(event)) {
+                event.accepted = true;
+                return;
+            }
             // skwd mode: ↓/↑/Tab move the subreddit dropdown selection;
             // ←/→ browse the open skwd carousel (it can't get the mouse wheel
             // from this window).
