@@ -199,31 +199,16 @@ Scope {
                 Behavior on scale   { NumberAnimation { duration: 200; easing.type: Easing.OutCubic } }
                 Behavior on width   { NumberAnimation { duration: 260; easing.type: Easing.InOutCubic } }
 
-                // Close (X) — top-right corner
-                Rectangle {
-                    id: closeBtn
-                    width: 28; height: 28
-                    radius: width / 2
+                // Close — top-right corner, in the menus' button style (HeaderActionGroup)
+                HeaderActionGroup {
                     anchors.top: parent.top
                     anchors.right: parent.right
                     anchors.margins: 10
-                    color: closeHov.hovered ? Appearance.colors.colLayer1Hover : ColorUtils.transparentize(Appearance.colors.colLayer1Hover)
                     z: 10
-                    Behavior on color { ColorAnimation { duration: 160 } }
-                    HoverHandler { margin: Appearance.sizes.touchSlop; id: closeHov }
-                    TapHandler {
-                        margin: Appearance.sizes.touchSlop
-                        onTapped: {
-                            GlobalStates.connectivityBluetoothOpen = false
-                            GlobalStates.connectivityWifiOpen = false
-                            GlobalStates.connectivityVpnOpen = false
-                        }
-                    }
-                    MaterialSymbol {
-                        anchors.centerIn: parent
-                        text: "close"
-                        iconSize: Appearance.font.pixelSize.normal
-                        color: Appearance.colors.colOnLayer0
+                    onClose: {
+                        GlobalStates.connectivityBluetoothOpen = false
+                        GlobalStates.connectivityWifiOpen = false
+                        GlobalStates.connectivityVpnOpen = false
                     }
                 }
 
