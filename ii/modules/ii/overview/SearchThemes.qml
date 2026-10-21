@@ -1,5 +1,6 @@
 pragma ComponentBehavior: Bound
 import qs
+import qs.services
 import qs.modules.common
 import qs.modules.common.functions
 import qs.modules.common.widgets
@@ -76,7 +77,7 @@ Item {
                 Image {
                     anchors.fill: parent
                     source: Config.options.background.wallpaperPath !== ""
-                        ? "file://" + Config.options.background.wallpaperPath : ""
+                        ? FileUtils.fileUrl(Config.options.background.wallpaperPath) : ""
                     fillMode: Image.PreserveAspectCrop
                     smooth: true
                     asynchronous: true
@@ -257,7 +258,7 @@ Item {
                         id: rwImg
                         anchors.fill: parent
                         anchors.margins: parent.border.width
-                        source: "file://" + parent.parent.modelData
+                        source: FileUtils.fileUrl(parent.parent.modelData)
                         fillMode: Image.PreserveAspectCrop
                         asynchronous: true
                         smooth: true
