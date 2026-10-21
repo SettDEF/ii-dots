@@ -52,9 +52,16 @@ Singleton {
         "decoration:shadow:enabled": false,
         "decoration:dim_inactive": false,
         "decoration:rounding": 0,
-        "render:direct_scanout": 1,
-        "cursor:no_hardware_cursors": 2
+        "render:direct_scanout": 1
     })
+
+    // The hardware cursor plane follows a pen or mouse a frame sooner; XWayland games lose their
+    // cursor with it (general.conf), so the software cursor is on only while one runs, game mode or not.
+    function _cursor() {
+        if (!HyprlandData.windowList) return
+        Quickshell.execDetached(["hyprctl", "eval", `hl.config({ cursor = { no_hardware_cursors = ${root.gameRunning} } })`])
+    }
+    onGameRunningChanged: root._cursor()
 
     function _lua(values) {
         const tree = {}
@@ -134,7 +141,7 @@ Singleton {
         }
         root._sync()
     }
-    Component.onCompleted: root._boot()
+    Component.onCompleted: { root._boot(); root._cursor(); }
     Connections {
         target: Persistent
         function onReadyChanged() { root._boot() }
@@ -144,6 +151,7 @@ Singleton {
     Connections {
         target: Hyprland
         function onRawEvent(event) {
+            if (event.name === "configreloaded") root._cursor()
             if (event.name !== "configreloaded" || !root._applied) return
             if (Date.now() - root._ownWriteAt < 1500) return
             Persistent.states.gameMode.saved = "{}"
