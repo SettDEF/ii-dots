@@ -530,11 +530,17 @@ Scope {
                 // knows about fractional scaling and reserved strips —
                 // this used to be copy-pasted and the copies drifted.
                 readonly property real maxHeight: ScreenFit.maxHeight(win)
-                // Full available height, not content height: these sit SIDE BY SIDE,
-                // and panels of three different heights in a row reads as
-                // broken rather than as compact. The flickable below
-                // handles panels whose content is shorter.
-                implicitHeight: ScreenFit.maxHeight(win)
+                // As tall as its content alone, as the tallest open panel beside others (PanelStack),
+                // never past the screen; the height is told once the content settles (sections animate).
+                readonly property real wantHeight: 16 + header.implicitHeight + 10 + contentColumn.implicitHeight + 16
+                implicitHeight: PanelStack.heightFor(wantHeight, maxHeight)
+                onWantHeightChanged: dispHeightSettle.restart()
+                Component.onCompleted: PanelStack.setHeight("display", wantHeight)
+                Timer {
+                    id: dispHeightSettle
+                    interval: 220
+                    onTriggered: PanelStack.setHeight("display", mainCard.wantHeight)
+                }
                 radius: Appearance.rounding.large
                 // See StackedSettingsPanel: a literal here does not retheme
                 // and mismatches every themed child by a hair.

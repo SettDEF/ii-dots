@@ -1059,6 +1059,8 @@ Rectangle {
 
     // Bottom action bar height (32 button + 12 top padding inside the bar)
     readonly property int bottomBarHeight: 44
+    /// the height the content wants (the window is as tall as PanelStack says, WallTune.qml)
+    readonly property real wantHeight: col.implicitHeight + headerBar.implicitHeight + 10 + 24 + root.bottomBarHeight
     implicitHeight: Math.min(col.implicitHeight + headerBar.implicitHeight + 10 + 24 + root.bottomBarHeight, root.maxContentHeight)
     Behavior on implicitHeight { NumberAnimation { duration: 180; easing.type: Easing.OutCubic } }
     radius: Appearance.rounding.screenRounding - Appearance.sizes.hyprlandGapsOut + 1

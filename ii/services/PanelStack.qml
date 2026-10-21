@@ -23,13 +23,38 @@ Singleton {
 
     // Right-to-left placement order. Anything unlisted goes last.
     readonly property var order: [
-        "display", "walltune", "wallEffect", "kinetix", "audio", "mic", "deviceTools", "torrents", "iris", "statsHudSettings", "rogPower"
+        "display", "walltune", "wallEffect", "kinetix", "audio", "mic", "deviceTools", "torrents", "iris", "statsHudSettings", "rogPower", "discordPresence", "firewall"
     ]
 
     readonly property int gap: 8
 
     // id -> width, for open panels only.
     property var widths: ({})
+
+    // id -> the height its content wants. Every open panel is as tall as the tallest of them (a row of
+    // panels side by side the same height; one alone its own), never past the screen (the user,
+    // 2026-10-21: full height left short panels like ROG half empty)
+    property var heights: ({})
+    function setHeight(id, h) {
+        if (!id) return;
+        h = Math.ceil(h);
+        if (root.heights[id] === h) return;
+        const next = Object.assign({}, root.heights);
+        next[id] = h;
+        root.heights = next;
+    }
+    readonly property real tallest: {
+        let m = 0;
+        for (const k in root.heights)
+            if (root.widths[k] !== undefined) m = Math.max(m, root.heights[k]);
+        return m;
+    }
+    /// The height a panel takes: the tallest reported (its own included), at most `max`; its content's
+    /// `want` only before anything is reported (reports settle first, so no frame of a growing
+    /// section resizes the window)
+    function heightFor(want, max) {
+        return Math.min(max, root.tallest > 0 ? root.tallest : want);
+    }
 
     function register(id, w) {
         if (!id || w <= 0) return;
@@ -46,6 +71,11 @@ Singleton {
         const next = Object.assign({}, root.widths);
         delete next[id];
         root.widths = next;
+        if (root.heights[id] !== undefined) {
+            const h = Object.assign({}, root.heights);
+            delete h[id];
+            root.heights = h;
+        }
     }
 
     function rank(id) {

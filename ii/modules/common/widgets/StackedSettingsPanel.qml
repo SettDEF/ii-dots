@@ -145,7 +145,10 @@ PanelWindow {
         id: card
         opacity: 1
         transform: Translate { id: cardLift; y: 14 }
-        Component.onCompleted: entryAnim.start()
+        Component.onCompleted: {
+            PanelStack.setHeight(win.panelId, card.wantHeight);
+            entryAnim.start();
+        }
 
         // Called by the owning Loader just before teardown; it stays active for
         // exitDuration so this is actually visible.
@@ -164,9 +167,17 @@ PanelWindow {
             to: 12; duration: win.exitDuration; easing.type: Easing.InCubic
         }
         width: parent.width
-        // The full available height, as every panel (Palette too): a row of panels at different
-        // heights reads as broken (the user, 2026-10-21). Not animated.
-        implicitHeight: ScreenFit.maxHeight(win)
+        // As tall as its content alone, as the tallest open panel beside others (PanelStack), never past
+        // the screen. Its content height is told once it settles: a section opening must not resize the
+        // window every frame. Not animated.
+        readonly property real wantHeight: 13 + header.implicitHeight + 10 + col.implicitHeight + 16
+        implicitHeight: PanelStack.heightFor(wantHeight, ScreenFit.maxHeight(win))
+        onWantHeightChanged: heightSettle.restart()
+        Timer {
+            id: heightSettle
+            interval: 220
+            onTriggered: PanelStack.setHeight(win.panelId, card.wantHeight)
+        }
         // Height is NOT animated. Animating it resizes the layer-shell surface on
         // every frame of the tween, which the compositor must honour each time —
         // that cost is what made expanding a section feel like dragging.

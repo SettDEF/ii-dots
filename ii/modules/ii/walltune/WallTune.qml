@@ -35,7 +35,7 @@ Scope {
 
             anchors.top: true
             anchors.right: true
-            margins.top: Appearance.sizes.barHeight + Appearance.sizes.hyprlandGapsOut + 2
+            margins.top: (ScreenFit.reservedTop(win) || Appearance.sizes.barHeight) + Appearance.sizes.hyprlandGapsOut + 2
             // This panel is listed in PanelStack.order but never registered or
             // applied an offset, so it sat at the base position and every other
             // panel opened directly on top of it. It keeps its own chrome —
@@ -47,7 +47,10 @@ Scope {
             }
 
             onImplicitWidthChanged: PanelStack.register("walltune", implicitWidth)
-            Component.onCompleted: PanelStack.register("walltune", implicitWidth)
+            Component.onCompleted: {
+                PanelStack.register("walltune", implicitWidth);
+                PanelStack.setHeight("walltune", panel.wantHeight);
+            }
             Component.onDestruction: PanelStack.unregister("walltune")
 
             // Shared width AND height. Sizing to content left this panel 640px
@@ -59,7 +62,18 @@ Scope {
             // still works out how many panels fit beside each other.
             implicitWidth: Math.min(ScreenFit.panelWidth + 190,
                                     Math.max(ScreenFit.panelWidth, win.screen.width * 0.42))
-            implicitHeight: ScreenFit.maxHeight(win)
+            // as tall as its content alone, as the tallest open panel beside others (PanelStack), never past
+            // the screen; told once the content settles
+            implicitHeight: PanelStack.heightFor(panel.wantHeight, ScreenFit.maxHeight(win))
+            Timer {
+                id: wtHeightSettle
+                interval: 220
+                onTriggered: PanelStack.setHeight("walltune", panel.wantHeight)
+            }
+            Connections {
+                target: panel
+                function onWantHeightChanged() { wtHeightSettle.restart(); }
+            }
 
             mask: Region { item: panel }
 
