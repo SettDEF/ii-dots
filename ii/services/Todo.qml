@@ -37,6 +37,40 @@ Singleton {
     /// timewarrior: { uid, title, since } while a task is tracked
     readonly property var active: root.snap?.time?.active ?? null
 
+    /// the list a task is shown under: doing, overdue, then its bucket
+    function group(t) { return t.done ? "done" : t.state === "doing" ? "doing" : t.overdue ? "overdue" : (t.bucket || "inbox"); }
+    function groupLabel(g) {
+        return ({ doing: Translation.tr("Doing"), overdue: Translation.tr("Overdue"), today: Translation.tr("Today"),
+                  tomorrow: Translation.tr("Tomorrow"), week: Translation.tr("This week"), later: Translation.tr("Later"),
+                  someday: Translation.tr("Someday"), inbox: Translation.tr("Inbox"), done: Translation.tr("Done this week") })[g] ?? g;
+    }
+    /// "today 14:00", "tomorrow", "Fri", "3 days late", "12 Nov" — the same words as Dotos
+    function dueLabel(t) {
+        if (!t?.due) return "";
+        const d = new Date(t.due);
+        const now = new Date();
+        const days = Math.round((new Date(d.getFullYear(), d.getMonth(), d.getDate()) - new Date(now.getFullYear(), now.getMonth(), now.getDate())) / 86400000);
+        const time = t.due_time ? " " + Qt.formatDateTime(d, "HH:mm") : "";
+        if (days === 0) return Translation.tr("today") + time;
+        if (days === 1) return Translation.tr("tomorrow") + time;
+        if (days === -1) return Translation.tr("yesterday");
+        if (days < 0) return Translation.tr("%1 days late").arg(-days);
+        if (days < 7) return Qt.formatDateTime(d, "ddd") + time;
+        return Qt.formatDateTime(d, "d MMM") + time;
+    }
+
+    /// a project's colour: the same hash-on-the-accent-hue as Dotos, so +knurl
+    /// is the same colour in the sidebar and in the window
+    function colorOf(name) {
+        const key = String(name ?? "");
+        if (!key) return Appearance.colors.colSubtext;
+        let h = 0;
+        for (let i = 0; i < key.length; i++) h = (h * 31 + key.charCodeAt(i)) >>> 0;
+        const p = Appearance.colors.colPrimary;
+        const base = p.hslHue < 0 ? 0.8 : p.hslHue;
+        return Qt.hsla((base + (h % 12) * 0.083) % 1, Math.max(0.45, p.hslSaturation), Math.min(0.78, Math.max(0.62, p.hslLightness)), 1);
+    }
+
     readonly property var _rank: ({ doing: 0, overdue: 1, today: 2, tomorrow: 3, week: 4, later: 5, someday: 6, inbox: 7 })
     function _sort(a, b) {
         const ra = a.state === "doing" ? 0 : (a.overdue ? 1 : (root._rank[a.bucket] ?? 6));
@@ -144,7 +178,7 @@ Singleton {
     // changes from the window, the terminal, Neovim, extensions, phone sync
     Process {
         id: watcher
-        command: ["sh", "-c", 'mkdir -p "$1" && exec inotifywait -m -q -e close_write,moved_to,delete --format %f "$1" 2>/dev/null',
+        command: ["sh", "-c", 'mkdir -p "$1" && exec setpriv --pdeathsig TERM inotifywait -m -q -e close_write,moved_to,delete --format %f "$1" 2>/dev/null',
             "watch", root.snap?.store ?? (Quickshell.env("HOME") + "/.local/share/dotos/lists")]
         stdout: SplitParser {
             onRead: line => { if (!/\.tmp~?$|~$/.test(line)) debounce.restart(); }

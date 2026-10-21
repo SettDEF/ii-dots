@@ -52,7 +52,7 @@ Item {
         if (watching) return
         watching = true
         watchProc.exec({ command: ["bash", "-c",
-            `inotifywait -m --format "%e %f" -e create,delete,moved_to,moved_from,close_write "${root.path}" 2>/dev/null`
+            `exec setpriv --pdeathsig TERM inotifywait -m --format "%e %f" -e create,delete,moved_to,moved_from,close_write "${root.path}" 2>/dev/null`
         ]})
     }
 
