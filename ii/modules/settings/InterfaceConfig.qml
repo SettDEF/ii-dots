@@ -1,4 +1,5 @@
 import QtQuick
+import Quickshell
 import QtQuick.Controls
 import QtQuick.Layouts
 import qs.services
@@ -363,6 +364,51 @@ ContentPage {
             }
         }
         ContentSubsection {
+            title: Translation.tr("Darken when left alone")
+
+            ConfigSwitch {
+                buttonIcon: "brightness_4"
+                text: Translation.tr("Fade the lock screen to dark (any key or mouse movement brings it back)")
+                checked: Config.options.lock.dim.enable
+                onCheckedChanged: {
+                    Config.options.lock.dim.enable = checked;
+                }
+            }
+
+            ConfigSpinBox {
+                icon: "timer"
+                text: Translation.tr("After (seconds)")
+                value: Config.options.lock.dim.afterSeconds
+                from: 2
+                to: 300
+                stepSize: 1
+                onValueChanged: {
+                    Config.options.lock.dim.afterSeconds = value;
+                }
+            }
+
+            ConfigSpinBox {
+                icon: "contrast"
+                text: Translation.tr("How dark (%; 100 = black)")
+                value: Math.round(Config.options.lock.dim.strength * 100)
+                from: 10
+                to: 100
+                stepSize: 5
+                onValueChanged: {
+                    Config.options.lock.dim.strength = value / 100;
+                }
+            }
+
+            ConfigSwitch {
+                buttonIcon: "keyboard"
+                text: Translation.tr("Keyboard backlight off while locked (back as it was on unlock)")
+                checked: Config.options.lock.dim.keyboardOff
+                onCheckedChanged: {
+                    Config.options.lock.dim.keyboardOff = checked;
+                }
+            }
+        }
+        ContentSubsection {
             title: Translation.tr("Style: Blurred")
 
             ConfigSwitch {
@@ -422,7 +468,11 @@ ContentPage {
             }
         }
 
-        NotificationSoundsConfig {}
+        // by its path: as a type from this folder it was "not a type" here, and the whole page stayed empty
+        Loader {
+            Layout.fillWidth: true
+            source: Qt.resolvedUrl("NotificationSoundsConfig.qml")
+        }
     }
 
     ContentSection {
@@ -507,6 +557,13 @@ ContentPage {
 
         ContentSubsection {
             title: Translation.tr("Window Decorations")
+            // the title bars' and the menus' own settings live in Palette 's Glass section
+            RippleButtonWithIcon {
+                buttonRadius: Appearance.rounding.small
+                materialIcon: "palette"
+                mainText: Translation.tr("Title bars, menu buttons and styles (Palette › Glass)")
+                onClicked: Quickshell.execDetached(["qs", "-c", "ii", "ipc", "call", "walltune", "open", "glass"])
+            }
             ConfigSwitch {
                 buttonIcon: "palette"
                 text: Translation.tr("Use Material Theme Colors for Titlebar Buttons")
@@ -1272,4 +1329,20 @@ ContentPage {
         }
     }
 
+    ContentSection {
+        icon: "select_window"
+        title: Translation.tr("Windows")
+
+        ConfigSwitch {
+            buttonIcon: "drag_pan"
+            text: Translation.tr("Show where a dragged window will land")
+            checked: Config.options.windowDrag.preview
+            onCheckedChanged: {
+                Config.options.windowDrag.preview = checked;
+            }
+            StyledToolTip {
+                text: Translation.tr("While a tiled window is dragged with Super and the mouse, a frame shows the place it takes in the workspace's layout")
+            }
+        }
+    }
 }
