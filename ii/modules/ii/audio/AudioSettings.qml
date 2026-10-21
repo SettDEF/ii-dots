@@ -877,6 +877,7 @@ Scope {
                 // One surface resize per toggle, and the motion is pure
                 // compositing inside a surface that is not changing size.
                 implicitHeight: win.channelsOpen ? chBody.implicitHeight : 0
+                RevealOnExpand { target: parent; when: win.channelsOpen }
                                 ColumnLayout {
                     id: chBody
                     // Slides into the space rather than growing it - see the note
@@ -1016,6 +1017,7 @@ Scope {
                 // A zero-height child still collects spacing; hidden, it is skipped.
                 visible: AppVolumes.rows.length > 0 && implicitHeight > 0
                 implicitHeight: win.appsOpen ? appBody.implicitHeight : 0
+                RevealOnExpand { target: parent; when: win.appsOpen }
                 ColumnLayout {
                     id: appBody
                     y: win.appsOpen ? 0 : -appBody.implicitHeight

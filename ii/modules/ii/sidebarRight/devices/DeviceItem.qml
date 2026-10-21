@@ -110,39 +110,41 @@ DialogListItem {
         RowLayout {
             visible: root.expanded
             Layout.topMargin: 8
-            Item {
-                Layout.fillWidth: true
-            }
-            PrimaryActionButton {
+            // The same pills as a Wi-Fi network's actions: connect filled,
+            // disconnect tonal (it drops what you are using), forget outlined red.
+            Layout.fillWidth: true
+            spacing: 6
+            ActionPillButton {
                 loading: root.isConnecting
                 enabled: !root.isConnecting
-                buttonText: root.isConnecting
-                            ? (root.device?.connected ? Translation.tr("Disconnecting…") : Translation.tr("Connecting…"))
-                            : (root.device?.connected ? Translation.tr("Disconnect") : Translation.tr("Connect"))
-
+                icon: root.device?.connected ? "link_off" : "link"
+                tone: root.device?.connected ? "tonal" : "filled"
+                colBackground: Appearance.colors.colPrimary   // the old colours
+                colText: Appearance.colors.colOnPrimary
+                text: root.isConnecting
+                      ? (root.device?.connected ? Translation.tr("Disconnecting…") : Translation.tr("Connecting…"))
+                      : (root.device?.connected ? Translation.tr("Disconnect") : Translation.tr("Connect"))
                 onClicked: {
-                    if (root.device?.connected) {
-                        root.device.disconnect();
-                    } else {
-                        root.device.connect();
-                    }
+                    if (root.device?.connected) root.device.disconnect();
+                    else root.device.connect();
                 }
             }
-            PrimaryActionButton {
+            ActionPillButton {
                 visible: root.device?.paired ?? false
-                colBackground: Appearance.colors.colError
-                colBackgroundHover: Appearance.colors.colErrorHover
-                colRipple: Appearance.colors.colErrorActive
+                icon: "delete"
+                tone: "danger"
+                colBackground: Appearance.colors.colError     // the old solid red
                 colText: Appearance.colors.colOnError
-
-                buttonText: Translation.tr("Forget")
-                onClicked: {
-                    root.device?.forget();
-                }
+                text: Translation.tr("Forget")
+                onClicked: root.device?.forget()
+                StyledToolTip { text: Translation.tr("Unpair: the device has to be paired again to connect") }
             }
         }
         Item {
             Layout.fillHeight: true
         }
     }
+
+    // opened: scrolled into view in its list or panel
+    RevealOnExpand { target: root; when: root.expanded }
 }

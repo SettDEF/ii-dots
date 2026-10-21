@@ -119,12 +119,12 @@ DialogListItem {
                 color: Appearance.m3colors.m3primary
             }
 
-            // Lock / connected indicator
+            // Lock / connecting indicator. No ✓ on the connected network: its
+            // subtitle already says "Connected", and the tick only crowded the row.
             MaterialSymbol {
-                visible: root.isSecure || root.isActive
-                text: root.isActive
-                    ? "check"
-                    : (Network.wifiConnectTarget === root.wifiNetwork ? "settings_ethernet" : "lock")
+                readonly property bool connecting: Network.wifiConnectTarget === root.wifiNetwork && !root.isActive
+                visible: connecting || (root.isSecure && !root.isActive)
+                text: connecting ? "settings_ethernet" : "lock"
                 iconSize: Appearance.font.pixelSize.larger
                 color: Appearance.colors.colOnSurfaceVariant
             }
@@ -333,7 +333,8 @@ DialogListItem {
                     spacing: 6
                     StyledText {
                         text: Translation.tr("Technical")
-                        font.pixelSize: Appearance.font.pixelSize.smallest
+                        font.pixelSize: Appearance.font.pixelSize.smaller
+                        font.weight: Font.Medium
                         color: Appearance.colors.colSubtext
                     }
                     Rectangle {
@@ -424,7 +425,8 @@ DialogListItem {
                 spacing: 6
                 StyledText {
                     text: Translation.tr("Band")
-                    font.pixelSize: Appearance.font.pixelSize.smallest
+                    font.pixelSize: Appearance.font.pixelSize.smaller
+                    font.weight: Font.Medium
                     color: Appearance.colors.colSubtext
                 }
                 Rectangle {
@@ -439,25 +441,51 @@ DialogListItem {
             //
             // One shared track, like the sort control above: three fixed
             // choices sized to the panel rather than to their own labels.
-            RowLayout {
+            // A compact segmented track — the same shape as the sort control in
+            // the header — instead of three big separate pills.
+            Rectangle {
                 Layout.fillWidth: true
-                spacing: 4
-                Repeater {
-                    model: [
-                        { label: Translation.tr("Auto"), value: "" },
-                        { label: "5 GHz",  value: "a"  },
-                        { label: "2.4 GHz", value: "bg" }
-                    ]
-                    delegate: DialogButton {
-                        required property var modelData
-                        readonly property bool sel: Network.bandLockOf(root.ssid) === modelData.value
-                        Layout.fillWidth: true
-                        buttonText: modelData.label
-                        colBackground: sel ? Appearance.colors.colPrimary
-                                           : Appearance.colors.colLayer1
-                        colText: sel ? Appearance.colors.colOnPrimary
-                                     : Appearance.colors.colOnLayer1
-                        onClicked: Network.setBandLock(root.ssid, modelData.value)
+                implicitHeight: 32
+                radius: height / 2
+                color: Appearance.colors.colLayer2
+                RowLayout {
+                    anchors { fill: parent; margins: 3 }
+                    spacing: 2
+                    Repeater {
+                        model: [
+                            { label: Translation.tr("Auto"), value: "", icon: "auto_mode" },
+                            { label: "5 GHz",  value: "a",  icon: "speed" },
+                            { label: "2.4 GHz", value: "bg", icon: "wifi" }
+                        ]
+                        delegate: Rectangle {
+                            id: bandSeg
+                            required property var modelData
+                            readonly property bool sel: Network.bandLockOf(root.ssid) === modelData.value
+                            Layout.fillWidth: true
+                            Layout.fillHeight: true
+                            radius: height / 2
+                            color: bandSeg.sel ? Appearance.colors.colPrimary
+                                 : bandHover.hovered ? Appearance.colors.colLayer2Hover : "transparent"
+                            Behavior on color { animation: Appearance.animation.elementMoveFast.colorAnimation.createObject(this) }
+                            HoverHandler { id: bandHover; cursorShape: Qt.PointingHandCursor }
+                            TapHandler { onTapped: Network.setBandLock(root.ssid, bandSeg.modelData.value) }
+                            RowLayout {
+                                anchors.centerIn: parent
+                                spacing: 4
+                                MaterialSymbol {
+                                    text: bandSeg.modelData.icon
+                                    iconSize: 15
+                                    fill: bandSeg.sel ? 1 : 0
+                                    color: bandSeg.sel ? Appearance.colors.colOnPrimary : Appearance.colors.colSubtext
+                                }
+                                StyledText {
+                                    text: bandSeg.modelData.label
+                                    font.pixelSize: Appearance.font.pixelSize.smaller
+                                    color: bandSeg.sel ? Appearance.colors.colOnPrimary
+                                         : bandHover.hovered ? Appearance.colors.colOnLayer2 : Appearance.colors.colSubtext
+                                }
+                            }
+                        }
                     }
                 }
             }
@@ -474,69 +502,56 @@ DialogListItem {
             // Sets connection.autoconnect-priority, which NetworkManager itself
             // acts on when several known networks are in range — so the choice
             // survives reboots and applies even when this shell is not running.
-            PrimaryActionButton {
-                Layout.fillWidth: true
+            ActionPillButton {
                 visible: root.isSaved
-                buttonText: root.isPreferred ? Translation.tr("Preferred")
-                                             : Translation.tr("Prefer")
-                colBackground: root.isPreferred ? Appearance.colors.colPrimary
-                                                : Appearance.colors.colLayer4
-                colText: root.isPreferred ? Appearance.colors.colOnPrimary
-                                          : Appearance.colors.colOnLayer4
+                icon: "star"
+                tone: root.isPreferred ? "active" : "tonal"
+                // the old colours: tonal layer-4 pill, primary when preferred
+                colBackground: root.isPreferred ? Appearance.colors.colPrimary : Appearance.colors.colLayer4
+                colText: root.isPreferred ? Appearance.colors.colOnPrimary : Appearance.colors.colOnLayer4
+                text: root.isPreferred ? Translation.tr("Preferred") : Translation.tr("Prefer")
                 onClicked: Network.setPreferred(root.ssid, !root.isPreferred)
-
                 StyledToolTip {
-                    text: Translation.tr("Connect to this network before others when both are in range")
+                    text: root.isPreferred ? Translation.tr("Connected first when in range — click to stop preferring")
+                                           : Translation.tr("Connect to this network before others when both are in range")
                 }
             }
-
-            PrimaryActionButton {
-                Layout.fillWidth: true
+            ActionPillButton {
                 visible: !root.isActive
+                icon: "link"
+                tone: "filled"
                 loading: root.isConnecting
                 enabled: !root.isConnecting
-                buttonText: root.isConnecting ? Translation.tr("Connecting…") : Translation.tr("Connect")
+                text: root.isConnecting ? Translation.tr("Connecting…") : Translation.tr("Connect")
                 onClicked: Network.connectToWifiNetwork(root.wifiNetwork)
             }
             // Tonal, not filled: on the network you are already using, the
             // loudest button on screen should not be the one that drops it.
-            PrimaryActionButton {
-                Layout.fillWidth: true
+            ActionPillButton {
                 visible: root.isActive
-                buttonText: Translation.tr("Disconnect")
+                icon: "link_off"
+                text: Translation.tr("Disconnect")
                 colBackground: Appearance.colors.colLayer1
                 colText: Appearance.colors.colOnLayer1
                 onClicked: Network.disconnectWifiNetwork()
             }
-            PrimaryActionButton {
-                // "Forget" deletes the saved nmcli connection. Only meaningful
-                // for known networks; we approximate "known" as secure
-                // networks the user has connected to before. nmcli will no-op
-                // for unknown SSIDs.
-                // Only offered for networks actually saved — nmcli no-ops on
-                // an SSID it does not know, so the old `isSecure` test put a
-                // red button on every locked network in the list whether or
-                // not it could do anything.
-                Layout.fillWidth: true
+            // Deletes the saved nmcli connection, so only on saved networks.
+            // Outlined red: destructive, without making the card a warning.
+            ActionPillButton {
                 visible: root.isSaved
-                // Outlined rather than filled: it is destructive, so it must
-                // read as different, but a solid red block next to a solid
-                // primary block makes the panel look like a warning.
+                icon: "delete"
+                tone: "danger"
                 colBackground: Appearance.colors.colLayer1
-                colBackgroundHover: ColorUtils.transparentize(Appearance.colors.colError, 0.8)
-                colRipple: Appearance.colors.colErrorActive
                 colText: Appearance.colors.colError
-
-                buttonText: Translation.tr("Forget")
-                onClicked: {
-                    Quickshell.execDetached([
-                        "nmcli", "connection", "delete",
-                        root.wifiNetwork?.ssid ?? ""
-                    ])
-                }
+                text: Translation.tr("Forget")
+                onClicked: Quickshell.execDetached(["nmcli", "connection", "delete", root.wifiNetwork?.ssid ?? ""])
+                StyledToolTip { text: Translation.tr("Remove the saved password and settings for this network") }
             }
         }
 
         Item { Layout.fillHeight: true }
     }
+
+    // opened: scrolled into view in its list or panel
+    RevealOnExpand { target: root; when: root.expanded }
 }

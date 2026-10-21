@@ -54,4 +54,7 @@ ColumnLayout {
             }
         }
     }
+
+    // opened: scrolled into view in its list or panel
+    RevealOnExpand { target: root; when: root.expanded }
 }

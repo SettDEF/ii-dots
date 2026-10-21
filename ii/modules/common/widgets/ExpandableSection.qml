@@ -99,4 +99,7 @@ Rectangle {
         cursorShape: Qt.PointingHandCursor
         onClicked: sec.expanded = !sec.expanded
     }
+
+    // opened: scrolled into view in its list or panel
+    RevealOnExpand { target: sec; when: sec.expanded }
 }

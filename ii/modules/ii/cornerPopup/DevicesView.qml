@@ -176,6 +176,7 @@ Rectangle {
                 readonly property bool batFromProvider: modelData?.batteryFromProvider ?? false
                 readonly property bool viaUsb: (modelData?.transport ?? "") === "usb"
                 property bool expanded: false
+                RevealOnExpand { target: card; when: card.expanded }
 
                 Layout.fillWidth: true
                 implicitHeight: cardCol.implicitHeight + root.cardPad * 2

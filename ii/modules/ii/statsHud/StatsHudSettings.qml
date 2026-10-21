@@ -54,6 +54,7 @@ Scope {
         property string title: ""
         property bool expanded: false
         default property alias content: body.data
+        RevealOnExpand { target: coll; when: coll.expanded }
         Layout.fillWidth: true
         spacing: 4
         Rectangle {

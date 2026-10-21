@@ -85,8 +85,8 @@ MouseArea { // Notification group area
         automaticallyReset: false
         acceptedButtons: Qt.LeftButton | Qt.RightButton | Qt.MiddleButton
 
-        onPressed: {
-            if (mouse.button === Qt.RightButton) 
+        onPressed: (mouse) => {
+            if (mouse.button === Qt.RightButton)
                 root.toggleExpanded();
         }
 
@@ -339,4 +339,7 @@ MouseArea { // Notification group area
             }
         }
     }
+
+    // opened: scrolled into view in its list or panel
+    RevealOnExpand { target: root; when: root.expanded }
 }

@@ -2550,46 +2550,8 @@ Scope {
         Layout.fillWidth: true
         spacing: 4
 
-        // Scroll the newly-revealed content into view once it has finished
-        // expanding. Walks up to the enclosing Flickable rather than naming it,
-        // so the component stays self-contained (it can't see `scroller` from
-        // this scope anyway).
-        onExpandedChanged: if (expanded) revealTimer.restart()
-
-        Timer {
-            id: revealTimer
-            interval: 240          // just after the 210ms height animation
-            repeat: false
-            onTriggered: exp.revealSelf()
-        }
-
-        function revealSelf() {
-            let f = exp.parent;
-            while (f && f.contentY === undefined)
-                f = f.parent;
-            if (!f || f.height <= 0)
-                return;
-            const top = exp.mapToItem(f.contentItem, 0, 0).y;
-            const bottom = top + exp.height;
-            const maxY = Math.max(0, f.contentHeight - f.height);
-            let target = f.contentY;
-            if (bottom > f.contentY + f.height)          // hanging off the bottom
-                target = Math.min(bottom - f.height + 12, maxY);
-            if (top < target)                             // but keep the header visible
-                target = Math.max(0, top - 12);
-            if (Math.abs(target - f.contentY) > 1) {
-                scrollAnim.target = f;
-                scrollAnim.to = target;
-                scrollAnim.restart();
-            }
-        }
-
-        NumberAnimation {
-            id: scrollAnim
-            property: "contentY"
-            duration: 260
-            easing.type: Easing.OutCubic
-        }
+        // opened: scrolled into view (the shared RevealOnExpand, as every menu has)
+        RevealOnExpand { target: exp; when: exp.expanded }
 
         Rectangle {
             Layout.fillWidth: true
