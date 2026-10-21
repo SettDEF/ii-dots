@@ -134,14 +134,15 @@ Item {
     // the icon's shape grows out across the field, with a bounce, and the pairs stand on it
     Rectangle {
         id: pill
-        z: -1
         readonly property real full: root.width - root.origin
         x: root.origin
         anchors.verticalCenter: parent.verticalCenter
         width: root.picking ? full : root.originSize
         height: root.picking ? root.height : root.originSize
         radius: height / 2
-        color: ColorUtils.transparentize(root.hue, 0.8)
+        // very dark under the icons (a trace of the mode's hue), solid: the field's text, cursor and
+        // hint never show through it (the user, 2026-10-21)
+        color: ColorUtils.mix(root.hue, ColorUtils.mix(Appearance.colors.colLayer0, "#000000", 0.45), 0.1)
         opacity: root.picking ? 1 : 0
         Behavior on width { NumberAnimation { duration: 460; easing.type: Easing.OutBack; easing.overshoot: 1.4 } }
         Behavior on height { NumberAnimation { duration: 460; easing.type: Easing.OutBack; easing.overshoot: 1.4 } }

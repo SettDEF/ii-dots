@@ -200,6 +200,8 @@ RowLayout {
 
         SearchModes {
             id: modes
+            // over the field's text, cursor and hint, so the pill covers them
+            z: 1
             anchors.fill: parent
             bar: root
             entry: root.entry
