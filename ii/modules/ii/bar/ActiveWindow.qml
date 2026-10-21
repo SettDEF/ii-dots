@@ -141,6 +141,11 @@ Item {
     function cleanLabel(s) {
         return (s ?? "").replace(/[\u180E\u200B\uFEFF]/g, "").trim()
     }
+    // Titles also lose a leading spinner (Claude Code ◐◓◑◒ / ✳✶✻✽✢, CLI braille ⠋⠙…): it changed
+    // several times a second and the bar redrew every time, at the screen's refresh rate.
+    function cleanTitle(s) {
+        return root.cleanLabel(s).replace(/^[\u25D0-\u25D3\u2722-\u273D\u2800-\u28FF]\s*/, "")
+    }
 
     implicitWidth: hole.implicitWidth + 2
 
@@ -313,7 +318,7 @@ Item {
                     Layout.fillWidth: true
                     Layout.fillHeight: true
                     Layout.alignment: Qt.AlignVCenter
-                    text: root.cleanLabel(root.hasActive
+                    text: root.cleanTitle(root.hasActive
                         ? (root.activeWindow?.title ?? "")
                         : ((root.biggestWindow?.title) ?? `${Translation.tr("Workspace")} ${monitor?.activeWorkspace?.id ?? 1}`))
                     font.pixelSize: Appearance.font.pixelSize.small

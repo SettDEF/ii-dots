@@ -28,6 +28,7 @@ DockTile {
         iconSize: Appearance.font.pixelSize.smallie
         fill: 1
         color: Appearance.colors.colOnPrimaryContainer
+        // No charging pulse: the bolt says it, and the pulse redrew the dock at 180 fps.
     }
     StyledText {
         visible: DockWidgets.get("battery", "showPercent") === true

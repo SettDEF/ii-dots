@@ -88,10 +88,23 @@ Scope {
                     Appearance.sizes.baseBarHeight + (Config.options.bar.cornerStyle === 1 ? Appearance.sizes.hyprlandGapsOut : 0)
                     + (GlobalStates.shelfOpen ? barRoot.shelfHeight : 0)
                 WlrLayershell.namespace: "quickshell:bar"
-                // Always full height — never resize the Wayland window, clip shelf internally
-                implicitHeight: Appearance.sizes.barHeight + Appearance.rounding.screenRounding + barRoot.shelfHeight
+                FrameProbe { name: "bar" }
+                // Keyboard only while renaming a workspace (Enter saves, Esc cancels).
+                WlrLayershell.keyboardFocus: GlobalStates.barRenaming ? WlrKeyboardFocus.Exclusive : WlrKeyboardFocus.None
+                // Fixed height, never resized (resizing made menus jump while opening).
+                // Tall enough for long menus like the workspace icon list; the area
+                // below the bar is transparent and the mask passes its input through.
+                implicitHeight: Math.max(Appearance.sizes.barHeight + Appearance.rounding.screenRounding + barRoot.shelfHeight,
+                    Math.round(barRoot.screen.height * 0.6))
                 mask: Region {
                     item: hoverMaskRegion
+                    // Whole window while a bar context menu is open (GlobalStates.barMenuOpen).
+                    Region { item: menuInputArea; intersection: Intersection.Combine }
+                }
+                Item {
+                    id: menuInputArea
+                    width: GlobalStates.barMenuOpen ? barRoot.width : 0
+                    height: GlobalStates.barMenuOpen ? barRoot.height : 0
                 }
                 color: "transparent"
 

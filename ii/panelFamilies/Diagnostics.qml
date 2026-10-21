@@ -9,6 +9,7 @@
 //   qs ipc call diag flags         - all GlobalStates booleans (raw)
 //   qs ipc call diag mem           - process RSS / threads / uptime hint
 //   qs ipc call diag summary       - human-readable one-screen summary
+//   qs ipc call diag framesStart / frames - frames per second of each window in between
 
 import QtQuick
 import Quickshell
@@ -68,6 +69,10 @@ Scope {
             }
             return JSON.stringify(o, null, 2)
         }
+
+        // Frames per second of each shell window: framesStart, wait, then frames.
+        function framesStart(): string { FrameStats.start(); return "counting"; }
+        function frames(): string { return FrameStats.report(); }
 
         // Human-readable one-screen summary.
         function summary(): string {

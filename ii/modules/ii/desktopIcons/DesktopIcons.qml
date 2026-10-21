@@ -3,6 +3,7 @@
 import qs
 import qs.services
 import qs.modules.common
+import qs.modules.common.widgets
 import QtQuick
 import Quickshell
 import Quickshell.Wayland
@@ -27,6 +28,7 @@ Scope {
             exclusionMode: ExclusionMode.Ignore
             exclusiveZone: 0
             WlrLayershell.namespace: "quickshell:desktopIcons"
+            FrameProbe { name: "desktopIcons" }
             // Bottom, not Background: mpvpaper eats pointer events from any layer at or
             // below it. Still under normal windows, so only the bare desktop gets input.
             WlrLayershell.layer: WlrLayer.Bottom

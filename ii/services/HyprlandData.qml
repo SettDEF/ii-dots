@@ -90,11 +90,33 @@ Singleton {
     // first event, then fold everything during a short cooldown into a single
     // trailing refresh. Title-only events refresh just the client list.
     property int _pending: 0            // 0 = none, 1 = clients only, 2 = everything
+    property string _lastClients: ""
     function _flush() {
         if (root._pending === 2) updateAll();
         else if (root._pending === 1) updateWindowList();
         root._pending = 0;
     }
+    // the workspace list (window counts), once the switch's animation is over
+    Timer {
+        id: afterSwitch
+        interval: 400
+        onTriggered: root.updateWorkspaces()
+    }
+
+    // the raw event can arrive before Quickshell's own state moved: follow that too
+    Connections {
+        target: Hyprland
+        function onFocusedWorkspaceChanged() { root._nativeActive() }
+    }
+
+    /// activeWorkspace from Quickshell's Hyprland state, in hyprctl's shape (the fields read here).
+    function _nativeActive() {
+        const ws = Hyprland.focusedWorkspace;
+        if (!ws) return;
+        if (root.activeWorkspace?.id === ws.id && root.activeWorkspace?.monitor === ws.monitor?.name) return;
+        root.activeWorkspace = Object.assign({}, root.activeWorkspace ?? {}, { id: ws.id, name: ws.name, monitor: ws.monitor?.name ?? "" });
+    }
+
     Timer {
         id: hlCooldown
         interval: 100
@@ -107,6 +129,15 @@ Singleton {
 
         function onRawEvent(event) {
             if (event.name === "screencast") return;
+            // A workspace switch (and the focus moves that come with it) changes no window, layer or
+            // monitor: the active workspace now, from Quickshell's own state (no process), and the
+            // workspace list once, after the animation. A full refresh here started ten hyprctl
+            // processes in the switch's first 100 ms, and the bindings on them redrew mid-animation.
+            if (["workspace", "workspacev2", "focusedmon", "focusedmonv2", "activewindow", "activewindowv2", "activespecial", "activespecialv2"].includes(event.name)) {
+                root._nativeActive();
+                afterSwitch.restart();
+                return;
+            }
             // Layers open/close constantly (tooltips, popups); a layer with an
             // exclusive zone changes the reserved area (desktop-icon insets),
             // so refresh just the monitors — one hyprctl call, not four.
@@ -133,7 +164,13 @@ Singleton {
         stdout: StdioCollector {
             id: clientsCollector
             onStreamFinished: {
-                root.windowList = JSON.parse(clientsCollector.text)
+                // A leading spinner (Claude Code ◐◓◑◒ / ✳✶✻✽✢, CLI braille) changes the title several
+                // times a second; drop it, and skip a list that is otherwise the same, or every
+                // consumer re-evaluates and the bar redraws at the refresh rate.
+                const text = clientsCollector.text.replace(/("title": ")[\u25D0-\u25D3\u2722-\u273D\u2800-\u28FF]\s*/g, "$1");
+                if (text === root._lastClients) return;
+                root._lastClients = text;
+                root.windowList = JSON.parse(text)
                 let tempWinByAddress = {};
                 for (var i = 0; i < root.windowList.length; ++i) {
                     var win = root.windowList[i];

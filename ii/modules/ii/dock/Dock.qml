@@ -89,6 +89,7 @@ Scope { // Scope
 
             implicitWidth: dockBackground.implicitWidth
             WlrLayershell.namespace: "quickshell:dock"
+            FrameProbe { name: "dock" }
             color: "transparent"
 
             implicitHeight: (Config.options?.dock.height ?? 70) + Appearance.sizes.elevationMargin

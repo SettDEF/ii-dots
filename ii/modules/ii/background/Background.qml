@@ -122,6 +122,7 @@ Variants {
         exclusionMode: ExclusionMode.Ignore
         WlrLayershell.layer: (GlobalStates.screenLocked && !scaleAnim.running) ? WlrLayer.Overlay : WlrLayer.Background
         WlrLayershell.namespace: "quickshell:background"
+        FrameProbe { name: "background" }
         // OnDemand only while a widget asks; None otherwise.
         WlrLayershell.keyboardFocus: GlobalStates.desktopWidgetKeyboardFocus
             ? WlrKeyboardFocus.OnDemand : WlrKeyboardFocus.None

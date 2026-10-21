@@ -128,7 +128,7 @@ Item {
         stdout: StdioCollector {
             onStreamFinished: {
                 // Exactly two lines from one shell: mic activity, then whether
-                // wf-recorder is up. Combining them halves the process spawns;
+                // a screen recording is running. Combining them halves the spawns;
                 // the debounce on each is unchanged.
                 //
                 // The recorder line is an explicit if/echo rather than
@@ -158,20 +158,32 @@ Item {
     // 5s instead of 3s, and one shell instead of two: that is a third of the
     // process spawns. The debounce needs two consecutive positives, so REC still
     // appears within ~10s of a recording starting.
+    // When a recording stream comes, goes or changes (PulseEvents), and every 15 s for screen
+    // recorders without audio (which send no audio event): five processes every 5 s before.
+    Connections {
+        target: PulseEvents
+        function onSourceOutput() { micCheckSoon.restart() }
+    }
+    Timer { id: micCheckSoon; interval: 200; onTriggered: root.micCheck() }
     Timer {
-        interval: 5000
+        interval: 15000
         running: true
         repeat: true
         triggeredOnStart: true
-        onTriggered: {
+        onTriggered: root.micCheck()
+    }
+    function micCheck() {
+        {
             // One shell, not two. Both answers come back on one line, which also
             // halves the process spawns.
             //
-            // cava reads the output monitor, not the mic — the bar's own
-            // visualiser would otherwise light REC as if you were recording.
+            // Only real apps count: the permanent mic routing (mic share mix,
+            // denoiser) is PipeWire loopbacks, node.virtual = true, always
+            // uncorked — counting them lit REC for the whole session. cava and
+            // MiniMeters read the output monitor, not the mic.
             micCheckProc.exec({ command: ["bash", "-c",
-                "pactl list source-outputs | awk 'BEGIN{RS=\"Source Output\"} /Corked: no/ && !/MiniMeters/ && !/cava/' | wc -l; "
-              + "if pgrep -x wf-recorder >/dev/null; then echo 1; else echo 0; fi"] })
+                "pactl -f json list source-outputs | jq '[.[] | select(.corked == false and .properties[\"node.virtual\"] != \"true\" and (((.properties[\"application.name\"] // \"\") + \" \" + (.properties[\"application.process.binary\"] // \"\")) | test(\"MiniMeters|cava\"; \"i\") | not))] | length'; "
+              + "if pgrep -f '^gpu-screen-recorder .* -o .*\\.mp4$' >/dev/null || pgrep -x wf-recorder >/dev/null; then echo 1; else echo 0; fi"] })
         }
     }
 
@@ -271,6 +283,10 @@ Item {
 
     property string contextMode: {
         if (root.vertical) return "none"   // no room for a marquee in 40px
+        // Switched off ("Media controls"): no slot at all. Hiding only its
+        // contents left ctxTotalW reserving an empty gap after the workspaces
+        // whenever anything was playing.
+        if (!Config.options.bar.workspaces.showMediaContext) return "none"
         if (Notifications.popupList.length > 0 && !Notifications.popupInhibited) return "notification"
         // Hovering still gets you the media controls, so music is never more
         // than a pointer away even mid-session.
@@ -520,9 +536,10 @@ Item {
     }
 
     // ── Context slot: right side of island ───────────────────────────────────
-    Item {
-        id: contextSlot
-        visible: Config.options.bar.workspaces.showMediaContext
+    // Off ("Media controls"): not built at all. Only hidden, its bindings and animations still
+    // asked for frames and the bar redrew about 50 times a second.
+    Loader {
+        active: Config.options.bar.workspaces.showMediaContext
         // Tight gap to slotsRow — the workspace circles already have
         // their own internal padding so an extra 6 px island-pad here
         // doubled up visually. Drop to 2 px so the media icon sits
@@ -530,8 +547,11 @@ Item {
         anchors { left: slotsRow.right; leftMargin: 2; verticalCenter: parent.verticalCenter }
         width: root.ctxTotalW
         height: islandBg.height
-        clip: true
         Behavior on width { NumberAnimation { duration: 300; easing.type: Easing.OutCubic } }
+    sourceComponent: Item {
+        id: contextSlot
+        anchors.fill: parent
+        clip: true
 
         // Plain right-click opens the workspaces settings menu.
         //
@@ -900,6 +920,7 @@ Item {
             }
         }
     }
+    }
 
     // ── Recording indicator ───────────────────────────────────────────────────
     Item {
@@ -920,7 +941,7 @@ Item {
             spacing: root.padH
 
             // Same height and radius as a workspace slot. Tinted, not solid —
-            // matugen's errorContainer at full strength shouts over the pills.
+            // the palette's errorContainer at full strength shouts over the pills.
             Rectangle {
                 implicitWidth: 52
                 implicitHeight: root.btnW - root.indMargin * 2
@@ -1046,11 +1067,15 @@ Item {
                 // Only the slot under the cursor, not every slot in the row.
                 // root.isHovered still expands the row so empty slots become
                 // hoverable at all -- it just no longer numbers all of them.
+                // Set from the workspace menu; shown instead of the number and app icon.
+                readonly property string customIcon: Config.options.bar.workspaces.icons?.[String(wsId)] ?? ""
                 property bool   showNum:   Config.options.bar.workspaces.alwaysShowNumbers
+                    || customIcon !== ""
                     || (root.switchFlashActive && isActive)
                     || pointerOver
                     || iconFailed
                 property bool   renaming:  false
+                onRenamingChanged: GlobalStates.barRenaming = renaming
                 property string wsName:    root.workspaceNames[index] ?? ""
                 property int    winCount:  root.workspaceWindowCounts[index] ?? 0
 
@@ -1110,12 +1135,14 @@ Item {
                     NumberAnimation { duration: 300; easing.type: Easing.OutCubic }
                 }
 
-                // Occupied background (secondary container, only non-active)
+                // Occupied background (only non-active): a neutral surface, not
+                // secondaryContainer — on some wallpapers that comes out orange-brown
+                // and every occupied workspace read as an alert
                 Rectangle {
                     z: 1
                     anchors { fill: parent; margins: root.indMargin }
                     radius: root.slotRadius
-                    color: ColorUtils.transparentize(Appearance.m3colors.m3secondaryContainer, 0.4)
+                    color: Qt.alpha(Appearance.colors.colOnLayer1, 0.10)   // a grey wash: visible on any theme, never a hue
                     opacity: (slot.occupied && !slot.isActive) ? 1 : 0
                     Behavior on opacity { NumberAnimation { duration: 200 } }
                     Behavior on radius  { NumberAnimation { duration: 220; easing.type: Easing.OutCubic } }
@@ -1124,7 +1151,7 @@ Item {
                 // Theme color for overlays — matches active/occupied/inactive state
                 readonly property color slotThemeColor:
                     slot.isActive  ? Appearance.m3colors.m3onPrimary :
-                    slot.occupied  ? Appearance.m3colors.m3onSecondaryContainer :
+                    slot.occupied  ? Appearance.colors.colOnLayer2 :
                                      Appearance.colors.colOnLayer1Inactive
 
                 // App icon
@@ -1249,7 +1276,16 @@ Item {
                         NumberAnimation { duration: 200; easing.type: Easing.OutBack }
                     }
 
+                    MaterialSymbol {
+                        anchors.centerIn: parent
+                        visible: slot.customIcon !== ""
+                        text: slot.customIcon
+                        iconSize: Appearance.font.pixelSize.small + 3
+                        fill: 1
+                        color: slot.slotThemeColor
+                    }
                     StyledText {
+                        visible: slot.customIcon === ""
                         anchors.centerIn: parent
                         text: {
                             if (slot.wsName && slot.wsName !== String(slot.wsId))
@@ -1318,19 +1354,12 @@ Item {
                         else if (event.button === Qt.MiddleButton)
                             HyprDispatch.run(`movetoworkspace ${slot.wsId}`)
                         else if (event.button === Qt.RightButton) {
-                            // Plain right-click keeps opening the overview — taking
-                            // that away for a settings menu was the wrong trade, it
-                            // is the muscle-memory action on these pills.
-                            //
-                            // Ctrl, not Super: SUPER + mouse:273 is bound to
-                            // window-resize in hyprland/keybinds.lua, so Hyprland
-                            // would swallow it before the shell ever saw the press.
-                            if (event.modifiers & Qt.ControlModifier) {
-                                const pt = slot.mapToItem(wsMenu.parent, event.x, event.y)
-                                wsMenu.popup(pt.x, pt.y, root.buildMenuItems())
-                            } else {
-                                GlobalStates.overviewOpen = !GlobalStates.overviewOpen
-                            }
+                            // Right-click: this workspace's menu (layout, windows, name,
+                            // icon). The overview stays on Super. Ctrl+right-click keeps
+                            // the bar display options (also in the menu, as a submenu).
+                            const pt = slot.mapToItem(wsMenu.parent, event.x, event.y)
+                            wsMenu.popup(pt.x, pt.y, (event.modifiers & Qt.ControlModifier)
+                                ? root.buildMenuItems() : root.buildWorkspaceMenu(slot))
                         }
                     }
                     onDoubleClicked: {
@@ -1368,8 +1397,96 @@ Item {
         ]
     }
 
+    // ── Workspace menu (right-click on a pill) ────────────────────────────────
+    readonly property var workspaceIconChoices: [
+        "terminal", "code", "public", "chat", "music_note", "sports_esports",
+        "folder", "mail", "brush", "movie", "edit_note", "science"
+    ]
+
+    function buildWorkspaceMenu(slot) {
+        const wsId = slot.wsId
+        const ws = Hyprland.workspaces.values.find(w => w.id === wsId)
+        const wsName = ws?.name ?? String(wsId)
+        const here = HyprlandData.activeWorkspace?.id
+        const wins = (HyprlandData.windowList ?? []).filter(w => w?.workspace?.id === wsId)
+        const items = []
+
+        if (wsId !== here)
+            items.push({ icon: "arrow_forward", label: qsTr("Go to workspace %1").arg(slot.wsName || wsId),
+                         onTriggered: () => HyprDispatch.run(`workspace ${wsId}`) })
+
+        // Layout (AwesomeWM-style, per workspace)
+        const cur = LayoutService.layoutFor(wsName)
+        items.push({ icon: "dashboard", label: qsTr("Layout"),
+            submenu: LayoutService.availableLayouts.map(l => ({
+                icon: l.id === cur ? "check" : l.icon, label: l.label,
+                onTriggered: () => LayoutService.setFor(wsName, l.id)
+            })) })
+
+        // Windows on this workspace
+        if (wins.length > 0) {
+            const winItems = wins.map(w => ({
+                icon: w.floating ? "picture_in_picture" : "web_asset",
+                label: `${w.class}${w.title ? " · " + w.title : ""}`.slice(0, 48),
+                onTriggered: () => HyprDispatch.run(`focuswindow address:${w.address}`)
+            }))
+            winItems.push({ separator: true })
+            if (wsId !== here)
+                winItems.push({ icon: "move_down", label: qsTr("Bring all here"),
+                    onTriggered: () => wins.forEach(w =>
+                        HyprDispatch.run(`movetoworkspacesilent ${here}, address:${w.address}`)) })
+            winItems.push({ icon: "close", danger: true, label: qsTr("Close all (%1)").arg(wins.length),
+                onTriggered: () => wins.forEach(w => HyprDispatch.run(`closewindow address:${w.address}`)) })
+            items.push({ icon: "select_window", label: qsTr("Windows (%1)").arg(wins.length), submenu: winItems })
+        }
+
+        // Moving
+        const moves = []
+        if (wsId !== here)
+            moves.push({ icon: "input", label: qsTr("Move active window here"),
+                onTriggered: () => HyprDispatch.run(`movetoworkspacesilent ${wsId}`) })
+        const mons = Hyprland.monitors.values.map(m => m.name)
+        const myMon = ws?.monitor?.name ?? ""
+        for (const m of mons.filter(n => n !== myMon))
+            moves.push({ icon: "desktop_windows", label: qsTr("Move workspace to %1").arg(m),
+                onTriggered: () => HyprDispatch.run(`moveworkspacetomonitor ${wsId} ${m}`) })
+        if (moves.length > 0) {
+            items.push({ separator: true })
+            for (const m of moves) items.push(m)
+        }
+
+        // Name and icon
+        items.push({ separator: true })
+        items.push({ icon: "edit", label: qsTr("Rename"), onTriggered: () => slot.renaming = true })
+        const iconItems = root.workspaceIconChoices.map(i => ({
+            icon: i, label: i.replace(/_/g, " "),
+            onTriggered: () => root.setWorkspaceIcon(wsId, i)
+        }))
+        if (slot.customIcon !== "") {
+            iconItems.push({ separator: true })
+            iconItems.push({ icon: "format_list_numbered", label: qsTr("Show number again"),
+                             onTriggered: () => root.setWorkspaceIcon(wsId, "") })
+        }
+        items.push({ icon: slot.customIcon || "emoji_symbols", label: qsTr("Icon"), submenu: iconItems })
+
+        items.push({ separator: true })
+        items.push({ icon: "tune", label: qsTr("Bar display"), submenu: root.buildMenuItems() })
+        return items
+    }
+
+    function setWorkspaceIcon(wsId, icon) {
+        const next = Object.assign({}, Config.options.bar.workspaces.icons ?? {})
+        if (icon === "") delete next[String(wsId)]
+        else next[String(wsId)] = icon
+        Config.options.bar.workspaces.icons = next
+    }
+
     PopupContextMenu {
         id: wsMenu
+        onOpenedChanged: GlobalStates.barMenuOpen = opened
+        // A menu destroyed while open (its bar rebuilt, a monitor gone) never reports closing: the
+        // flag stayed set and the bar's tall window took every click under it (window edges too)
+        Component.onDestruction: if (opened) GlobalStates.barMenuOpen = false
         // Re-parent to the window root or the bar clips it: the island is only
         // ~32px tall and the menu is far taller. Same walk PanelPositioner does.
         Component.onCompleted: {

@@ -31,6 +31,7 @@ Scope {
             item: sidebarCornerOpenInteractionLoader.active ? sidebarCornerOpenInteractionLoader : null
         }
         WlrLayershell.namespace: "quickshell:screenCorners"
+        FrameProbe { name: "screenCorners" }
         WlrLayershell.layer: WlrLayer.Overlay
         color: "transparent"
 
