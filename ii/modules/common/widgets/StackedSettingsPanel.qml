@@ -164,14 +164,9 @@ PanelWindow {
             to: 12; duration: win.exitDuration; easing.type: Easing.InCubic
         }
         width: parent.width
-        // Size to content, capped at the available screen height (same as the
-        // right sidebar): a short panel stays short, and only a panel that
-        // actually overflows grows to full height and lets the flickable scroll.
-        // A sheet needs room even when the panel behind it is short, so an open
-        // sheet sets a floor. Still capped at the screen, and still not animated.
-        implicitHeight: Math.min(
-            Math.max(col.implicitHeight + 32, win.sheetOpen ? 460 : 0),
-            ScreenFit.maxHeight(win))
+        // The full available height, as every panel (Palette too): a row of panels at different
+        // heights reads as broken (the user, 2026-10-21). Not animated.
+        implicitHeight: ScreenFit.maxHeight(win)
         // Height is NOT animated. Animating it resizes the layer-shell surface on
         // every frame of the tween, which the compositor must honour each time —
         // that cost is what made expanding a section feel like dragging.
@@ -179,7 +174,7 @@ PanelWindow {
         // colLayer0Base, not the literal "#141418" this used to be.
         //
         // That hex is a near-miss for the theme's own background (m3background
-        // is #141313) and it does not retheme: matugen repaints the palette
+        // is #141313) and it does not retheme: tinct repaints the palette
         // from the wallpaper and the card stayed put. Worse, every themed child
         // placed on it mismatched by a hair — most visibly PillTextField's
         // notch, the little patch that hides the outline behind a floated
@@ -235,10 +230,28 @@ PanelWindow {
             }
         }
 
+        // The shared header (PanelHeader, as every panel has): fixed, the content scrolls under it.
+        PanelHeader {
+            id: header
+            anchors { top: parent.top; left: parent.left; right: parent.right; margins: 13 }
+            icon: win.icon
+            title: win.title
+            onClose: win.requestClose()
+            Repeater {
+                model: win.headerItems
+                delegate: Item {
+                    required property var modelData
+                    implicitWidth: modelData?.implicitWidth ?? 0
+                    implicitHeight: modelData?.implicitHeight ?? 0
+                    anchors.verticalCenter: parent?.verticalCenter
+                    Component.onCompleted: if (modelData) modelData.parent = this
+                }
+            }
+        }
+
         StyledFlickable {
             id: scroller
-            anchors.fill: parent
-            anchors.margins: 16
+            anchors { top: header.bottom; left: parent.left; right: parent.right; bottom: parent.bottom; topMargin: 10; leftMargin: 16; rightMargin: 16; bottomMargin: 16 }
             contentHeight: col.implicitHeight
             contentWidth: width
             clip: true
@@ -248,44 +261,6 @@ PanelWindow {
                 id: col
                 width: scroller.width
                 spacing: 14
-
-                RowLayout {
-                    Layout.fillWidth: true
-                    spacing: 8
-                    MaterialSymbol {
-                        text: win.icon
-                        iconSize: 20
-                        color: Appearance.colors.colPrimary
-                    }
-                    StyledText {
-                        Layout.fillWidth: true
-                        text: win.title
-                        elide: Text.ElideRight
-                        font.pixelSize: Appearance.font.pixelSize.larger
-                        color: Appearance.colors.colOnLayer0
-                    }
-                    Repeater {
-                        model: win.headerItems
-                        delegate: Item {
-                            required property var modelData
-                            implicitWidth: modelData?.implicitWidth ?? 0
-                            implicitHeight: modelData?.implicitHeight ?? 0
-                            Component.onCompleted: if (modelData) modelData.parent = this
-                        }
-                    }
-                    RippleButton {
-                        implicitWidth: 28
-                        implicitHeight: 28
-                        buttonRadius: 14
-                        onClicked: win.requestClose()
-                        contentItem: MaterialSymbol {
-                            anchors.centerIn: parent
-                            text: "close"
-                            iconSize: 18
-                            color: Appearance.colors.colOnLayer0
-                        }
-                    }
-                }
 
                 // Panel-specific content lands here.
                 ColumnLayout {

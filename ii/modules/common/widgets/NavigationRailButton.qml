@@ -7,10 +7,14 @@ import QtQuick.Layouts
 
 TabButton {
     id: root
+    // Off while a window settles its first size, so the labels don't slide in on open.
+    property bool animateExpand: true
 
     property bool toggled: TabBar.tabBar.currentIndex === TabBar.index
     property string buttonIcon
     property real buttonIconRotation: 0
+    // the icon's colour while not selected (the settings give each group its own)
+    property color iconColor: Appearance.colors.colOnLayer1
     property string buttonText
     property bool expanded: false
     property bool showToggledHighlight: true
@@ -119,6 +123,7 @@ TabButton {
                 }
             }
             transitions: Transition {
+                enabled: root.animateExpand
                 AnchorAnimation {
                     duration: Appearance.animation.elementMoveFast.duration
                     easing.type: Appearance.animation.elementMoveFast.type
@@ -155,7 +160,7 @@ TabButton {
                 fill: toggled ? 1 : 0
                 font.weight: (toggled || root.hovered) ? Font.DemiBold : Font.Normal
                 text: buttonIcon
-                color: toggled ? Appearance.m3colors.m3onSecondaryContainer : Appearance.colors.colOnLayer1
+                color: toggled ? Appearance.m3colors.m3onSecondaryContainer : root.iconColor
 
                 Behavior on color {
                     animation: Appearance.animation.elementMoveFast.colorAnimation.createObject(this)
@@ -189,6 +194,7 @@ TabButton {
                 }
             }
             transitions: Transition {
+                enabled: root.animateExpand
                 AnchorAnimation {
                     duration: Appearance.animation.elementMoveFast.duration
                     easing.type: Appearance.animation.elementMoveFast.type

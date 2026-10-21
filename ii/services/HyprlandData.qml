@@ -91,6 +91,7 @@ Singleton {
     // trailing refresh. Title-only events refresh just the client list.
     property int _pending: 0            // 0 = none, 1 = clients only, 2 = everything
     property string _lastClients: ""
+    property string _lastActive: ""
     function _flush() {
         if (root._pending === 2) updateAll();
         else if (root._pending === 1) updateWindowList();
@@ -129,6 +130,13 @@ Singleton {
 
         function onRawEvent(event) {
             if (event.name === "screencast") return;
+            // Hyprland repeats activewindow on every title change of the focused window (a spinner in it:
+            // once a second): only a change of window counts
+            if (event.name === "activewindow") return;
+            if (event.name === "activewindowv2") {
+                if (event.data === root._lastActive) return;
+                root._lastActive = event.data;
+            }
             // A workspace switch (and the focus moves that come with it) changes no window, layer or
             // monitor: the active workspace now, from Quickshell's own state (no process), and the
             // workspace list once, after the animation. A full refresh here started ten hyprctl

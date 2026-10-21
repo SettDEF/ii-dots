@@ -65,54 +65,27 @@ Rectangle {
         }
     }
 
-    /// Navigable GroupHeadings in column order. Descends one level: some sit
-    /// inside a wrapper layout rather than directly in `col`.
-    readonly property var sections: {
-        const out = [];
-        const walk = (item, depth) => {
-            for (const c of item.children) {
-                if (!c || !c.visible) continue;
-                if (c.sectionId !== undefined && c.sectionId.length > 0) out.push(c);
-                else if (depth > 0) walk(c, depth - 1);
-            }
-        };
-        void col.children.length;
-        walk(col, 1);
-        return out;
+    /// The rail is a tab bar: each entry shows its own page (a ColumnLayout
+    /// in `col` with `visible: root.page === id`), not a scroll position in
+    /// one long column. Three tabs, each well filled: Wallpaper (light/dark,
+    /// recent, wallpaper settings), Colour (extraction, grading, blueprints), Glass.
+    property string page: GlobalStates.wallTuneTab || "wallpaper"
+    Connections {
+        target: GlobalStates
+        function onWallTuneTabChanged() { root.page = GlobalStates.wallTuneTab }
     }
-    property int currentSection: 0
-
-    /// A heading's offset in the scrolled column, wherever it is nested.
-    function sectionY(h) {
-        return h.mapToItem(col, 0, 0).y;
-    }
+    readonly property var sections: [
+        { sectionId: "wallpaper", sectionIcon: "wallpaper", text: qsTr("Wallpaper") },
+        { sectionId: "colour",    sectionIcon: "palette",   text: qsTr("Colour") },
+        { sectionId: "glass",     sectionIcon: "blur_on",   text: qsTr("Glass") },
+    ]
+    readonly property int currentSection: Math.max(0, root.sections.findIndex(s => s.sectionId === root.page))
 
     function goToSection(i) {
-        const h = root.sections[i];
-        if (!h) return;
-        sectionScroll.to = Math.max(0, Math.min(root.sectionY(h) - 10,
-                                               scroll.contentHeight - scroll.height));
-        sectionScroll.restart();
-        root.currentSection = i;
-    }
-
-    // Follows the scroll, not just the last click.
-    Connections {
-        target: scroll
-        function onContentYChanged() {
-            if (sectionScroll.running) return;
-            // The last sections never reach the top, so the reading line
-            // sweeps down the viewport as the scroll runs out.
-            const max = Math.max(1, scroll.contentHeight - scroll.height);
-            const t = Math.min(1, Math.max(0, scroll.contentY / max));
-            // Flat for the first half so the top heading wins, then sweeps.
-            const sweep = Math.max(0, (t - 0.5) * 2);
-            const line = scroll.contentY + 28 + (scroll.height - 28) * sweep;
-            let best = 0;
-            for (let i = 0; i < root.sections.length; ++i)
-                if (root.sectionY(root.sections[i]) <= line) best = i;
-            root.currentSection = best;
-        }
+        const s = root.sections[i];
+        if (!s) return;
+        root.page = s.sectionId;
+        scroll.contentY = 0;
     }
 
     NumberAnimation {
@@ -286,7 +259,11 @@ Rectangle {
 
     property bool parallaxOpen:  false
     property bool effectOpen:    false
+    property bool transitionOpen: false
+    property bool appliesOpen:    false
     property bool extractOpen:   false
+    property bool exactThemeOpen: false
+    property bool colourEditorOpen: false
     property bool mixOpen:       false
 
     // Section dropdowns (default closed)
@@ -308,7 +285,7 @@ Rectangle {
     }
 
     // Palette remap (post-process via rdmcpape)
-    property string remapPalette: ""        // "" = off, "matugen", or named ("pastel", etc.)
+    property string remapPalette: ""        // "" = off, "tinct", or named ("pastel", etc.)
     property int    remapColors:  32        // 8|16|32|64|128
     property string remapDither:  "FloydSteinberg2x2"  // none|2x2|8x8|16x16
 
@@ -414,11 +391,11 @@ Rectangle {
         { id: "duotone",       label: "Duotone",       color: "#f76ca8" },
     ]
 
-    // Palette Remap — names match rdmcpape's --palette / --matugen flags
+    // Palette Remap — names match rdmcpape's --palette / --tinct flags
     // and resolve via ~/.config/quickshell/ii/scripts/colors/palettes.json.
     readonly property var remapPalettes: [
         { id: "",            label: "Off",        color: "#666876" },
-        { id: "matugen",     label: "Matugen",    color: "#7c8af7" },
+        { id: "tinct",       label: "tinct",      color: "#7c8af7" },
 
         // — In-house —
         { id: "pastel",      label: "Pastel",     color: "#e0d8f5" },
@@ -487,14 +464,31 @@ Rectangle {
         { id: "slide", label: "Slide", icon: "swap_horiz"   },
         { id: "zoom",  label: "Zoom",  icon: "zoom_in_map"  },
         { id: "wipe",  label: "Wipe",  icon: "format_paint" },
+        { id: "iris",     label: "Iris",     icon: "radio_button_unchecked" },
+        { id: "blinds",   label: "Blinds",   icon: "blinds" },
+        { id: "diagonal", label: "Diagonal", icon: "texture" },
+        { id: "rise",     label: "Rise",     icon: "vertical_align_top" },
+        { id: "blur",     label: "Blur",     icon: "lens_blur" },
+        { id: "depth",    label: "Depth",    icon: "filter_center_focus" },
     ]
 
-    // Debounce: auto-reprocess 700ms after last slider/mode change
+    // Debounce: auto-reprocess 350ms after last slider/mode change
     Timer {
         id: debounce
-        interval: 700
+        interval: 350
         repeat: false
         onTriggered: root.reprocess()
+    }
+
+    // Restoring the saved state (and syncing darkMode) on open assigns every
+    // tuned property once. Those are not edits: counted as edits they started
+    // the auto-apply, and opening the panel re-extracted the theme with
+    // nothing changed. Only changes after the restore re-apply.
+    property bool restored: false
+    function touched() {
+        if (!root.restored) return
+        debounce.restart()
+        saveDeb.restart()
     }
 
     // State save debounce (faster, just writes JSON)
@@ -505,27 +499,27 @@ Rectangle {
         onTriggered: root.saveState()
     }
 
-    onSlVibranceChanged:    { debounce.restart(); saveDeb.restart() }
-    onSlContrastChanged:    { debounce.restart(); saveDeb.restart() }
-    onSlTemperatureChanged: { debounce.restart(); saveDeb.restart() }
-    onSlBrightnessChanged:  { debounce.restart(); saveDeb.restart() }
-    onSlSaturationChanged:  { debounce.restart(); saveDeb.restart() }
-    onSlHueShiftChanged:    { debounce.restart(); saveDeb.restart() }
-    onSlHighlightChanged:   { debounce.restart(); saveDeb.restart() }
-    onSlShadowChanged:      { debounce.restart(); saveDeb.restart() }
-    onSlGrainChanged:       { debounce.restart(); saveDeb.restart() }
-    onSlSharpnessChanged:   { debounce.restart(); saveDeb.restart() }
-    onSelectedModeChanged:      { debounce.restart(); saveDeb.restart() }
-    onSelectedTheoryChanged:    { debounce.restart(); saveDeb.restart() }
-    onSelectedStyleChanged:     { debounce.restart(); saveDeb.restart() }
-    onSelectedPracticalChanged: { debounce.restart(); saveDeb.restart() }
-    onCurvePointsChanged:       { debounce.restart(); saveDeb.restart() }
-    onRemapPaletteChanged:      { debounce.restart(); saveDeb.restart() }
-    onRemapColorsChanged:       { debounce.restart(); saveDeb.restart() }
-    onRemapDitherChanged:       { debounce.restart(); saveDeb.restart() }
-    onDarkModeChanged:          { debounce.restart(); saveDeb.restart() }
-    onApplyModeChanged:         { debounce.restart(); saveDeb.restart() }
-    onStackableChanged:         { debounce.restart(); saveDeb.restart() }
+    onSlVibranceChanged:    root.touched()
+    onSlContrastChanged:    root.touched()
+    onSlTemperatureChanged: root.touched()
+    onSlBrightnessChanged:  root.touched()
+    onSlSaturationChanged:  root.touched()
+    onSlHueShiftChanged:    root.touched()
+    onSlHighlightChanged:   root.touched()
+    onSlShadowChanged:      root.touched()
+    onSlGrainChanged:       root.touched()
+    onSlSharpnessChanged:   root.touched()
+    onSelectedModeChanged:      root.touched()
+    onSelectedTheoryChanged:    root.touched()
+    onSelectedStyleChanged:     root.touched()
+    onSelectedPracticalChanged: root.touched()
+    onCurvePointsChanged:       root.touched()
+    onRemapPaletteChanged:      root.touched()
+    onRemapColorsChanged:       root.touched()
+    onRemapDitherChanged:       root.touched()
+    onDarkModeChanged:          root.touched()
+    onApplyModeChanged:         root.touched()
+    onStackableChanged:         root.touched()
     onCurrentWallChanged: {
         // If the user picked a fresh wallpaper (not one of WallTune's output
         // files), remember it as the source so Colors / Wallpaper modes can
@@ -533,8 +527,10 @@ Rectangle {
         if (currentWall
             && !/processed(-[ab])?\.png$/.test(currentWall)
             && !currentWall.includes("/walltune/")) {
-            sourceWall = currentWall
-            saveDeb.restart()
+            // after this notification, not inside it: sourceIsVideo reads both, and writing
+            // sourceWall while currentWall's change was still being delivered was a binding loop
+            const cw = currentWall
+            Qt.callLater(() => { root.sourceWall = cw; saveDeb.restart() })
         }
         refreshHistogram()
     }
@@ -597,8 +593,17 @@ Rectangle {
             console.warn("[WallTune] reprocess watchdog fired — killing hung pipeline at phase:", root.currentPhase)
             root.currentPhase = "error"
             root._rerunPending = false
-            reprocessProc.running = false
+            root.killReprocess()
         }
+    }
+
+    // Stopping only the bash left its children running: every edit added
+    // another full re-theme in the background, all writing the same files,
+    // and the newest look waited for them. Kill the whole run's group.
+    function killReprocess() {
+        const pid = reprocessProc.processId
+        if (pid) Quickshell.execDetached(["kill", "-TERM", "--", "-" + pid])
+        else reprocessProc.running = false
     }
 
     Process { id: saveProc }
@@ -725,8 +730,12 @@ Rectangle {
                 root.sourceWall = cw
             }
         } catch(e) {}
+        // after this tick's change handlers have run
+        Qt.callLater(() => root.restored = true)
     }}}
 
+    // inner padding of the dropdown sections (Color Theory … Adjustments)
+    readonly property int foldPad: 12
     property bool processing: false
 
     function reprocess() {
@@ -739,7 +748,7 @@ Rectangle {
         // finish before their new tweak takes effect.
         if (reprocessProc.running) {
             _rerunPending = true
-            reprocessProc.running = false
+            root.killReprocess()
             return
         }
         // Video: the UI shows the notice instead.
@@ -812,17 +821,17 @@ Rectangle {
         args.push(tmp)
 
         // Delegate the entire colour-generation chain to switchwall.sh —
-        // it already does matugen + generate_colors_material.py + applycolor.sh
+        // it already does tinct + applycolor.sh
         // + the IPC reload, exactly the same way the wallpaper picker does.
         // Pass --noswitch so it only regenerates the palette and themes apps;
         // the actual wallpaper file the bg system uses is whatever currently
         // points to. WallTune saves to /tmp/walltune-processed.png and the
-        // wallpaper script will use that for matugen.
+        // wallpaper script will extract the theme from that.
         const switchwall = `${Directories.wallpaperSwitchScriptPath}`
         const theoryArg    = selectedTheory    !== "" ? "--theory "    + selectedTheory    : ""
         const styleArg     = selectedStyle     !== "" ? "--style "     + selectedStyle     : ""
         const practicalArg = selectedPractical !== "" ? "--practical " + selectedPractical : ""
-        const remapArg     = (remapPalette !== "" && remapPalette !== "matugen") ? "--remap " + remapPalette : ""
+        const remapArg     = (remapPalette !== "" && remapPalette !== "tinct") ? "--remap " + remapPalette : ""
         // Pass the dragged chip order through; omit the flag entirely when empty
         // so switchwall doesn't swallow the following token as its value.
         const moCsv        = root.mixOrderArg()
@@ -831,13 +840,13 @@ Rectangle {
         // Palette remap — runs FIRST, quantising the SOURCE wallpaper onto the
         // chosen palette into `tmp`. The adjustments above then read
         // `tmp` (via adjustSrc), so the sliders/curve sit on top of the
-        // palette. matugen still extracts the theme from the final adjusted
+        // palette. tinct still extracts the theme from the final adjusted
         // image, so the popular-palette look and the adjustments both apply.
         let preRemapStep = ":"
         if (remapPalette !== "") {
             const rdmc = home + "/.scripts/rdmcpape"
-            const palArg = remapPalette === "matugen"
-                ? "--matugen"
+            const palArg = remapPalette === "tinct"
+                ? "--tinct"
                 : "--palette " + remapPalette
             // Remap also honours stackable: chain on the prior processed image
             // when the toggle is on, otherwise start fresh from srcWall.
@@ -905,7 +914,7 @@ Rectangle {
         // monotonic, so the progress strip advances naturally.
         let pipelineSteps = []
         if (applyMode === "colors") {
-            // Magick to a temp file → matugen on it (theme from adjusted) →
+            // Magick to a temp file → tinct on it (theme from adjusted) →
             // force wallpaperPath back to the source wallpaper.
             const colorsTmp = cacheDir + "/colors-source.png"
             const adjustArgsColors = args.slice()
@@ -926,7 +935,7 @@ Rectangle {
                 ["remap",   preRemapStep],
                 ["tune",    args.map(a => `'${a.replace(/'/g, "'\\''")}'`).join(" ")],
                 ["apply",   `jq --arg p '${tmp}' --arg src '${srcWall}' '.background.wallpaperPath = $p | .background.wallpaperSourcePath = $src' '${cfg}' > '${cfg}.tmp' && mv '${cfg}.tmp' '${cfg}'`],
-                // Theme reset: matugen on the source wallpaper, no path change.
+                // Theme reset: tinct on the source wallpaper, no path change.
                 ["extract", `timeout 150 '${switchwall}' --image '${srcWall}' --mode ${mode} --no-wallpaper-update ${schemeArg}`],
             ]
         } else { // "both"
@@ -984,7 +993,9 @@ Rectangle {
         // markers don't flush until the whole script ends — which makes the
         // progress strip look frozen and the label stick on whatever phase
         // the SplitParser last saw (or the default).
-        reprocessProc.command = ["stdbuf", "-oL", "bash", "-c", script]
+        // setsid: the run is its own process group, so a cancel kills
+        // switchwall, tinct and applycolor too, not only this bash
+        reprocessProc.command = ["setsid", "stdbuf", "-oL", "bash", "-c", script]
         reprocessProc.running = true
     }
 
@@ -1059,19 +1070,19 @@ Rectangle {
     Behavior on opacity { NumberAnimation { duration: 150; easing.type: Easing.OutCubic } }
 
     // Sticky Header
-    RowLayout {
+    PanelHeader {
         id: headerBar
         anchors {
             top: parent.top
             left: parent.left
             right: parent.right
-            margins: 12
+            margins: 13
             bottomMargin: 0
         }
-        height: 24
-
-        MaterialSymbol { text: "tune"; iconSize: Appearance.font.pixelSize.normal; color: Appearance.colors.colPrimary; opacity: 0.8 }
-        StyledText { text: qsTr("Palette"); font.pixelSize: Appearance.font.pixelSize.small; font.weight: Font.Medium; color: Appearance.colors.colOnLayer0; Layout.fillWidth: true }
+        icon: "tune"
+        title: qsTr("Palette")
+        onClose: GlobalStates.wallTuneOpen = false
+        middle: [
         // Phase text shown in the header while processing — discreet, but
         // visible enough that you know *which* stage you're in without
         // scrolling down to the button.
@@ -1086,12 +1097,11 @@ Rectangle {
             opacity: (root.processing || root.currentPhase === "error") ? 0.85 : 0
             Behavior on opacity { NumberAnimation { duration: 180 } }
         }
-        Rectangle {
-            implicitWidth: 24; implicitHeight: 24; radius: 12
-            color: xHov.hovered ? Appearance.colors.colLayer2 : "transparent"
-            HoverHandler { margin: Appearance.sizes.touchSlop; id: xHov }
-            TapHandler { margin: Appearance.sizes.touchSlop; onTapped: GlobalStates.wallTuneOpen = false }
-            MaterialSymbol { anchors.centerIn: parent; text: "close"; iconSize: Appearance.font.pixelSize.small; color: Appearance.colors.colOnLayer0; opacity: 0.4 }
+        ]
+        HeaderIconButton {
+            icon: "restart_alt"
+            tooltip: qsTr("Apply again")
+            onClicked: root.reprocess()
         }
     }
 
@@ -1296,11 +1306,9 @@ Rectangle {
         contentHeight: col.implicitHeight
         clip: true
         boundsBehavior: Flickable.StopAtBounds
-        ScrollBar.vertical: ScrollBar {
-            policy: scroll.contentHeight > scroll.height ? ScrollBar.AsNeeded : ScrollBar.AlwaysOff
-            width: 4
-            contentItem: Rectangle { radius: 2; color: Appearance.colors.colOutline; opacity: 0.4 }
-        }
+        // The shared scrollbar: an 18px grab area that widens on hover. The old
+        // 4px faint one was nearly impossible to hit beside the slider dots.
+        ScrollBar.vertical: StyledScrollBar {}
 
     ColumnLayout {
         id: col
@@ -1309,14 +1317,62 @@ Rectangle {
         // this column, so this one number sets the panel's overall density.
         spacing: 10
 
+        // ── Tab: recent ──
+        ColumnLayout {
+            Layout.fillWidth: true
+            spacing: 10
+            visible: root.page === "wallpaper"
+        // Staged, not applied: Reprocess commits it.
+        RowLayout {
+            id: lightDarkRow
+            Layout.fillWidth: true
+            spacing: 6
+            uniformCellSizes: true
+
+            LightDarkPreferenceButton {
+                dark: false
+                toggled: !root.darkMode
+                apply: () => root.darkMode = false
+            }
+            LightDarkPreferenceButton {
+                dark: true
+                toggled: root.darkMode
+                apply: () => root.darkMode = true
+            }
+        }
+
+        // The count rides on the heading: "Recent" above "Recent Themes" was
+        // the same word twice for one strip of thumbnails.
+        GroupHeading {
+            sectionId: "recent"; sectionIcon: "history"
+            text: qsTr("Recent")
+            note: root.history.length + ""
+            visible: root.history.length > 0
+        }
+        // Current wallpaper and the recent ones side by side, each half as
+        // wide as the column: the preview matches a Light/Dark card.
+        RowLayout {
+            Layout.fillWidth: true
+            spacing: 6
+            uniformCellSizes: true
         // Wallpaper preview
         Rectangle {
             id: wallPreview
-            Layout.fillWidth: true; implicitHeight: 80
+            Layout.fillWidth: true; Layout.preferredWidth: 1
+            Layout.preferredHeight: lightDarkRow.height
             radius: 16
             color: Appearance.colors.colLayer1
             clip: true
             visible: root.currentWall !== ""
+            // The whole card, not only the image: the name strip at the bottom
+            // is square and showed dark corners past the rounded image.
+            layer.enabled: true
+            layer.effect: OpacityMask {
+                maskSource: Rectangle {
+                    width: wallPreview.width; height: wallPreview.height
+                    radius: wallPreview.radius
+                }
+            }
 
             Image {
                 id: wallPreviewImg
@@ -1385,31 +1441,25 @@ Rectangle {
                 }
             }
         }
-
-        // The count rides on the heading: "Recent" above "Recent Themes" was
-        // the same word twice for one strip of thumbnails.
-        GroupHeading {
-            sectionId: "recent"; sectionIcon: "history"
-            text: qsTr("Recent")
-            note: root.history.length + ""
-            visible: root.history.length > 0
-        }
         // Newest output first. Each chip previews the tuned wallpaper with its
         // primary/secondary/tertiary overlaid.
         ColumnLayout {
             Layout.fillWidth: true
+            Layout.preferredWidth: 1
+            Layout.alignment: Qt.AlignTop
             spacing: 4
             visible: root.history.length > 0
 
             Item {
                 Layout.fillWidth: true
-                implicitHeight: 48
+                implicitHeight: lightDarkRow.height
                 clip: true
-                ListView {
+                // A grid beside the preview: three across, scrolls down.
+                GridView {
                     id: walltuneHistList
                     anchors.fill: parent
-                    orientation: ListView.Horizontal
-                    spacing: 5
+                    cellWidth: width / 3
+                    cellHeight: Math.round(cellWidth * 0.75)
                     boundsBehavior: Flickable.StopAtBounds
                     model: root.history
 
@@ -1417,8 +1467,8 @@ Rectangle {
                         id: histChip
                         required property var modelData
                         required property int index
-                        implicitWidth: 64
-                        height: ListView.view.height
+                        width: GridView.view.cellWidth - 5
+                        height: GridView.view.cellHeight - 5
                         radius: 8
                         color: histChipHov.hovered
                             ? Appearance.colors.colLayer2
@@ -1571,17 +1621,18 @@ Rectangle {
 
                 // Or the strip ends on a chip sliced down the middle.
                 Rectangle {
-                    anchors { right: parent.right; top: parent.top; bottom: parent.bottom }
-                    width: 28
-                    opacity: walltuneHistList.atXEnd ? 0 : 1
+                    anchors { left: parent.left; right: parent.right; bottom: parent.bottom }
+                    height: 20
+                    opacity: walltuneHistList.atYEnd ? 0 : 1
                     Behavior on opacity { NumberAnimation { duration: 140 } }
                     gradient: Gradient {
-                        orientation: Gradient.Horizontal
+                        orientation: Gradient.Vertical
                         GradientStop { position: 0; color: "transparent" }
                         GradientStop { position: 1; color: Appearance.colors.colLayer0 }
                     }
                 }
             }
+        }
         }
 
         // A row, not a block: the stack is set once and then read.
@@ -1665,272 +1716,126 @@ Rectangle {
                 }
             }
         }
-
-        ColumnLayout { Layout.fillWidth: true; spacing: 5
-            opacity: root.sourceIsVideo ? 0.4 : 1.0
-        GroupHeading { sectionId: "wallpaper"; sectionIcon: "wallpaper"; text: qsTr("Wallpaper") }
-            SectionLabel { text: qsTr("Transition") }
-            SegmentedButtons {
-                Layout.fillWidth: true
-                showCheck: false
-                currentId: GlobalStates.wallTransition
-                onSelected: id => GlobalStates.wallTransition = id
-                model: root.transitions.map(t => ({ id: t.id, label: t.label, icon: t.icon }))
-            }
         }
 
-        // Unlabelled, it reads as a second row of the transition picker.
+        // ── Tab: wallpaper ──
         ColumnLayout {
             Layout.fillWidth: true
-            spacing: 5
-            opacity: root.sourceIsVideo ? 0.4 : 1.0
-
-            SectionLabel { text: qsTr("Applies to") }
-            SegmentedButtons {
-                Layout.fillWidth: true
-                showCheck: false
-                currentId: root.applyMode
-                onSelected: id => root.applyMode = id
-                model: root.applyModes.map(m => ({ id: m.id, label: m.label, icon: m.icon }))
+            spacing: 10
+            visible: root.page === "wallpaper"
+        GroupHeading { sectionId: "wallpaper"; sectionIcon: "wallpaper"; text: qsTr("Wallpaper") }
+        // One card: same row height, icon column and value column as Glass.
+        // The two pickers open small sheets instead of taking two wide bars.
+        PaletteCard {
+            PaletteRow {
+                readonly property var cur: root.transitions.find(t => t.id === GlobalStates.wallTransition)
+                glyph: cur?.icon ?? "swap_horiz"
+                title: qsTr("Transition")
+                value: cur?.label ?? ""
+                lit: true
+                opacity: root.sourceIsVideo ? 0.4 : 1.0
+                onClicked: root.transitionOpen = true
+            }
+            PaletteDivider {}
+            PaletteRow {
+                readonly property var cur: root.applyModes.find(m => m.id === root.applyMode)
+                glyph: cur?.icon ?? "auto_awesome"
+                title: qsTr("Applies to")
+                value: cur?.label ?? ""
+                lit: true
+                opacity: root.sourceIsVideo ? 0.4 : 1.0
+                onClicked: root.appliesOpen = true
+            }
+            PaletteDivider {}
+            PaletteRow {
+                readonly property bool on: Config.options.background.parallax.enableWorkspace
+                glyph: "swap_horiz"
+                title: qsTr("Workspace parallax")
+                value: on ? qsTr("On · %1%").arg(Math.round(Config.options.background.parallax.workspaceZoom * 100))
+                          : qsTr("Off")
+                lit: on
+                onClicked: root.parallaxOpen = true
+            }
+            PaletteDivider {}
+            PaletteRow {
+                readonly property bool on: (Config.options.background.effect ?? "").length > 0
+                glyph: "animation"
+                title: qsTr("Wallpaper effect")
+                value: on ? AppDisplay.effectName(Config.options.background.effect) : qsTr("Off")
+                lit: on
+                onClicked: root.effectOpen = true
+            }
+            PaletteDivider {}
+            // OFF: every apply starts from the original (sliders are absolute).
+            // ON: every apply chains on the previous output (sliders are deltas).
+            PaletteRow {
+                glyph: root.stackable ? "layers" : "layers_clear"
+                title: qsTr("Stack on previous")
+                subtitle: root.stackable ? qsTr("Each apply compounds") : qsTr("Each apply starts from original")
+                trailing: "switch"
+                isOn: root.stackable
+                lit: root.stackable
+                onSwitched: root.stackable = !root.stackable
             }
         }
+        }
 
-        // ── Parallax zoom on workspace scroll ──────────────────────────
-        // Background.qml multiplies its render scale by this every time
-        // you switch workspaces. 1.00 = no zoom, 1.07 = default subtle,
-        // 1.30 = punchy. Off = disable entirely.
-        // Parallax is two settings that are set once and left alone, so it
-        // does not earn a permanent card in the main column.
-        RippleButton {
-            id: parallaxRow
-            readonly property bool on: Config.options.background.parallax.enableWorkspace
-
+        // ── Tab: colour ──
+        ColumnLayout {
             Layout.fillWidth: true
-            implicitHeight: 44
-            buttonRadius: Appearance.rounding.small
-            colBackground: Appearance.colors.colLayer1
-            colBackgroundHover: Appearance.colors.colLayer1Hover
-            onClicked: root.parallaxOpen = true
-
-            contentItem: RowLayout {
-                anchors.fill: parent
-                anchors.leftMargin: 12
-                anchors.rightMargin: 8
-                spacing: 10
-
-                MaterialSymbol {
-                    text: "swap_horiz"
-                    iconSize: Appearance.font.pixelSize.larger
-                    color: parallaxRow.on ? Appearance.colors.colPrimary
-                                          : Appearance.colors.colSubtext
-                }
-                StyledText {
-                    Layout.fillWidth: true
-                    text: qsTr("Workspace parallax")
-                    font.pixelSize: Appearance.font.pixelSize.smaller
-                    color: Appearance.colors.colOnLayer1
-                }
-                // The state, so the row answers without being opened.
-                StyledText {
-                    text: parallaxRow.on
-                        ? qsTr("On · %1%").arg(Math.round(
-                            Config.options.background.parallax.workspaceZoom * 100))
-                        : qsTr("Off")
-                    font.pixelSize: Appearance.font.pixelSize.smallest
-                    color: parallaxRow.on ? Appearance.colors.colPrimary
-                                          : Appearance.colors.colSubtext
-                }
-                MaterialSymbol {
-                    text: "chevron_right"
-                    iconSize: Appearance.font.pixelSize.large
-                    color: Appearance.colors.colSubtext
-                }
-            }
-        }
-
-        // ── Wallpaper effect ────────────────────────────────────────────
-        // A pack effect drawn on the wallpaper layer. Deliberately NOT
-        // decoration:screen_shader: this runs on a surface we already render,
-        // so it costs no damage-tracking, does not fight the colour-grading
-        // sliders, and warps sample the wallpaper directly with no capture.
-        // Effects using theme roles (@primary) recolour with the palette this
-        // panel generates, which is the point of putting it here.
-        RippleButton {
-            id: effectRow
-            readonly property bool on: (Config.options.background.effect ?? "").length > 0
-
-            Layout.fillWidth: true
-            implicitHeight: 44
-            buttonRadius: Appearance.rounding.small
-            colBackground: Appearance.colors.colLayer1
-            colBackgroundHover: Appearance.colors.colLayer1Hover
-            onClicked: root.effectOpen = true
-
-            contentItem: RowLayout {
-                anchors.fill: parent
-                anchors.leftMargin: 12
-                anchors.rightMargin: 8
-                spacing: 10
-
-                MaterialSymbol {
-                    text: "animation"
-                    iconSize: Appearance.font.pixelSize.larger
-                    color: effectRow.on ? Appearance.colors.colPrimary
-                                        : Appearance.colors.colSubtext
-                }
-                StyledText {
-                    Layout.fillWidth: true
-                    text: qsTr("Wallpaper effect")
-                    font.pixelSize: Appearance.font.pixelSize.smaller
-                    color: Appearance.colors.colOnLayer1
-                }
-                StyledText {
-                    text: effectRow.on
-                        ? AppDisplay.effectName(Config.options.background.effect)
-                        : qsTr("Off")
-                    font.pixelSize: Appearance.font.pixelSize.smallest
-                    color: effectRow.on ? Appearance.colors.colPrimary
-                                        : Appearance.colors.colSubtext
-                }
-                MaterialSymbol {
-                    text: "chevron_right"
-                    iconSize: Appearance.font.pixelSize.large
-                    color: Appearance.colors.colSubtext
-                }
-            }
-        }
-
-        // ── Stack toggle ────────────────────────────────────────────────
-        // OFF (default): every apply starts from the un-edited original — the
-        //                sliders are absolute settings.
-        // ON          : every apply chains on top of the previously-processed
-        //                image — sliders become deltas. Each click on Reprocess
-        //                visibly compounds the look (great for grain/wash
-        //                drift, lousy for fine control).
-        Rectangle {
-            Layout.fillWidth: true
-            implicitHeight: 28
-            radius: 14
-            color: root.stackable
-                ? Appearance.colors.colPrimary
-                : (stHovOuter.hovered ? Appearance.colors.colLayer2 : Appearance.colors.colLayer1)
-            Behavior on color { ColorAnimation { duration: 140 } }
-
-            HoverHandler { id: stHovOuter }
-            TapHandler { onTapped: root.stackable = !root.stackable }
-
-            RowLayout {
-                anchors.fill: parent
-                anchors.leftMargin: 10
-                anchors.rightMargin: 6
-                spacing: 8
-
-                MaterialSymbol {
-                    text: root.stackable ? "layers" : "layers_clear"
-                    iconSize: Appearance.font.pixelSize.normal
-                    color: root.stackable ? Appearance.m3colors.m3onPrimary : Appearance.colors.colOnLayer0
-                    opacity: root.stackable ? 1 : (stHovOuter.hovered ? 0.85 : 0.6)
-                    Behavior on color { ColorAnimation { duration: 140 } }
-                }
-                ColumnLayout {
-                    Layout.fillWidth: true
-                    spacing: -2
-                    StyledText {
-                        text: qsTr("Stack on previous")
-                        font.pixelSize: Appearance.font.pixelSize.smaller
-                        font.weight: Font.Medium
-                        color: root.stackable ? Appearance.m3colors.m3onPrimary : Appearance.colors.colOnLayer0
-                        Behavior on color { ColorAnimation { duration: 140 } }
-                    }
-                    StyledText {
-                        text: root.stackable ? qsTr("Each apply compounds") : qsTr("Each apply starts from original")
-                        font.pixelSize: Appearance.font.pixelSize.smaller - 3
-                        color: root.stackable ? Appearance.m3colors.m3onPrimary : Appearance.colors.colOnLayer0
-                        opacity: root.stackable ? 0.85 : 0.5
-                        elide: Text.ElideRight
-                        Behavior on color { ColorAnimation { duration: 140 } }
-                    }
-                }
-
-                // Mini iOS-style switch.
-                Rectangle {
-                    implicitWidth: 28; implicitHeight: 16; radius: 8
-                    color: root.stackable
-                        ? Qt.alpha(Appearance.m3colors.m3onPrimary, 0.35)
-                        : Qt.alpha(Appearance.colors.colOnLayer0, 0.20)
-                    Behavior on color { ColorAnimation { duration: 140 } }
-                    Rectangle {
-                        width: 12; height: 12; radius: 6
-                        anchors.verticalCenter: parent.verticalCenter
-                        x: root.stackable ? parent.width - width - 2 : 2
-                        color: root.stackable ? Appearance.m3colors.m3onPrimary : Appearance.colors.colOnLayer0
-                        Behavior on x { NumberAnimation { duration: 160; easing.type: Easing.OutCubic } }
-                        Behavior on color { ColorAnimation { duration: 140 } }
-                    }
-                }
-            }
-        }
-
+            spacing: 10
+            visible: root.page === "colour"
         GroupHeading { sectionId: "colour"; sectionIcon: "palette"; text: qsTr("Colour") }
-        // Staged, not applied: Reprocess commits it.
-        RowLayout {
-            Layout.fillWidth: true
-            spacing: 6
-            uniformCellSizes: true
 
-            LightDarkPreferenceButton {
-                dark: false
-                toggled: !root.darkMode
-                apply: () => root.darkMode = false
+        // Extraction and per-app colours: one card, same rows as Wallpaper and Glass.
+        // A named theme's own colours instead of the wallpaper's, and every colour by hand.
+        PaletteCard {
+            PaletteRow {
+                glyph: "style"
+                title: qsTr("Exact theme")
+                value: ExactTheme.current !== "" ? ExactTheme.currentName : qsTr("Off")
+                lit: ExactTheme.current !== ""
+                onClicked: root.exactThemeOpen = true
             }
-            LightDarkPreferenceButton {
-                dark: true
-                toggled: root.darkMode
-                apply: () => root.darkMode = true
-            }
-        }
-
-        // Extraction mode
-        RippleButton {
-            id: extractRow
-            readonly property var mode: root.extractModes.find(m => m.id === root.selectedMode)
-
-            Layout.fillWidth: true
-            implicitHeight: 44
-            buttonRadius: Appearance.rounding.small
-            colBackground: Appearance.colors.colLayer1
-            colBackgroundHover: Appearance.colors.colLayer1Hover
-            onClicked: root.extractOpen = true
-
-            contentItem: RowLayout {
-                anchors.fill: parent
-                anchors.leftMargin: 12
-                anchors.rightMargin: 8
-                spacing: 10
-
-                Rectangle {
-                    implicitWidth: 9; implicitHeight: 9; radius: 4.5
-                    color: extractRow.mode ? extractRow.mode.color : Appearance.colors.colSubtext
-                }
-                StyledText {
-                    Layout.fillWidth: true
-                    text: qsTr("Extraction mode")
-                    font.pixelSize: Appearance.font.pixelSize.smaller
-                    color: Appearance.colors.colOnLayer1
-                }
-                StyledText {
-                    text: extractRow.mode ? extractRow.mode.label : qsTr("Auto")
-                    font.pixelSize: Appearance.font.pixelSize.smallest
-                    color: Appearance.colors.colPrimary
-                }
-                MaterialSymbol {
-                    text: "chevron_right"
-                    iconSize: Appearance.font.pixelSize.large
-                    color: Appearance.colors.colSubtext
-                }
+            PaletteDivider {}
+            PaletteRow {
+                readonly property int n: Object.keys(ExactTheme.overrides).length
+                glyph: "format_color_fill"
+                title: qsTr("Edit colours")
+                subtitle: qsTr("Every variable by name, swap by dragging")
+                value: n > 0 ? qsTr("%1 changed").arg(n) : ""
+                lit: n > 0
+                onClicked: root.colourEditorOpen = true
             }
         }
 
+        PaletteCard {
+            PaletteRow {
+                readonly property var mode: root.extractModes.find(m => m.id === root.selectedMode)
+                glyph: "colorize"
+                title: qsTr("Extraction mode")
+                value: mode ? mode.label : qsTr("Auto")
+                lit: true
+                onClicked: root.extractOpen = true
+            }
+            PaletteDivider {}
+            // Shifts the one palette per app afterwards: a terminal that wants
+            // more contrast than the bar, or a role pinned by hand.
+            PaletteRow {
+                glyph: "palette"
+                title: qsTr("Per-app colours")
+                subtitle: qsTr("Adjust the palette for single apps")
+                lit: GlobalStates.appColorsOpen
+                onClicked: GlobalStates.appColorsOpen = !GlobalStates.appColorsOpen
+            }
+        }
+        }
+
+        // ── Tab: grading ──
+        ColumnLayout {
+            Layout.fillWidth: true
+            spacing: 10
+            visible: root.page === "colour"
         // Everything below shapes the palette after extraction.
         GroupHeading {
             sectionId: "grading"; sectionIcon: "tune"
@@ -1938,41 +1843,27 @@ Rectangle {
             note: qsTr("Theory, style, curve, remap")
         }
 
-        // ── Per-app colours ──────────────────────────────────────────────
-        // Everything below shapes the one palette every app receives. This
-        // opens the panel that shifts it per app afterwards — a terminal that
-        // wants more contrast than the bar, or a role pinned by hand.
-        PanelActionButton {
-            Layout.fillWidth: true
-            iconName: "palette"
-            buttonLabel: qsTr("Per-app colours…")
-            // Matches the section headers below it (PanelActionButton is 32
-            // by default), so this block reads as one list of rows.
-            implicitHeight: 40
-            onClicked: GlobalStates.appColorsOpen = !GlobalStates.appColorsOpen
-        }
-
         // ── Color Theory dropdown ────────────────────────────────────────
         Rectangle {
             Layout.fillWidth: true
             // 40, not 26. These are the panel's main navigation rows and they
             // read as thin dividers at 26 next to the 40px buttons around them.
-            height: 40; radius: 20
+            height: 44; radius: Appearance.rounding.normal
             // Square the bottom corners while open so the header and the body
             // below read as ONE container rather than two stacked pills.
-            bottomLeftRadius:  root.theoryOpen ? 0 : 20
-            bottomRightRadius: root.theoryOpen ? 0 : 20
-            color: (thHeadHov.hovered || thBodyHov.hovered) ? Appearance.colors.colLayer2 : ColorUtils.transparentize(Appearance.colors.colLayer2)
+            bottomLeftRadius:  root.theoryOpen ? 0 : Appearance.rounding.normal
+            bottomRightRadius: root.theoryOpen ? 0 : Appearance.rounding.normal
+            color: (thHeadHov.hovered || thBodyHov.hovered) ? Appearance.colors.colLayer1Hover : Appearance.colors.colLayer1
             Behavior on color { ColorAnimation { duration: 100 } }
             HoverHandler { id: thHeadHov }
             TapHandler { onTapped: root.theoryOpen = !root.theoryOpen }
             RowLayout {
-                anchors.fill: parent; anchors.leftMargin: 4; anchors.rightMargin: 6; spacing: 6
+                anchors.fill: parent; anchors.leftMargin: root.foldPad; anchors.rightMargin: root.foldPad; spacing: 6
                 StyledText {
                     text: qsTr("Color Theory")
-                    font.pixelSize: Appearance.font.pixelSize.smaller - 1
+                    font.pixelSize: Appearance.font.pixelSize.smaller
                     font.weight: Font.Medium
-                    color: Appearance.colors.colOnLayer0; opacity: 0.5
+                    color: Appearance.colors.colOnLayer1
                 }
                 StyledText {
                     Layout.fillWidth: true
@@ -1997,7 +1888,7 @@ Rectangle {
         Item {
             Layout.fillWidth: true
             clip: true
-            Layout.preferredHeight: root.theoryOpen ? thFlow.implicitHeight : 0
+            Layout.preferredHeight: root.theoryOpen ? thFlow.implicitHeight + root.foldPad : 0
             // A ColumnLayout puts its spacing on BOTH sides of a zero-height
             // item, so every closed section still cost 13px above + 13px
             // below for a 26px header -- half the collapsed area was gap,
@@ -2012,17 +1903,17 @@ Rectangle {
             Rectangle {
                 anchors.fill: parent
                 z: -1
-                color: (thHeadHov.hovered || thBodyHov.hovered) ? Appearance.colors.colLayer2 : ColorUtils.transparentize(Appearance.colors.colLayer2)
+                color: (thHeadHov.hovered || thBodyHov.hovered) ? Appearance.colors.colLayer1Hover : Appearance.colors.colLayer1
                 topLeftRadius: 0
                 topRightRadius: 0
-                bottomLeftRadius: 20
-                bottomRightRadius: 20
+                bottomLeftRadius: Appearance.rounding.normal
+                bottomRightRadius: Appearance.rounding.normal
                 Behavior on color { ColorAnimation { duration: 100 } }
             }
             opacity: root.theoryOpen ? 1 : 0
             Behavior on Layout.preferredHeight { NumberAnimation { duration: 180; easing.type: Easing.OutCubic } }
             Behavior on opacity { NumberAnimation { duration: 140 } }
-            Flow { id: thFlow; width: parent.width; spacing: 4
+            Flow { id: thFlow; x: root.foldPad; width: parent.width - 2 * root.foldPad; spacing: 4
                 Repeater {
                     model: root.theoryModes
                     delegate: Rectangle {
@@ -2052,22 +1943,22 @@ Rectangle {
             Layout.fillWidth: true
             // 40, not 26. These are the panel's main navigation rows and they
             // read as thin dividers at 26 next to the 40px buttons around them.
-            height: 40; radius: 20
+            height: 44; radius: Appearance.rounding.normal
             // Square the bottom corners while open so the header and the body
             // below read as ONE container rather than two stacked pills.
-            bottomLeftRadius:  root.styleOpen ? 0 : 20
-            bottomRightRadius: root.styleOpen ? 0 : 20
-            color: (stHeadHov.hovered || stBodyHov.hovered) ? Appearance.colors.colLayer2 : ColorUtils.transparentize(Appearance.colors.colLayer2)
+            bottomLeftRadius:  root.styleOpen ? 0 : Appearance.rounding.normal
+            bottomRightRadius: root.styleOpen ? 0 : Appearance.rounding.normal
+            color: (stHeadHov.hovered || stBodyHov.hovered) ? Appearance.colors.colLayer1Hover : Appearance.colors.colLayer1
             Behavior on color { ColorAnimation { duration: 100 } }
             HoverHandler { id: stHeadHov }
             TapHandler { onTapped: root.styleOpen = !root.styleOpen }
             RowLayout {
-                anchors.fill: parent; anchors.leftMargin: 4; anchors.rightMargin: 6; spacing: 6
+                anchors.fill: parent; anchors.leftMargin: root.foldPad; anchors.rightMargin: root.foldPad; spacing: 6
                 StyledText {
                     text: qsTr("Style")
-                    font.pixelSize: Appearance.font.pixelSize.smaller - 1
+                    font.pixelSize: Appearance.font.pixelSize.smaller
                     font.weight: Font.Medium
-                    color: Appearance.colors.colOnLayer0; opacity: 0.5
+                    color: Appearance.colors.colOnLayer1
                 }
                 StyledText {
                     Layout.fillWidth: true
@@ -2092,7 +1983,7 @@ Rectangle {
         Item {
             Layout.fillWidth: true
             clip: true
-            Layout.preferredHeight: root.styleOpen ? stFlow.implicitHeight : 0
+            Layout.preferredHeight: root.styleOpen ? stFlow.implicitHeight + root.foldPad : 0
             // Skipped by the layout when closed, spacing included (see above).
             visible: Layout.preferredHeight > 0.5
             // Pulled up by the column's own spacing so it TOUCHES the header;
@@ -2102,17 +1993,17 @@ Rectangle {
             Rectangle {
                 anchors.fill: parent
                 z: -1
-                color: (stHeadHov.hovered || stBodyHov.hovered) ? Appearance.colors.colLayer2 : ColorUtils.transparentize(Appearance.colors.colLayer2)
+                color: (stHeadHov.hovered || stBodyHov.hovered) ? Appearance.colors.colLayer1Hover : Appearance.colors.colLayer1
                 topLeftRadius: 0
                 topRightRadius: 0
-                bottomLeftRadius: 20
-                bottomRightRadius: 20
+                bottomLeftRadius: Appearance.rounding.normal
+                bottomRightRadius: Appearance.rounding.normal
                 Behavior on color { ColorAnimation { duration: 100 } }
             }
             opacity: root.styleOpen ? 1 : 0
             Behavior on Layout.preferredHeight { NumberAnimation { duration: 180; easing.type: Easing.OutCubic } }
             Behavior on opacity { NumberAnimation { duration: 140 } }
-            Flow { id: stFlow; width: parent.width; spacing: 4
+            Flow { id: stFlow; x: root.foldPad; width: parent.width - 2 * root.foldPad; spacing: 4
                 Repeater {
                     model: root.styleModes
                     delegate: Rectangle {
@@ -2142,22 +2033,22 @@ Rectangle {
             Layout.fillWidth: true
             // 40, not 26. These are the panel's main navigation rows and they
             // read as thin dividers at 26 next to the 40px buttons around them.
-            height: 40; radius: 20
+            height: 44; radius: Appearance.rounding.normal
             // Square the bottom corners while open so the header and the body
             // below read as ONE container rather than two stacked pills.
-            bottomLeftRadius:  root.practicalOpen ? 0 : 20
-            bottomRightRadius: root.practicalOpen ? 0 : 20
-            color: (prHeadHov.hovered || prBodyHov.hovered) ? Appearance.colors.colLayer2 : ColorUtils.transparentize(Appearance.colors.colLayer2)
+            bottomLeftRadius:  root.practicalOpen ? 0 : Appearance.rounding.normal
+            bottomRightRadius: root.practicalOpen ? 0 : Appearance.rounding.normal
+            color: (prHeadHov.hovered || prBodyHov.hovered) ? Appearance.colors.colLayer1Hover : Appearance.colors.colLayer1
             Behavior on color { ColorAnimation { duration: 100 } }
             HoverHandler { id: prHeadHov }
             TapHandler { onTapped: root.practicalOpen = !root.practicalOpen }
             RowLayout {
-                anchors.fill: parent; anchors.leftMargin: 4; anchors.rightMargin: 6; spacing: 6
+                anchors.fill: parent; anchors.leftMargin: root.foldPad; anchors.rightMargin: root.foldPad; spacing: 6
                 StyledText {
                     text: qsTr("Practical")
-                    font.pixelSize: Appearance.font.pixelSize.smaller - 1
+                    font.pixelSize: Appearance.font.pixelSize.smaller
                     font.weight: Font.Medium
-                    color: Appearance.colors.colOnLayer0; opacity: 0.5
+                    color: Appearance.colors.colOnLayer1
                 }
                 StyledText {
                     Layout.fillWidth: true
@@ -2182,7 +2073,7 @@ Rectangle {
         Item {
             Layout.fillWidth: true
             clip: true
-            Layout.preferredHeight: root.practicalOpen ? prFlow.implicitHeight : 0
+            Layout.preferredHeight: root.practicalOpen ? prFlow.implicitHeight + root.foldPad : 0
             // Skipped by the layout when closed, spacing included (see above).
             visible: Layout.preferredHeight > 0.5
             // Pulled up by the column's own spacing so it TOUCHES the header;
@@ -2192,17 +2083,17 @@ Rectangle {
             Rectangle {
                 anchors.fill: parent
                 z: -1
-                color: (prHeadHov.hovered || prBodyHov.hovered) ? Appearance.colors.colLayer2 : ColorUtils.transparentize(Appearance.colors.colLayer2)
+                color: (prHeadHov.hovered || prBodyHov.hovered) ? Appearance.colors.colLayer1Hover : Appearance.colors.colLayer1
                 topLeftRadius: 0
                 topRightRadius: 0
-                bottomLeftRadius: 20
-                bottomRightRadius: 20
+                bottomLeftRadius: Appearance.rounding.normal
+                bottomRightRadius: Appearance.rounding.normal
                 Behavior on color { ColorAnimation { duration: 100 } }
             }
             opacity: root.practicalOpen ? 1 : 0
             Behavior on Layout.preferredHeight { NumberAnimation { duration: 180; easing.type: Easing.OutCubic } }
             Behavior on opacity { NumberAnimation { duration: 140 } }
-            Flow { id: prFlow; width: parent.width; spacing: 4
+            Flow { id: prFlow; x: root.foldPad; width: parent.width - 2 * root.foldPad; spacing: 4
                 Repeater {
                     model: root.practicalModes
                     delegate: Rectangle {
@@ -2232,22 +2123,22 @@ Rectangle {
             Layout.fillWidth: true
             // 40, not 26. These are the panel's main navigation rows and they
             // read as thin dividers at 26 next to the 40px buttons around them.
-            height: 40; radius: 20
+            height: 44; radius: Appearance.rounding.normal
             // Square the bottom corners while open so the header and the body
             // below read as ONE container rather than two stacked pills.
-            bottomLeftRadius:  root.curveOpen ? 0 : 20
-            bottomRightRadius: root.curveOpen ? 0 : 20
-            color: (cvHeadHov.hovered || cvBodyHov.hovered) ? Appearance.colors.colLayer2 : ColorUtils.transparentize(Appearance.colors.colLayer2)
+            bottomLeftRadius:  root.curveOpen ? 0 : Appearance.rounding.normal
+            bottomRightRadius: root.curveOpen ? 0 : Appearance.rounding.normal
+            color: (cvHeadHov.hovered || cvBodyHov.hovered) ? Appearance.colors.colLayer1Hover : Appearance.colors.colLayer1
             Behavior on color { ColorAnimation { duration: 100 } }
             HoverHandler { id: cvHeadHov }
             TapHandler { onTapped: root.curveOpen = !root.curveOpen }
             RowLayout {
-                anchors.fill: parent; anchors.leftMargin: 4; anchors.rightMargin: 6; spacing: 6
+                anchors.fill: parent; anchors.leftMargin: root.foldPad; anchors.rightMargin: root.foldPad; spacing: 6
                 StyledText {
                     text: qsTr("Tone Curve")
-                    font.pixelSize: Appearance.font.pixelSize.smaller - 1
+                    font.pixelSize: Appearance.font.pixelSize.smaller
                     font.weight: Font.Medium
-                    color: Appearance.colors.colOnLayer0; opacity: 0.5
+                    color: Appearance.colors.colOnLayer1
                 }
                 StyledText {
                     Layout.fillWidth: true
@@ -2269,7 +2160,7 @@ Rectangle {
         Item {
             Layout.fillWidth: true
             clip: true
-            Layout.preferredHeight: root.curveOpen ? curveBody.implicitHeight : 0
+            Layout.preferredHeight: root.curveOpen ? curveBody.implicitHeight + root.foldPad : 0
             // Skipped by the layout when closed, spacing included (see above).
             visible: Layout.preferredHeight > 0.5
             // Pulled up by the column's own spacing so it TOUCHES the header;
@@ -2279,11 +2170,11 @@ Rectangle {
             Rectangle {
                 anchors.fill: parent
                 z: -1
-                color: (cvHeadHov.hovered || cvBodyHov.hovered) ? Appearance.colors.colLayer2 : ColorUtils.transparentize(Appearance.colors.colLayer2)
+                color: (cvHeadHov.hovered || cvBodyHov.hovered) ? Appearance.colors.colLayer1Hover : Appearance.colors.colLayer1
                 topLeftRadius: 0
                 topRightRadius: 0
-                bottomLeftRadius: 20
-                bottomRightRadius: 20
+                bottomLeftRadius: Appearance.rounding.normal
+                bottomRightRadius: Appearance.rounding.normal
                 Behavior on color { ColorAnimation { duration: 100 } }
             }
             opacity: root.curveOpen ? 1 : 0
@@ -2292,7 +2183,7 @@ Rectangle {
 
             ColumnLayout {
                 id: curveBody
-                width: parent.width; spacing: 4
+                x: root.foldPad; width: parent.width - 2 * root.foldPad; spacing: 4
 
                 // The interactive curve canvas
                 Rectangle {
@@ -2537,22 +2428,22 @@ Rectangle {
             Layout.fillWidth: true
             // 40, not 26. These are the panel's main navigation rows and they
             // read as thin dividers at 26 next to the 40px buttons around them.
-            height: 40; radius: 20
+            height: 44; radius: Appearance.rounding.normal
             // Square the bottom corners while open so the header and the body
             // below read as ONE container rather than two stacked pills.
-            bottomLeftRadius:  root.remapOpen ? 0 : 20
-            bottomRightRadius: root.remapOpen ? 0 : 20
-            color: (rmHeadHov.hovered || rmBodyHov.hovered) ? Appearance.colors.colLayer2 : ColorUtils.transparentize(Appearance.colors.colLayer2)
+            bottomLeftRadius:  root.remapOpen ? 0 : Appearance.rounding.normal
+            bottomRightRadius: root.remapOpen ? 0 : Appearance.rounding.normal
+            color: (rmHeadHov.hovered || rmBodyHov.hovered) ? Appearance.colors.colLayer1Hover : Appearance.colors.colLayer1
             Behavior on color { ColorAnimation { duration: 100 } }
             HoverHandler { id: rmHeadHov }
             TapHandler { onTapped: root.remapOpen = !root.remapOpen }
             RowLayout {
-                anchors.fill: parent; anchors.leftMargin: 4; anchors.rightMargin: 6; spacing: 6
+                anchors.fill: parent; anchors.leftMargin: root.foldPad; anchors.rightMargin: root.foldPad; spacing: 6
                 StyledText {
                     text: qsTr("Palette Remap")
-                    font.pixelSize: Appearance.font.pixelSize.smaller - 1
+                    font.pixelSize: Appearance.font.pixelSize.smaller
                     font.weight: Font.Medium
-                    color: Appearance.colors.colOnLayer0; opacity: 0.5
+                    color: Appearance.colors.colOnLayer1
                 }
                 StyledText {
                     Layout.fillWidth: true
@@ -2577,7 +2468,7 @@ Rectangle {
         Item {
             Layout.fillWidth: true
             clip: true
-            Layout.preferredHeight: root.remapOpen ? remapBody.implicitHeight : 0
+            Layout.preferredHeight: root.remapOpen ? remapBody.implicitHeight + root.foldPad : 0
             // Skipped by the layout when closed, spacing included (see above).
             visible: Layout.preferredHeight > 0.5
             // Pulled up by the column's own spacing so it TOUCHES the header;
@@ -2587,11 +2478,11 @@ Rectangle {
             Rectangle {
                 anchors.fill: parent
                 z: -1
-                color: (rmHeadHov.hovered || rmBodyHov.hovered) ? Appearance.colors.colLayer2 : ColorUtils.transparentize(Appearance.colors.colLayer2)
+                color: (rmHeadHov.hovered || rmBodyHov.hovered) ? Appearance.colors.colLayer1Hover : Appearance.colors.colLayer1
                 topLeftRadius: 0
                 topRightRadius: 0
-                bottomLeftRadius: 20
-                bottomRightRadius: 20
+                bottomLeftRadius: Appearance.rounding.normal
+                bottomRightRadius: Appearance.rounding.normal
                 Behavior on color { ColorAnimation { duration: 100 } }
             }
             opacity: root.remapOpen ? 1 : 0
@@ -2600,7 +2491,7 @@ Rectangle {
 
             ColumnLayout {
                 id: remapBody
-                width: parent.width; spacing: 6
+                x: root.foldPad; width: parent.width - 2 * root.foldPad; spacing: 6
 
                 // Palette chips
                 Flow { Layout.fillWidth: true; spacing: 4
@@ -2708,22 +2599,22 @@ Rectangle {
             Layout.fillWidth: true
             // 40, not 26. These are the panel's main navigation rows and they
             // read as thin dividers at 26 next to the 40px buttons around them.
-            height: 40; radius: 20
+            height: 44; radius: Appearance.rounding.normal
             // Square the bottom corners while open so the header and the body
             // below read as ONE container rather than two stacked pills.
-            bottomLeftRadius:  root.adjustOpen ? 0 : 20
-            bottomRightRadius: root.adjustOpen ? 0 : 20
-            color: (adjHeadHov.hovered || adjBodyHov.hovered) ? Appearance.colors.colLayer2 : ColorUtils.transparentize(Appearance.colors.colLayer2)
+            bottomLeftRadius:  root.adjustOpen ? 0 : Appearance.rounding.normal
+            bottomRightRadius: root.adjustOpen ? 0 : Appearance.rounding.normal
+            color: (adjHeadHov.hovered || adjBodyHov.hovered) ? Appearance.colors.colLayer1Hover : Appearance.colors.colLayer1
             Behavior on color { ColorAnimation { duration: 100 } }
             HoverHandler { id: adjHeadHov }
             TapHandler { onTapped: root.adjustOpen = !root.adjustOpen }
             RowLayout {
-                anchors.fill: parent; anchors.leftMargin: 4; anchors.rightMargin: 6; spacing: 6
+                anchors.fill: parent; anchors.leftMargin: root.foldPad; anchors.rightMargin: root.foldPad; spacing: 6
                 StyledText {
                     text: qsTr("Adjustments")
-                    font.pixelSize: Appearance.font.pixelSize.smaller - 1
+                    font.pixelSize: Appearance.font.pixelSize.smaller
                     font.weight: Font.Medium
-                    color: Appearance.colors.colOnLayer0; opacity: 0.5
+                    color: Appearance.colors.colOnLayer1
                 }
                 StyledText {
                     Layout.fillWidth: true
@@ -2750,7 +2641,7 @@ Rectangle {
         Item {
             Layout.fillWidth: true
             clip: true
-            Layout.preferredHeight: root.adjustOpen ? adjCol.implicitHeight : 0
+            Layout.preferredHeight: root.adjustOpen ? adjCol.implicitHeight + root.foldPad : 0
             // Skipped by the layout when closed, spacing included (see above).
             visible: Layout.preferredHeight > 0.5
             // Pulled up by the column's own spacing so it TOUCHES the header;
@@ -2760,11 +2651,11 @@ Rectangle {
             Rectangle {
                 anchors.fill: parent
                 z: -1
-                color: (adjHeadHov.hovered || adjBodyHov.hovered) ? Appearance.colors.colLayer2 : ColorUtils.transparentize(Appearance.colors.colLayer2)
+                color: (adjHeadHov.hovered || adjBodyHov.hovered) ? Appearance.colors.colLayer1Hover : Appearance.colors.colLayer1
                 topLeftRadius: 0
                 topRightRadius: 0
-                bottomLeftRadius: 20
-                bottomRightRadius: 20
+                bottomLeftRadius: Appearance.rounding.normal
+                bottomRightRadius: Appearance.rounding.normal
                 Behavior on color { ColorAnimation { duration: 100 } }
             }
             opacity: root.adjustOpen ? 1 : 0
@@ -2772,7 +2663,8 @@ Rectangle {
             Behavior on opacity { NumberAnimation { duration: 140 } }
             ColumnLayout {
                 id: adjCol
-                width: parent.width
+                x: root.foldPad
+                width: parent.width - 2 * root.foldPad
                 spacing: 4
                 // Sliders — each delegate reads root.c{i}a / root.c{i}b directly as live bindings
                 Repeater {
@@ -2840,7 +2732,13 @@ Rectangle {
 
             }
         }
+        }
 
+        // ── Tab: blueprints ──
+        ColumnLayout {
+            Layout.fillWidth: true
+            spacing: 10
+            visible: root.page === "colour"
         GroupHeading {
             sectionId: "blueprints"; sectionIcon: "auto_awesome"
             text: qsTr("Blueprints")
@@ -2865,7 +2763,16 @@ Rectangle {
                 }
             }
         }
+        }
 
+        // ── Tab: glass ──
+        ColumnLayout {
+            Layout.fillWidth: true
+            spacing: 10
+            visible: root.page === "glass"
+        GroupHeading { sectionId: "glass"; sectionIcon: "blur_on"; text: qsTr("Glass") }
+        GlassSection { Layout.fillWidth: true }
+        }
     }
     }
 
@@ -2917,7 +2824,70 @@ Rectangle {
         }
     }
 
+    ExactThemeSheet {
+        open: root.exactThemeOpen
+        onClosed: root.exactThemeOpen = false
+    }
+    ColourEditorSheet {
+        open: root.colourEditorOpen
+        onClosed: root.colourEditorOpen = false
+    }
+
     // A grid, not a list: six stages down the column was most of a screenful.
+    // Transition and "Applies to": one tap picks and closes.
+    PanelSheet {
+        open: root.transitionOpen
+        title: qsTr("Transition")
+        subtitle: qsTr("How the next wallpaper comes in")
+        onClosed: root.transitionOpen = false
+        PaletteCard {
+            Repeater {
+                model: root.transitions
+                delegate: ColumnLayout {
+                    required property var modelData
+                    required property int index
+                    Layout.fillWidth: true
+                    spacing: 0
+                    PaletteDivider { visible: index > 0 }
+                    PaletteRow {
+                        glyph: modelData.icon
+                        title: modelData.label
+                        trailing: ""
+                        value: GlobalStates.wallTransition === modelData.id ? "✓" : ""
+                        lit: GlobalStates.wallTransition === modelData.id
+                        onClicked: { GlobalStates.wallTransition = modelData.id; root.transitionOpen = false }
+                    }
+                }
+            }
+        }
+    }
+    PanelSheet {
+        open: root.appliesOpen
+        title: qsTr("Applies to")
+        subtitle: qsTr("What changes when you pick a wallpaper")
+        onClosed: root.appliesOpen = false
+        PaletteCard {
+            Repeater {
+                model: root.applyModes
+                delegate: ColumnLayout {
+                    required property var modelData
+                    required property int index
+                    Layout.fillWidth: true
+                    spacing: 0
+                    PaletteDivider { visible: index > 0 }
+                    PaletteRow {
+                        glyph: modelData.icon
+                        title: modelData.label
+                        trailing: ""
+                        value: root.applyMode === modelData.id ? "✓" : ""
+                        lit: root.applyMode === modelData.id
+                        onClicked: { root.applyMode = modelData.id; root.appliesOpen = false }
+                    }
+                }
+            }
+        }
+    }
+
     PanelSheet {
         id: mixSheet
         open: root.mixOpen

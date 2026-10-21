@@ -148,7 +148,88 @@ Singleton {
                     property real backgroundTransparency: 0.11
                     property real contentTransparency: 0.57
                 }
+                /// Palette > Glass: see-through, blurred app windows.
+                /// Applied by services/Glass.qml.
+                property JsonObject glass: JsonObject {
+                    property bool enable: false
+                    /// Opacity an app starts at when first switched on.
+                    property real strength: 0.85
+                    /// "same" | "lighter" (1 blur pass) | "off" — on battery.
+                    property string battery: "lighter"
+                    property JsonObject compositor: JsonObject {
+                        // Defaults are hyprland/general.conf's, so turning
+                        // Glass on changes nothing until a slider moves.
+                        property int size: 8
+                        property int passes: 3
+                        property real noise: 0.05
+                        property real contrast: 0.89
+                        property real brightness: 1.0
+                        property real vibrancy: 0.5
+                        property bool xray: true
+                        property bool popups: false
+                        property bool dimInactive: true
+                        property real dimStrength: 0.05
+                    }
+                    /// App id -> { on, opacity, blur }. Reassign the whole
+                    /// object to save; JsonObject misses nested writes.
+                    property var apps: ({})
+                    /// Window title bars from the ii-decor Hyprland plugin
+                    /// (/mnt/storage/dev/projects/ii-decor). Written to
+                    /// ~/.config/hypr/ii-decor.json; inert until it is loaded.
+                    property JsonObject decor: JsonObject {
+                        property bool enable: true
+                        /// The shell's menus (Palette, the settings panels) take the title bars' side and their
+                        /// buttons from a style package (panelButtons below); off: the pill style, always
+                        property bool panels: true
+                        /// the menus' button style: a package from assets/buttons or
+                        /// ~/.config/illogical-impulse/buttons (services/ButtonStyles.qml)
+                        property string panelButtons: "vibrant"
+                        /// any of the style's properties, changed without editing it: { "size": 32 }
+                        property var panelButtonVars: ({})
+                        property int height: 28
+                        property bool title: true
+                        /// "right" | "left"
+                        property string buttons: "right"
+                        property int buttonSize: 12
+                        property int buttonGap: 8
+                        property int padding: 10
+                        property int titleSize: 11
+                        property bool titleBold: false
+                        property bool doubleClick: true
+                        /// "special" (scratch workspace) | "hide" (silent to workspace 99)
+                        property string minimizeTo: "special"
+                        property bool blur: true
+                        /// "theme" (palette colours) | "macos" (red, yellow, green)
+                        property string dots: "theme"
+                        /// App icon left of the title (needs ii-decor with icon support).
+                        property bool icon: true
+                        property int iconSize: 16
+                        /// Bar colour role: "surface" | "low" | "container" | "high" | "highest"
+                        property string barRole: "surface"
+                        /// -1 = follow Glass (see-through at its strength), else 0.3..1
+                        property real barOpacity: -1
+                        /// 1px line between bar and app
+                        property bool separator: false
+                        /// Bar takes each app's own toolbar colour (KDE header, GTK window,
+                        /// terminal background) and its Glass opacity.
+                        property bool followApp: true
+                        /// "dots" (macOS dots) | "breeze" (KDE-style glyph buttons)
+                        property string theme: "dots"
+                        /// "macos" (min max close, right) | "macos-left" (close min max,
+                        /// left) | "windows" (min max close, right) | "extended"
+                        /// (pin float min max close, right)
+                        property string layout: "macos"
+                        /// Where bar colours come from: "app" (each app's own
+                        /// theme) | "kde" (the KDE colour scheme, every app) |
+                        /// "shell" (the shell palette, every app)
+                        property string colorSource: "app"
+                        /// class -> role, to match an app's own toolbar colour
+                        property var perApp: ({})
+                    }
+                }
                 property JsonObject wallpaperTheming: JsonObject {
+                    // a named theme (tinct theme list) instead of the wallpaper's colours: its own, exactly
+                    property string exactTheme: ""
                     property bool enableAppsAndShell: true
                     property bool enableQtApps: true
                     property bool enableTerminal: true
@@ -177,13 +258,13 @@ Singleton {
 
             property JsonObject apps: JsonObject {
                 property string bluetooth: "kcmshell6 kcm_bluetooth"
-                property string changePassword: "wezterm start --always-new-process -- fish -i -c 'passwd; read -P \"Press Enter to close...\"'"
+                property string changePassword: "$HOME/.local/bin/zash -- fish -i -c 'passwd; read -P \"Press Enter to close...\"'"
                 property string network: "kcmshell6 kcm_networkmanagement"
                 property string manageUser: "kcmshell6 kcm_users"
                 property string networkEthernet: "kcmshell6 kcm_networkmanagement"
                 property string taskManager: "plasma-systemmonitor --page-name Processes"
-                property string terminal: "wezterm start --always-new-process" // This is only for shell actions
-                property string update: "wezterm start --always-new-process -- fish -i -c 'pkexec pacman -Syu; read -P \"Press Enter to close...\"'"
+                property string terminal: "$HOME/.local/bin/zash" // This is only for shell actions
+                property string update: "$HOME/.local/bin/zash -- fish -i -c 'pkexec pacman -Syu; read -P \"Press Enter to close...\"'"
                 property string volumeMixer: `~/.config/hypr/hyprland/scripts/launch_first_available.sh "pavucontrol-qt" "pavucontrol"`
             }
 
@@ -502,6 +583,8 @@ Singleton {
                     // The media / notification slot on the right of the island
                     // (play button, track title, transport controls).
                     property bool showMediaContext: true
+                    // wsId (string) -> Material Symbol shown on the pill instead of the number
+                    property var icons: ({})
                     // Slot + active-indicator shape:
                     //   "cookie"   = squircle blob (default, 4-sided SineCookie)
                     //   "pill"     = round occupied chips + circular active dot
@@ -537,6 +620,11 @@ Singleton {
 
             property JsonObject calendar: JsonObject {
                 property string locale: "en-GB"
+            }
+
+            property JsonObject windowDrag: JsonObject {
+                // while a tiled window is dragged (Super+mouse): where it will land, by the layout
+                property bool preview: true
             }
 
             property JsonObject cheatsheet: JsonObject {
@@ -619,7 +707,7 @@ Singleton {
                 property bool pinnedOnStartup: false
                 property bool hoverToReveal: true // When false, only reveals on empty workspace
                 property list<string> pinnedApps: [ // IDs of pinned entries
-                    "org.kde.dolphin", "kitty",]
+                    "org.kde.dolphin", "zash",]
                 property list<string> ignoredAppRegexes: []
             }
 
@@ -645,7 +733,7 @@ Singleton {
             }
 
             property JsonObject launcher: JsonObject {
-                property list<string> pinnedApps: [ "org.kde.dolphin", "kitty", "cmake-gui"]
+                property list<string> pinnedApps: [ "org.kde.dolphin", "zash", "cmake-gui"]
 
                 // ── Ordering ─────────────────────────────────────────────
                 // frecency | relevance | frequency | recent | alphabetical
@@ -702,6 +790,14 @@ Singleton {
                 }
                 property bool centerClock: true
                 property bool showLockedText: true
+                // Locked and left alone: the lock fades towards black after a while (any key or
+                // mouse movement brings it back), and the keyboard's backlight goes off until unlock.
+                property JsonObject dim: JsonObject {
+                    property bool enable: true
+                    property int afterSeconds: 8
+                    property real strength: 0.92        // 1 = black
+                    property bool keyboardOff: true
+                }
                 property JsonObject security: JsonObject {
                     property bool unlockKeyring: true
                     property bool requirePasswordToPower: false
@@ -782,6 +878,10 @@ Singleton {
                 property bool centerIcons: true
             }
 
+            /// The card that pops up after every copy.
+            property JsonObject clipboardToast: JsonObject {
+                property bool enable: true
+            }
             property JsonObject regionSelector: JsonObject {
                 property JsonObject targetRegions: JsonObject {
                     property bool windows: true

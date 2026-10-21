@@ -1,4 +1,5 @@
 //@ pragma UseQApplication
+//@ pragma AppId ii-settings
 //@ pragma Env QS_NO_RELOAD_POPUP=1
 //@ pragma Env QT_QUICK_CONTROLS_STYLE=Basic
 //@ pragma Env QT_QUICK_FLICKABLE_WHEEL_DECELERATION=10000
@@ -10,18 +11,66 @@ import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
 import QtQuick.Window
+import Qt5Compat.GraphicalEffects
 import Quickshell
+import Quickshell.Io
 import qs.services
 import qs.modules.common
 import qs.modules.common.widgets
 import qs.modules.common.functions as CF
 
 ApplicationWindow {
+
+    // browser-like scrolling for every list in the window (Momentum.qml)
+
+    MomentumInjector { root: parent }
     id: root
+    // The window opens narrow and then takes its real size; animating the
+    // rail through that made the tab labels slide in on every open.
+    property bool railReady: false
+    Timer { running: true; interval: 500; onTriggered: root.railReady = true }
     property string firstRunFilePath: CF.FileUtils.trimFileProtocol(`${Directories.state}/user/first_run.txt`)
     property string firstRunFileContent: "This file is just here to confirm you've been greeted :>"
     property real contentPadding: 8
+    /// The gap between the page list and the content pane, which holds the list's scrollbar.
+    readonly property real railGutter: 25
+    /// Ctrl+F: the header opens and the search takes the keyboard
+    property bool searchWanted: false
+
+    /// The window buttons' look, from ii-decor's config (its colours follow the wallpaper), so
+    /// they match the other windows' exactly.
+    property var decor: ({ size: 12, gap: 8, minimize: "#dbc762", maximize: "#79cb90", close: "#ffb4ab" })
+    FileView {
+        path: `${Quickshell.env("HOME")}/.config/hypr/ii-decor.json`
+        watchChanges: true
+        onFileChanged: reload()
+        onLoaded: {
+            try {
+                const j = JSON.parse(text());
+                // "rgb(rrggbb)" / "rgba(rrggbbaa)" -> a QML colour
+                const qml = s => {
+                    const h = String(s ?? "").replace(/^rgba?\(|\)$/g, "");
+                    return h.length === 8 ? `#${h.slice(6)}${h.slice(0, 6)}` : `#${h}`;
+                };
+                root.decor = {
+                    size: j.buttonSize ?? 12,
+                    gap: j.buttonGap ?? 8,
+                    minimize: qml(j.colors?.minimize),
+                    maximize: qml(j.colors?.maximize),
+                    close: qml(j.colors?.close),
+                };
+            } catch (e) {}
+        }
+    }
     property bool showNextTime: false
+    // each group its own hue (the theme's terminal colours, so they follow it): Setup, Look,
+    // Behaviour, Machine
+    function groupColor(i) {
+        const hues = [Appearance.m3colors.term5, Appearance.m3colors.term4, Appearance.m3colors.term2, Appearance.m3colors.term3];
+        let g = -1;
+        for (let k = 0; k <= i && k < root.pages.length; k++) if (root.pages[k].group) g++;
+        return hues[Math.max(0, g) % hues.length];
+    }
     // `group` is the heading drawn ABOVE a page, so only the first page of each
     // group carries one. Ordered by how often each is needed.
     property var pages: [
@@ -244,6 +293,12 @@ ApplicationWindow {
 
         Keys.onPressed: (event) => {
             if (event.modifiers === Qt.ControlModifier) {
+                if (event.key === Qt.Key_F) {
+                    root.searchWanted = true;
+                    Qt.callLater(() => searchField.inputItem.forceActiveFocus());
+                    event.accepted = true;
+                    return;
+                }
                 if (event.key === Qt.Key_PageDown) {
                     root.currentPage = Math.min(root.currentPage + 1, root.pages.length - 1)
                     event.accepted = true;
@@ -268,15 +323,50 @@ ApplicationWindow {
             // and so paints over this whole subtree. The search results hang
             // below the box, outside the titlebar's own bounds, and were being
             // covered — z inside searchWrapper cannot reach across parents.
+            id: titlebar
             z: 600
             visible: Config.options?.windows.showTitlebar
             Layout.fillWidth: true
             Layout.fillHeight: false
-            implicitHeight: Math.max(titleText.implicitHeight, windowControlsRow.implicitHeight)
+            // Collapsed to a thin strip until the pointer comes over it; it stays open while
+            // the search is in use (focus, text, a find running).
+            readonly property real fullHeight: Math.max(titleText.implicitHeight, windowControlsRow.implicitHeight)
+            readonly property bool open: titleHover.hovered || collapseDelay.running
+                || root.searchWanted || searchField.activeFocus || searchField.text.length > 0 || root.findQuery.length > 0
+            implicitHeight: open ? fullHeight : 10
+            Behavior on implicitHeight {
+                animation: Appearance.animation.elementMoveFast.numberAnimation.createObject(this)
+            }
+            HoverHandler { id: titleHover }
+            Timer {
+                // a short grace before closing, so passing over the edge does not flicker
+                id: collapseDelay
+                interval: 350
+            }
+            Connections {
+                target: titleHover
+                function onHoveredChanged() { if (!titleHover.hovered) collapseDelay.restart() }
+            }
+            // its contents fade with it, and take no clicks while hidden
+            property real contentOpacity: open ? 1 : 0
+            Behavior on contentOpacity { NumberAnimation { duration: 140 } }
+            // a hint where it is while collapsed: a short handle in the middle
+            Rectangle {
+                anchors.horizontalCenter: parent.horizontalCenter
+                anchors.top: parent.top
+                anchors.topMargin: 3
+                width: 36
+                height: 4
+                radius: 2
+                color: Appearance.colors.colSubtext
+                opacity: (1 - titlebar.contentOpacity) * 0.5
+            }
             // Rail toggle and the config-file shortcut, in the header rather
             // than stacked above the page list.
             Row {
                 id: headerActions
+                opacity: titlebar.contentOpacity
+                enabled: titlebar.open
                 anchors.verticalCenter: parent.verticalCenter
                 anchors.left: parent.left
                 // Lines the first icon up with the page-list icons below: the
@@ -335,6 +425,7 @@ ApplicationWindow {
 
             StyledText {
                 id: titleText
+                opacity: titlebar.contentOpacity
                 anchors {
                     left: Config.options.windows.centerTitle ? undefined : headerActions.right
                     horizontalCenter: Config.options.windows.centerTitle ? parent.horizontalCenter : undefined
@@ -354,6 +445,7 @@ ApplicationWindow {
             // a find is running. Left of the box, like a browser's.
             Row {
                 id: findBar
+                opacity: titlebar.contentOpacity
                 visible: root.findQuery.length > 0
                 anchors.verticalCenter: parent.verticalCenter
                 anchors.right: searchWrapper.left
@@ -409,6 +501,8 @@ ApplicationWindow {
 
             Item {
                 id: searchWrapper
+                opacity: titlebar.contentOpacity
+                enabled: titlebar.open
                 anchors.verticalCenter: parent.verticalCenter
                 anchors.right: windowControlsRow.left
                 anchors.rightMargin: 8
@@ -433,7 +527,10 @@ ApplicationWindow {
                     // Re-read pages, packs and shaders when you start typing —
                     // FolderListModel does not watch directories, so without
                     // this a newly added effect would be missing from search.
-                    onActiveFocusChanged: if (activeFocus) SettingsIndex.refresh()
+                    onActiveFocusChanged: {
+                        if (activeFocus) SettingsIndex.refresh();
+                        else root.searchWanted = false;
+                    }
                     onTextChanged: searchDebounce.restart()
                     anchors.fill: parent
                     placeholderText: Translation.tr("Search settings…")
@@ -443,20 +540,38 @@ ApplicationWindow {
 
             }
 
-            RowLayout { // Window controls row
+            // The window's buttons as ii-decor draws them elsewhere, but here in the header: in the
+            // middle of the collapsed strip, and moving with it as it opens. (The plugin leaves this
+            // window alone: ii-decor.json lists ^ii-settings$.) The plugin has no bar for it, so the
+            // buttons do what its buttons do: minimise asks Wayland (the plugin sends any window's
+            // own minimise where its button would), maximise toggles, close closes.
+            Row {
                 id: windowControlsRow
                 anchors.verticalCenter: parent.verticalCenter
                 anchors.right: parent.right
-                RippleButton {
-                    buttonRadius: Appearance.rounding.full
-                    implicitWidth: 35
-                    implicitHeight: 35
-                    onClicked: root.close()
-                    contentItem: MaterialSymbol {
-                        anchors.centerIn: parent
-                        horizontalAlignment: Text.AlignHCenter
-                        text: "close"
-                        iconSize: 20
+                anchors.rightMargin: 6
+                spacing: root.decor.gap
+                Repeater {
+                    model: ["minimize", "maximize", "close"]
+                    delegate: Rectangle {
+                        id: decorButton
+                        required property string modelData
+                        width: root.decor.size
+                        height: width
+                        radius: width / 2
+                        color: buttonHover.hovered ? Qt.darker(root.decor[modelData], 1.25) : root.decor[modelData]
+                        Behavior on color { ColorAnimation { duration: 120 } }
+                        HoverHandler { id: buttonHover; cursorShape: Qt.PointingHandCursor }
+                        TapHandler {
+                            onTapped: {
+                                if (decorButton.modelData === "close")
+                                    root.close();
+                                else if (decorButton.modelData === "minimize")
+                                    decorButton.Window.window.showMinimized();
+                                else
+                                    Quickshell.execDetached(["hyprctl", "eval", `hl.dispatch(hl.dsp.window.fullscreen({ mode = "maximized" }))`]);
+                            }
+                        }
                     }
                 }
             }
@@ -470,10 +585,13 @@ ApplicationWindow {
                 id: navRailWrapper
                 Layout.fillHeight: true
                 Layout.margins: 5
+                // room for the list's scrollbar, with space on both sides of it
+                Layout.rightMargin: root.railGutter - root.contentPadding
                 // 56 is NavigationRailButton.baseSize — the collapsed rail is
                 // one button wide.
-                implicitWidth: navRail.expanded ? 150 : 56
+                implicitWidth: navRail.expanded ? 196 : 56
                 Behavior on implicitWidth {
+                    enabled: root.railReady
                     animation: Appearance.animation.elementMoveFast.numberAnimation.createObject(this)
                 }
                 NavigationRail { // Window content with navigation rail and content pane
@@ -491,6 +609,30 @@ ApplicationWindow {
                     // A sibling, not an attached bar: attached lives inside the
                     // flickable and pushes the entries aside. Out here it sits
                     // in the gap that was already there.
+                    // Edge fades instead of a hard clip: a strip in the window
+                    // colour over each edge, shown only where more entries exist.
+                    // Overlays, not a layer mask: the mask version hid the list.
+                    Repeater {
+                        model: [true, false]   // top, bottom
+                        delegate: Rectangle {
+                            required property bool modelData
+                            readonly property bool isTop: modelData
+                            parent: navRailWrapper
+                            z: 2
+                            x: navRail.x + railFlick.x
+                            width: railFlick.width
+                            height: 28
+                            y: isTop ? navRail.y + railFlick.y
+                                     : navRail.y + railFlick.y + railFlick.height - height
+                            visible: railFlick.interactive
+                            opacity: (isTop ? !railFlick.atYBeginning : !railFlick.atYEnd) ? 1 : 0
+                            Behavior on opacity { NumberAnimation { duration: 140 } }
+                            gradient: Gradient {
+                                GradientStop { position: 0; color: isTop ? root.color : "transparent" }
+                                GradientStop { position: 1; color: isTop ? "transparent" : root.color }
+                            }
+                        }
+                    }
                     StyledScrollBar {
                         id: railScroll
 
@@ -498,21 +640,26 @@ ApplicationWindow {
                         // ColumnLayout and anchors inside one are undefined.
                         parent: navRailWrapper
                         flickable: railFlick
+                        alwaysVisible: true
                         orientation: Qt.Vertical
                         hitWidth: 14
 
-                        // Centred in the gap between the rail and the content
-                        // pane: the wrapper's own margin plus the row spacing.
-                        readonly property real gutter: 5 + root.contentPadding
-                        x: navRailWrapper.width + (gutter - hitWidth) / 2
+                        // Centred in the gap between the rail and the content pane; from the
+                        // first heading's line down to the pane's bottom (the wrapper stops
+                        // 5px short of it), with no padding at the ends of the track.
+                        x: navRailWrapper.width + (root.railGutter - hitWidth) / 2
                         y: navRail.y + railFlick.y
-                        height: railFlick.height
+                        height: navRailWrapper.height + 5 - y
+                        topPadding: 0
+                        bottomPadding: 0
 
                         size: railFlick.height / Math.max(1, railFlick.contentHeight)
                         position: railFlick.contentY / Math.max(1, railFlick.contentHeight)
                         onPositionChanged: if (pressed)
                             railFlick.contentY = position * railFlick.contentHeight
 
+                        // Always there when the list overflows, but plain: no marker dots
+                        // (a dot per entry beside a list you can read only repeated it).
                         policy: railFlick.contentHeight > railFlick.height + 2
                             ? ScrollBar.AlwaysOn : ScrollBar.AsNeeded
                         currentMarker: root.currentPage
@@ -520,7 +667,7 @@ ApplicationWindow {
 
                         /// Scroll the current entry into view, if it is not.
                         function revealCurrent() {
-                            const b = (railTabs.buttons ?? [])[root.currentPage];
+                            const b = (railFlick.navContent.buttons ?? [])[root.currentPage];
                             const span = railFlick.contentHeight;
                             if (!b || span <= 0) return;
                             if (b.y < railFlick.contentY)
@@ -532,12 +679,7 @@ ApplicationWindow {
 
                         /// Landmarks come from the buttons: only they know what a
                         /// group heading measured.
-                        function rebuildMap() {
-                            railScroll.markers = railScroll.markersFromItems(
-                                railTabs.buttons ?? [], railFlick,
-                                b => b.buttonText ?? "",
-                                b => b.hasGroupLabel === true);
-                        }
+                        function rebuildMap() { railScroll.markers = [] }
 
                         // Coalesced: expanding the rail moves every button at once.
                         Timer {
@@ -563,20 +705,67 @@ ApplicationWindow {
 
                     StyledFlickable {
                         id: railFlick
+                        // Wide window: the desktop-style list. Narrow: the icon rail.
+                        readonly property Item navContent: navRail.expanded ? sideNav : railTabs
                         showScrollBar: false      // railScroll is its bar
                         Layout.fillHeight: true
                         Layout.fillWidth: true
-                        implicitWidth: railTabs.implicitWidth
-                        contentHeight: railTabs.implicitHeight
+                        implicitWidth: navContent.implicitWidth
+                        contentHeight: railFlick.navContent.implicitHeight + railTail
+                        // Scroll padding: just enough space after the last entry that
+                        // the end position starts exactly at an entry, so scrolled to the
+                        // bottom the top entry is whole instead of cut in half.
+                        readonly property real railTail: {
+                            const over = railFlick.navContent.implicitHeight - height;
+                            if (over <= 0) return 0;
+                            let next = railFlick.navContent.implicitHeight;
+                            for (const b of (railFlick.navContent.buttons ?? []))
+                                if (b.y >= over && b.y < next) next = b.y;
+                            return next - over;
+                        }
                         contentWidth: width
                         // Only actually scrolls when it has to.
                         interactive: contentHeight > height
                         clip: true
 
+                        // ── Website-style scrolling ─────────────────────────
+                        // Scroll snapping (CSS scroll-snap: proximity): once the
+                        // scroll settles, glide to the nearest entry so none is
+                        // left cut in half at the edge.
+                        onContentYChanged: railSnap.restart()
+                        onMovementEnded: railSnap.restart()
+                        Timer {
+                            id: railSnap
+                            interval: 160
+                            onTriggered: {
+                                if (railFlick.moving || railFlick.dragging || !railFlick.interactive) return;
+                                const max = railFlick.contentHeight - railFlick.height;
+                                const y = railFlick.contentY;
+                                if (y <= 0 || y >= max - 1) return;
+                                let best = 0;
+                                for (const b of (railFlick.navContent.buttons ?? []))
+                                    if (Math.abs(b.y - y) < Math.abs(best - y)) best = b.y;
+                                best = Math.max(0, Math.min(max, best));
+                                if (Math.abs(best - y) >= 1)
+                                    railScroll.snapAnimTo(best / railFlick.contentHeight);
+                            }
+                        }
+
+                        SideNavList {
+                            id: sideNav
+                            visible: navRail.expanded
+                            width: parent.width
+                            model: root.pages
+                            currentIndex: root.currentPage
+                            onSelected: index => root.currentPage = index
+                            animate: root.railReady
+                        }
                         NavigationRailTabArray {
                             id: railTabs
+                            visible: !navRail.expanded
                             width: parent.width
                             currentIndex: root.currentPage
+                            animate: root.railReady
                             expanded: navRail.expanded
                             Repeater {
                                 model: root.pages
@@ -586,7 +775,9 @@ ApplicationWindow {
                                     toggled: root.currentPage === index
                                     onPressed: root.currentPage = index;
                                     expanded: navRail.expanded
+                                    animateExpand: root.railReady
                                     buttonIcon: modelData.icon
+                                    iconColor: root.groupColor(index)
                                     buttonIconRotation: modelData.iconRotation || 0
                                     buttonText: modelData.name
                                     groupLabel: modelData.group ?? ""
