@@ -51,7 +51,8 @@ Singleton {
 
     // https://specifications.freedesktop.org/menu/latest/category-registry.html
     property list<string> mainRegisteredCategories: ["AudioVideo", "Development", "Education", "Game", "Graphics", "Network", "Office", "Science", "Settings", "System", "Utility"]
-    property list<string> appCategories: DesktopEntries.applications.values.reduce((acc, entry) => {
+    // from AppSearch.list: built once the entries settle (from every batch it ran ~15 times at startup)
+    property list<string> appCategories: AppSearch.list.reduce((acc, entry) => {
         for (const category of entry.categories) {
             if (!acc.includes(category) && mainRegisteredCategories.includes(category)) {
                 acc.push(category);
@@ -111,7 +112,7 @@ Singleton {
 
     // Built from the desktop entries Lutris writes, so installing or removing a
     // game is picked up on its own — nothing to maintain by hand.
-    readonly property var gameCommands: (DesktopEntries.applications?.values ?? [])
+    readonly property var gameCommands: (AppSearch.list ?? [])
         .filter(e => e && (e.id ?? "").startsWith("lutris-"))
         .map(e => {
             const slug = String(e.id).replace(/^lutris-/, "");
