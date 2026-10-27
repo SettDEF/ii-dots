@@ -1,5 +1,6 @@
 pragma Singleton
 
+import QtQuick
 import qs.modules.common
 import qs.modules.common.functions
 import Quickshell
@@ -44,13 +45,25 @@ Singleton {
         }
     ]
 
-    // Deduped list to fix double icons
-    readonly property list<DesktopEntry> list: Array.from(DesktopEntries.applications.values)
-        .filter((app, index, self) => 
-            index === self.findIndex((t) => (
-                t.id === app.id
-            ))
-    )
+    // Deduped list to fix double icons: the first entry of each id, in one pass. findIndex per app
+    // was quadratic (~3400 entries: 5.8 million calls at startup, the GC thrashing for 4 s).
+    // Built once the entries settle: they arrive in batches at startup, and rebuilding per batch
+    // (~15 times) also re-prepared every name for fuzzy search and re-ran the launcher's search.
+    property list<DesktopEntry> list: []
+    function rebuild() {
+        const seen = new Set();
+        root.list = Array.from(DesktopEntries.applications.values).filter(app => {
+            if (seen.has(app.id)) return false;
+            seen.add(app.id);
+            return true;
+        });
+    }
+    Timer { id: rebuildTimer; interval: 400; onTriggered: root.rebuild() }
+    Connections {
+        target: DesktopEntries.applications
+        function onValuesChanged() { rebuildTimer.restart(); }
+    }
+    Component.onCompleted: rebuildTimer.restart()
     
     readonly property var preppedNames: list.map(a => ({
         name: Fuzzy.prepare(`${a.name} `),
