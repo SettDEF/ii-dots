@@ -23,7 +23,7 @@ fn split(k: &str) -> (Vec<String>, String) {
 }
 
 pub fn extract() -> Option<App> {
-    let out = std::process::Command::new("zeit").arg("list-keys").output().ok()?;
+    let out = crate::model::program("zeit").arg("list-keys").output().ok()?;
     let text = String::from_utf8_lossy(&out.stdout);
     let mut sections: Vec<Section> = Vec::new();
     let mut section = String::new();

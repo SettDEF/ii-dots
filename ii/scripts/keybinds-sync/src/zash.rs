@@ -13,7 +13,7 @@ fn split(k: &str) -> (Vec<String>, String) {
 }
 
 pub fn extract() -> Option<App> {
-    let out = std::process::Command::new("zash").arg("--help").output().ok()?;
+    let out = crate::model::program("zash").arg("--help").output().ok()?;
     let text = String::from_utf8_lossy(&out.stdout);
     let mut sections = Vec::new();
     let mut inside = false;

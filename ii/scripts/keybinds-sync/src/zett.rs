@@ -32,7 +32,7 @@ fn split(k: &str) -> (Vec<String>, String) {
 pub fn extract() -> Option<App> {
     let mut sections: Vec<Section> = Vec::new();
     for (mode, name) in MODES {
-        let Ok(out) = std::process::Command::new("zett").args(["keys", mode]).output() else { continue };
+        let Ok(out) = crate::model::program("zett").args(["keys", mode]).output() else { continue };
         for line in String::from_utf8_lossy(&out.stdout).lines() {
             // key, then 2+ spaces, then what it does
             let Some((key, what)) = line.split_once("  ") else { continue };

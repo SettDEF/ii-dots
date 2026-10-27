@@ -114,3 +114,10 @@ fn with_n(comment: &str, d: u32) -> Option<String> {
     }
     None
 }
+
+/// A program by name, also when systemd's PATH lacks ~/.local/bin (zeit, zash, zett live there).
+pub fn program(name: &str) -> std::process::Command {
+    let home = std::env::var("HOME").unwrap_or_default();
+    let local = format!("{home}/.local/bin/{name}");
+    std::process::Command::new(if std::path::Path::new(&local).exists() { local } else { name.to_string() })
+}
