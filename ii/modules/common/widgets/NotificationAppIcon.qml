@@ -48,12 +48,13 @@ MaterialShape { // App icon
     // square (most icon themes, Reversal included) leaves the coloured circle
     // showing around its corners. The backdrop exists for the Material-symbol
     // fallback, which is a bare glyph and genuinely needs the contrast.
-    color: (root.appIcon !== "" || root.showImage)
+    color: (root.appIconPath !== "" || root.showImage)
         ? "transparent"
         : (isUrgent ? Appearance.colors.colPrimaryContainer : Appearance.colors.colSecondaryContainer)
     Loader {
         id: materialSymbolLoader
-        active: root.appIcon == ""
+        // also when the theme has no icon of that name: a clean symbol, never "image-missing"
+        active: root.appIconPath === ""
         anchors.fill: parent
         sourceComponent: MaterialSymbol {
             text: {
@@ -71,13 +72,13 @@ MaterialShape { // App icon
     }
     Loader {
         id: appIconLoader
-        active: !root.showImage && root.appIcon != ""
+        active: !root.showImage && root.appIconPath !== ""
         anchors.centerIn: parent
         sourceComponent: IconImage {
             id: appIconImage
             implicitSize: root.appIconSize
             asynchronous: true
-            source: Quickshell.iconPath(root.appIcon, "image-missing")
+            source: root.appIconPath
         }
     }
     Loader {

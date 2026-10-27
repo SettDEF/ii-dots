@@ -826,6 +826,9 @@ Singleton {
 
             property JsonObject notifications: JsonObject {
                 property int timeout: 7000
+                // how popups come in: "auto" (smooth on the charger, light on battery or in Vitals' Silent mode),
+                // "smooth" (grows in, the cards below follow), "light" (fades in, the others jump), "off"
+                property string popupAnimation: "auto"
                 // Shell-played notification sound. Lets the shell be the single,
                 // controllable source of notification sound (respecting per-app
                 // mute + the global silent toggle) — disable the apps' own

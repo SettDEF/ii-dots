@@ -16,10 +16,18 @@ MouseArea { // Notification group area
     property var notifications: notificationGroup?.notifications ?? []
     property int notificationCount: notifications.length
     property bool multipleNotifications: notificationCount > 1
-    property bool expanded: false
     property bool popup: false
+    // A popup with one notification opens up at once: its whole text and its buttons, not one
+    // clipped line. A stack of several stays compact (click to open). Toggling breaks the binding.
+    property bool expanded: popup && !multipleNotifications
     property real padding: 10
-    implicitHeight: background.implicitHeight
+    // A new popup grows in from no height: the cards below follow it every frame (no gap, no late
+    // snap; the popup list moves nothing by itself, NotificationListView).
+    // only with the "smooth" preset (Notifications.popupAnimation); "light" and "off" are in place at once
+    property real appear: popup && Notifications.popupAnimation === "smooth" ? 0 : 1
+    NumberAnimation on appear { running: root.popup && Notifications.popupAnimation === "smooth"; from: 0; to: 1; duration: Appearance.animation.elementMove.duration; easing.type: Easing.OutCubic }
+    implicitHeight: background.implicitHeight * appear
+    clip: popup && appear < 1
 
     property real dragConfirmThreshold: 70 // Drag further to discard notification
     property real dismissOvershoot: 20 // Account for gaps and bouncy animations
@@ -135,8 +143,9 @@ MouseArea { // Notification group area
         }
         
         clip: true
-        implicitHeight: root.expanded ? 
-            row.implicitHeight + padding * 2 :
+        // a popup stops at 280 px (a long body is read whole in the centre)
+        implicitHeight: root.expanded ?
+            (root.popup ? Math.min(280, row.implicitHeight + padding * 2) : row.implicitHeight + padding * 2) :
             Math.min(80, row.implicitHeight + padding * 2)
 
         Behavior on implicitHeight {

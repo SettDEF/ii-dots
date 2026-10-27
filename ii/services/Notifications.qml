@@ -17,6 +17,16 @@ import Quickshell.Services.Notifications
  */
 Singleton {
 	id: root
+    // The popup animation preset (Config notifications.popupAnimation). "auto" follows the power: on battery
+    // or in Vitals' Silent mode (the firmware's quiet profile) the light one, else the smooth one.
+    FileView { id: platformProfile; path: "/sys/firmware/acpi/platform_profile" }
+    Timer { interval: 10000; running: true; repeat: true; onTriggered: platformProfile.reload() }
+    readonly property bool quietPower: platformProfile.text().trim() === "quiet"
+    readonly property string popupAnimation: {
+        const m = Config.options.notifications.popupAnimation ?? "auto";
+        if (m !== "auto") return m;
+        return ((Battery.available && !Battery.isPluggedIn) || root.quietPower) ? "light" : "smooth";
+    }
     component Notif: QtObject {
         id: wrapper
         required property int notificationId // Could just be `id` but it conflicts with the default prop in QtObject

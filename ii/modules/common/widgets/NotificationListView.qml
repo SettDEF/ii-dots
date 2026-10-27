@@ -14,6 +14,12 @@ StyledListView { // Scrollable window
     property var contextMenu: null
 
     spacing: 3
+    // popups: the cards below a new one follow its growing height (NotificationGroup.appear) instead of
+    // one move with the height it had when it came, which left a gap and snapped later
+    Transition { id: noMove }
+    Component.onCompleted: if (root.popup) root.addDisplaced = noMove
+    // "off": no fade either
+    animateAppearance: !root.popup || Notifications.popupAnimation !== "off"
 
     model: ScriptModel {
         values: root.popup ? Notifications.popupAppNameList : Notifications.appNameList
