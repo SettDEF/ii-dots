@@ -22,6 +22,10 @@ Item {
 
     // Inputs
     property string rootPath: ""
+    /// the folder to offer when rootPath does not exist (a typo in the path field), "" for none
+    property string fallbackPath: ""
+    /// rootPath is not a folder: the list says so instead of staying silently empty
+    property bool rootMissing: false
     property var nameFilters: ["*"]
     property bool showHidden: false
     property bool showHeader: true
@@ -71,7 +75,7 @@ Item {
         listProc.parentPath = rootPath
         listProc.insertAt   = 0
         listProc.depth      = 0
-        listProc.exec({ command: ["bash", "-c", _cmdFor(rootPath)] })
+        listProc.exec({ command: ["bash", "-c", "[ -d " + JSON.stringify(rootPath) + " ] || { printf '!missing\\n'; exit 0; }; " + _cmdFor(rootPath)] })
     }
 
     /**
@@ -117,6 +121,8 @@ Item {
         property string parentPath: ""
         stdout: StdioCollector {
             onStreamFinished: {
+                if (listProc.depth === 0) root.rootMissing = text.startsWith("!missing");
+                if (root.rootMissing && listProc.depth === 0) return;
                 const lines = text.split("\n").filter(l => l.length > 0)
                 const dirs = []
                 const files = []
@@ -183,6 +189,26 @@ Item {
                     font.pixelSize: Appearance.font.pixelSize.smaller
                     onEditingFinished: root.rootPath = text
                 }
+            }
+        }
+
+        // the path does not exist: say so, and offer the default folder
+        ColumnLayout {
+            visible: root.rootMissing
+            Layout.fillWidth: true
+            Layout.margins: 8
+            spacing: 6
+            StyledText {
+                Layout.fillWidth: true
+                wrapMode: Text.Wrap
+                text: Translation.tr("This folder does not exist.")
+                color: Appearance.colors.colSubtext
+                font.pixelSize: Appearance.font.pixelSize.smaller
+            }
+            RippleButton {
+                visible: root.fallbackPath.length > 0 && root.fallbackPath !== root.rootPath
+                buttonText: Translation.tr("Use %1").arg(root.fallbackPath.replace(/^\/home\/[^/]+/, "~"))
+                onClicked: root.rootPath = root.fallbackPath
             }
         }
 

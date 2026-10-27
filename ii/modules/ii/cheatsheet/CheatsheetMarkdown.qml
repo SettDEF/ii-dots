@@ -323,6 +323,7 @@ Item {
                 Layout.fillHeight: true
                 rootPath: root.rootPath
                 nameFilters: ["*.md", "*.markdown", "*.txt"]
+                fallbackPath: root.defaultRoot
                 selected: root.activePath
                 onFileSelected: p => {
                     root.activePath = p.startsWith("file://") ? p.slice(7) : p
