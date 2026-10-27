@@ -17,6 +17,9 @@ MouseArea { // Notification group area
     property int notificationCount: notifications.length
     property bool multipleNotifications: notificationCount > 1
     property bool popup: false
+    // the "Now / 5m" label: re-read every 30 s while shown (Date.now() alone never re-evaluates)
+    property int timeTick: 0
+    Timer { interval: 30000; running: root.visible; repeat: true; onTriggered: root.timeTick++ }
     // A popup with one notification opens up at once: its whole text and its buttons, not one
     // clipped line. A stack of several stays compact (click to open). Toggling breaks the binding.
     property bool expanded: popup && !multipleNotifications
@@ -214,7 +217,7 @@ MouseArea { // Notification group area
                             // Layout.fillWidth: true
                             Layout.rightMargin: 10
                             horizontalAlignment: Text.AlignLeft
-                            text: NotificationUtils.getFriendlyNotifTimeString(notificationGroup?.time)
+                            text: (root.timeTick, NotificationUtils.getFriendlyNotifTimeString(notificationGroup?.time))
                             font.pixelSize: topRow.fontSize
                             color: Appearance.colors.colSubtext
                         }
