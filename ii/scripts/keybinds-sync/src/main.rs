@@ -22,11 +22,14 @@ mod reel;
 mod tmux;
 mod wezterm;
 mod zsh;
+mod zash;
+mod zeit;
+mod zett;
 
 use model::App;
 use std::io::Write;
 
-const EXTRACTORS: &[fn() -> Option<App>] = &[tmux::extract, wezterm::extract, nvim::extract, zsh::extract, reel::extract];
+const EXTRACTORS: &[fn() -> Option<App>] = &[zeit::extract, zash::extract, zett::extract, tmux::extract, wezterm::extract, nvim::extract, zsh::extract, reel::extract];
 
 fn main() {
     let apps: Vec<App> = EXTRACTORS.iter().filter_map(|f| f()).filter(|a| !a.sections.is_empty()).collect();

@@ -337,7 +337,8 @@ Item {
     // the active/selected keyboard layout, then apply the substitutions.
     function displayKey(raw) {
         const resolved = KeyboardLayout.resolveKey(raw)
-        return keySubstitutions[resolved] || resolved
+        // a key the layout cannot resolve (", !, …) shows as it is
+        return keySubstitutions[resolved] || resolved || String(raw ?? "")
     }
 
     Column {
@@ -359,6 +360,18 @@ Item {
             anchors.bottomMargin: 14
             implicitWidth: appChips.implicitWidth + 12
             implicitHeight: appChips.implicitHeight + 12
+            // too many apps for the width: the others shrink to their icon (name on hover), the open one keeps it
+            readonly property var entries: [{ id: "desktop", name: Translation.tr("Desktop"), icon: "desktop_windows" }].concat(AppKeybinds.apps)
+            readonly property real roomy: entries.reduce((w, e) => w + 49 + String(e.name).length * 8.5 + 6, 0) + 52
+            readonly property bool compact: roomy > (parent ? parent.width - 28 : 9999)
+            // the wheel over the bar goes to the next or previous app
+            WheelHandler {
+                onWheel: (ev) => {
+                    const ids = appDock.entries.map(e => e.id);
+                    const i = Math.max(0, ids.indexOf(root.app));
+                    root.app = ids[(i + (ev.angleDelta.y < 0 || ev.angleDelta.x < 0 ? 1 : ids.length - 1)) % ids.length];
+                }
+            }
             radius: Appearance.rounding.full
             color: Appearance.colors.colLayer0
             border.width: 1
@@ -368,12 +381,13 @@ Item {
             anchors.centerIn: parent
             spacing: 6
             Repeater {
-                model: [{ id: "desktop", name: Translation.tr("Desktop"), icon: "desktop_windows" }].concat(AppKeybinds.apps)
+                model: appDock.entries
                 delegate: Rectangle {
                     id: appChip
                     required property var modelData
                     readonly property bool sel: root.app === appChip.modelData.id && (root._q ?? "").trim() === ""
-                    implicitWidth: appChipRow.implicitWidth + 26
+                    readonly property bool labelled: appChip.sel || !appDock.compact
+                    implicitWidth: appChipRow.implicitWidth + (appChip.labelled ? 26 : 17)
                     implicitHeight: 34
                     radius: Appearance.rounding.full
                     color: appChip.sel ? Appearance.colors.colPrimary
@@ -381,6 +395,11 @@ Item {
                     Behavior on color { animation: Appearance.animation.elementMoveFast.colorAnimation.createObject(this) }
                     HoverHandler { id: appChipHover; cursorShape: Qt.PointingHandCursor }
                     TapHandler { onTapped: root.app = appChip.modelData.id }
+                    StyledToolTip {
+                        extraVisibleCondition: false
+                        alternativeVisibleCondition: appChipHover.hovered && !appChip.labelled
+                        text: appChip.modelData.name
+                    }
                     Row {
                         id: appChipRow
                         anchors.centerIn: parent
@@ -393,6 +412,7 @@ Item {
                             color: appChip.sel ? Appearance.colors.colOnPrimary : Appearance.colors.colOnLayer1
                         }
                         StyledText {
+                            visible: appChip.labelled
                             anchors.verticalCenter: parent.verticalCenter
                             text: appChip.modelData.name
                             font.pixelSize: Appearance.font.pixelSize.small
