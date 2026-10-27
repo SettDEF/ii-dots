@@ -1,0 +1,13 @@
+[package]
+name = "filecopy"
+version = "0.1.0"
+edition = "2021"
+description = "Put files on the Wayland clipboard the way file managers expect (copy or cut)"
+
+[dependencies]
+wl-clipboard-rs = "0.9"
+
+[profile.release]
+opt-level = "s"
+lto = true
+strip = true

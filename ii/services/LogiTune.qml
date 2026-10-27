@@ -3,7 +3,7 @@ pragma ComponentBehavior: Bound
 
 // Hardware settings for the MX Master, via the user's own `logitune-cli`.
 //
-// Wraps ~/.scripts/logitune-cli rather than calling solaar directly. That
+// Wraps ~/.scripts/apps/knurl/logitune-cli rather than calling solaar directly. That
 // script is already running as a daemon (`logitune-cli --daemon`), already
 // reapplies settings when the mouse reconnects, and already publishes
 // everything this needs to /dev/shm/logitune-cli-status.json. Reading that
@@ -78,7 +78,7 @@ Singleton {
     function _run(args) {
         root.busy = true;
         proc.command = ["bash", "-c",
-            "\"$HOME/.scripts/logitune-cli\" " + args + " >/dev/null 2>&1"];
+            "\"$HOME/.scripts/apps/knurl/logitune-cli\" " + args + " >/dev/null 2>&1"];
         proc.running = true;
     }
 

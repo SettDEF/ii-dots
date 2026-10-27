@@ -1,2 +1,4 @@
+module qs.modules.ii.dotos
 DotosCapture 1.0 DotosCapture.qml
+DotosMini 1.0 DotosMini.qml
 DotosTaskRow 1.0 DotosTaskRow.qml

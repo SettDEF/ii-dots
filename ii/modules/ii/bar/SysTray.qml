@@ -20,9 +20,26 @@ Item {
 
     property list<var> pinnedItems: TrayService.pinnedItems
     property list<var> unpinnedItems: TrayService.unpinnedItems
+    // The bar may give the tray less than it wants (BarContent): pinned icons
+    // that do not fit move into the overflow popup instead of drawing over
+    // their neighbours. -1 = no limit.
+    property real availableWidth: -1
+    readonly property int _iconW: 20
+    readonly property int _gap: 15
+    readonly property int _buttonW: 24
+    readonly property real fullWidth: {
+        const n = root.pinnedItems.length;
+        return (n > 0 ? n * root._iconW + (n - 1) * root._gap : 0)
+             + (root.unpinnedItems.length > 0 ? (n > 0 ? root._gap : 0) + root._buttonW : 0);
+    }
+    readonly property int fit: root.availableWidth < 0 || root.availableWidth >= root.fullWidth ? root.pinnedItems.length
+        : Math.max(0, Math.floor((root.availableWidth - root._buttonW) / (root._iconW + root._gap)))
+    readonly property var shownPinned: Array.from(root.pinnedItems).slice(0, root.fit)
+    readonly property var overflowItems: Array.from(root.pinnedItems).slice(root.fit).concat(Array.from(root.unpinnedItems))
     onUnpinnedItemsChanged: {
         if (unpinnedItems.length == 0) root.closeOverflowMenu();
     }
+    onOverflowItemsChanged: if (overflowItems.length == 0) root.trayOverflowOpen = false
 
     function grabFocus() {
         focusGrab.active = true;
@@ -69,7 +86,7 @@ Item {
 
         RippleButton {
             id: trayOverflowButton
-            visible: root.showOverflowMenu && root.unpinnedItems.length > 0
+            visible: root.showOverflowMenu && root.overflowItems.length > 0
             toggled: root.trayOverflowOpen
             property bool containsMouse: hovered
 
@@ -99,17 +116,17 @@ Item {
             StyledPopup {
                 id: overflowPopup
                 hoverTarget: trayOverflowButton
-                active: root.trayOverflowOpen && root.unpinnedItems.length > 0
+                active: root.trayOverflowOpen && root.overflowItems.length > 0
 
                 GridLayout {
                     id: trayOverflowLayout
                     anchors.centerIn: parent
-                    columns: Math.ceil(Math.sqrt(root.unpinnedItems.length))
+                    columns: Math.ceil(Math.sqrt(root.overflowItems.length))
                     columnSpacing: 10
                     rowSpacing: 10
 
                     Repeater {
-                        model: root.unpinnedItems
+                        model: root.overflowItems
 
                         delegate: SysTrayItem {
                             required property SystemTrayItem modelData
@@ -126,7 +143,7 @@ Item {
 
         Repeater {
             model: ScriptModel {
-                values: root.pinnedItems
+                values: root.shownPinned
             }
 
             delegate: SysTrayItem {

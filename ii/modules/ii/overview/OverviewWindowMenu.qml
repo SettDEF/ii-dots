@@ -5,17 +5,21 @@
 // MouseArea only accepted Left and Middle. Everything here is a dispatch
 // Hyprland already exposes — the overview just never offered it.
 //
+// The rows are PopupMenuPanel, the same panel as the dock's, the tray's and
+// every other context menu, so it looks and sizes like them. It used to draw
+// its own smaller rows and a grid of workspace numbers, and read as a
+// different app's menu.
+//
 // A PopupWindow rather than an overlay Item, for the same reason
 // LauncherEntryMenu is one: the overview's layer surface masks input to the
 // bar band plus two named regions, so an overlay drawn over the workspace
-// grid is not reliably clickable. Its own surface has no mask.
+// grid is not reliably clickable. Its own surface has no mask. It is sized
+// for the panel plus its "Move to workspace" submenu beside it.
 import qs
 import qs.services
 import qs.modules.common
 import qs.modules.common.widgets
-import qs.modules.common.functions
 import QtQuick
-import QtQuick.Layouts
 import Quickshell
 
 PopupWindow {
@@ -28,8 +32,12 @@ PopupWindow {
     property string windowClass: ""
     property bool isFloating: false
     property bool isFullscreen: false
+    property bool isPinned: false
     property int workspaceId: -1
 
+    readonly property int panelWidth: 240
+    /// room left of the panel, so a submenu that flips left still fits
+    readonly property int side: 300
     color: "transparent"
 
     function openFor(data) {
@@ -39,6 +47,7 @@ PopupWindow {
         root.windowClass = String(data.class ?? "")
         root.isFloating = data.floating === true
         root.isFullscreen = (data.fullscreen ?? 0) !== 0
+        root.isPinned = data.pinned === true
         root.workspaceId = data.workspace?.id ?? -1
         root.visible = true
     }
@@ -46,27 +55,60 @@ PopupWindow {
 
     function dispatch(cmd) {
         HyprDispatch.run(`${cmd}, address:${root.address}`)
-        root.close()
+    }
+
+    readonly property var menuItems: {
+        const name = root.title.length > 0 ? root.title : root.windowClass
+        const items = [
+            { icon: "open_in_new", label: name.length > 34 ? name.slice(0, 33) + "…" : name,
+              onTriggered: () => root.dispatch("focuswindow") },
+            { separator: true },
+            { icon: root.isFloating ? "grid_view" : "picture_in_picture",
+              label: root.isFloating ? Translation.tr("Tile") : Translation.tr("Float"),
+              onTriggered: () => root.dispatch("togglefloating") },
+            { icon: root.isFullscreen ? "fullscreen_exit" : "fullscreen",
+              label: root.isFullscreen ? Translation.tr("Leave fullscreen") : Translation.tr("Fullscreen"),
+              onTriggered: () => root.dispatch("fullscreen, 1") },
+        ]
+        // Hyprland pins floating windows only; on a tiled one it does nothing.
+        if (root.isFloating)
+            items.push({ icon: "keep", label: root.isPinned ? Translation.tr("Unpin") : Translation.tr("Pin to every workspace"),
+                         onTriggered: () => root.dispatch("pin") })
+        // Dragging only reaches workspaces on screen in the grid; this reaches the rest.
+        const ws = []
+        for (let i = 1; i <= 10; i++) {
+            if (i === root.workspaceId) continue
+            const n = i
+            ws.push({ icon: "tab_move", label: Translation.tr("Workspace %1").arg(n),
+                      onTriggered: () => root.dispatch(`movetoworkspacesilent ${n}`) })
+        }
+        items.push({ icon: "move_group", label: Translation.tr("Move to workspace"), submenu: ws })
+        items.push({ separator: true })
+        items.push({ icon: "close", label: Translation.tr("Close window"), danger: true,
+                     onTriggered: () => root.dispatch("closewindow") })
+        return items
     }
 
     anchor {
         window: anchorItem ? anchorItem.QsWindow.window : null
         gravity: Edges.Right | Edges.Bottom
-        edges: Edges.Right | Edges.Bottom
-        adjustment: PopupAdjustment.Flip | PopupAdjustment.SlideY
+        edges: Edges.Top | Edges.Left
+        adjustment: PopupAdjustment.SlideX | PopupAdjustment.SlideY
         // mapFromItem() throws if this evaluates before the anchor belongs to
         // a window, hence the guard.
         rect: (root.visible && anchorItem && anchorItem.QsWindow?.window)
             ? Qt.rect(
-                anchorItem.QsWindow.mapFromItem(anchorItem, anchorItem.width / 2, anchorItem.height / 2).x,
+                anchorItem.QsWindow.mapFromItem(anchorItem, anchorItem.width / 2, anchorItem.height / 2).x - root.side,
                 anchorItem.QsWindow.mapFromItem(anchorItem, anchorItem.width / 2, anchorItem.height / 2).y,
                 1, 1)
             : Qt.rect(0, 0, 1, 1)
     }
 
-    implicitWidth: panel.implicitWidth + Appearance.sizes.elevationMargin * 2
-    implicitHeight: panel.implicitHeight + Appearance.sizes.elevationMargin * 2
+    // the panel, and room for its submenu beside it
+    implicitWidth: root.side + root.panelWidth * 2 + 340
+    implicitHeight: 620
 
+    // a click outside the panels closes it
     MouseArea {
         anchors.fill: parent
         acceptedButtons: Qt.AllButtons
@@ -75,154 +117,36 @@ PopupWindow {
         onWheel: wheel => wheel.accepted = true
     }
 
-    StyledRectangularShadow { target: panel }
-
-    Rectangle {
-        id: panel
-        anchors.centerIn: parent
-        implicitWidth: 248
-        implicitHeight: col.implicitHeight + 16
-        radius: Appearance.rounding.small
-        // m3surfaceContainer, not colLayer1: colLayer1 is solved against the
-        // shell's backdrop, and this popup is its own transparent surface with
-        // nothing behind it, so colLayer1 comes out see-through.
-        color: Appearance.m3colors.m3surfaceContainer
-        border.width: 1
-        border.color: Appearance.colors.colLayer0Border
-
-        MouseArea { anchors.fill: parent; acceptedButtons: Qt.AllButtons }
-
+    // NOT named `bounds`: PopupMenuPanel has a `bounds` property of its own, so
+    // `bounds: bounds` inside it bound the property to itself (null) and the
+    // panel had no size.
+    Item {
+        id: menuArea
+        anchors.fill: parent
         focus: root.visible
         Keys.onEscapePressed: event => { root.close(); event.accepted = true }
 
-        ColumnLayout {
-            id: col
-            anchors { left: parent.left; right: parent.right; top: parent.top; margins: 8 }
-            spacing: 2
-
-            StyledText {
-                Layout.fillWidth: true
-                Layout.leftMargin: 6
-                text: root.title.length > 0 ? root.title : root.windowClass
-                font.pixelSize: Appearance.font.pixelSize.smaller
-                font.weight: Font.Medium
-                color: Appearance.colors.colOnLayer1
-                elide: Text.ElideRight
-            }
-            StyledText {
-                Layout.fillWidth: true
-                Layout.leftMargin: 6
-                Layout.bottomMargin: 4
-                text: root.windowClass
-                font.pixelSize: Appearance.font.pixelSize.smallest
-                color: Appearance.colors.colSubtext
-                elide: Text.ElideRight
-            }
-
-            component MenuRow: RippleButton {
-                Layout.fillWidth: true
-                implicitHeight: 32
-                buttonRadius: Appearance.rounding.verysmall
-                property string rowIcon: ""
-                property string rowLabel: ""
-                property color tint: Appearance.colors.colOnLayer1
-                contentItem: RowLayout {
-                    spacing: 8
-                    MaterialSymbol {
-                        Layout.leftMargin: 4
-                        text: rowIcon
-                        iconSize: Appearance.font.pixelSize.large
-                        color: tint
-                    }
-                    StyledText {
-                        Layout.fillWidth: true
-                        text: rowLabel
-                        font.pixelSize: Appearance.font.pixelSize.smaller
-                        color: tint
-                    }
+        // Re-created on every open so it animates in, like the dock's.
+        Loader {
+            id: menuLoader
+            anchors.fill: parent
+            active: root.visible
+            sourceComponent: Item {
+                // the shadow has to be the panel's sibling to anchor to it
+                StyledRectangularShadow { target: menuPanel }
+                PopupMenuPanel {
+                    id: menuPanel
+                    items: root.menuItems
+                    bounds: menuArea
+                    originX: root.side
+                    originW: 0
+                    desiredY: 8
+                    panelWidth: root.panelWidth
+                    dismissAll: () => root.close()
+                    onChildOpenChanged: if (childOpen) Qt.callLater(() => console.warn("overview menu: submenu open", JSON.stringify({ panelX: x, panelW: width, area: [menuArea.width, menuArea.height] })))
+                    // swallow clicks on the panel itself
+                    MouseArea { anchors.fill: parent; z: -1; acceptedButtons: Qt.AllButtons }
                 }
-            }
-
-            MenuRow {
-                rowIcon: root.isFloating ? "grid_view" : "picture_in_picture"
-                rowLabel: root.isFloating ? Translation.tr("Tile") : Translation.tr("Float")
-                onClicked: root.dispatch("togglefloating")
-            }
-            MenuRow {
-                rowIcon: root.isFullscreen ? "fullscreen_exit" : "fullscreen"
-                rowLabel: root.isFullscreen ? Translation.tr("Leave fullscreen")
-                                            : Translation.tr("Fullscreen")
-                onClicked: root.dispatch("fullscreen, 1")
-            }
-            MenuRow {
-                rowIcon: "keep"
-                rowLabel: Translation.tr("Pin to every workspace")
-                // Pinning only applies to floating windows in Hyprland, so
-                // offering it on a tiled one would silently do nothing.
-                enabled: root.isFloating
-                onClicked: root.dispatch("pin")
-            }
-
-            Rectangle {
-                Layout.fillWidth: true
-                Layout.topMargin: 3
-                Layout.bottomMargin: 3
-                implicitHeight: 1
-                color: Appearance.colors.colLayer0Border
-            }
-
-            StyledText {
-                Layout.leftMargin: 6
-                Layout.bottomMargin: 2
-                text: Translation.tr("Move to workspace")
-                font.pixelSize: Appearance.font.pixelSize.smallest
-                color: Appearance.colors.colSubtext
-            }
-            // Dragging already moves a window between workspaces, but only to
-            // one that is on screen in the grid. This reaches the rest.
-            Flow {
-                Layout.fillWidth: true
-                Layout.leftMargin: 4
-                Layout.rightMargin: 4
-                spacing: 4
-                Repeater {
-                    model: 10
-                    delegate: RippleButton {
-                        required property int index
-                        readonly property int wsId: index + 1
-                        readonly property bool here: wsId === root.workspaceId
-                        implicitWidth: 40
-                        implicitHeight: 28
-                        buttonRadius: Appearance.rounding.verysmall
-                        colBackground: here ? Appearance.colors.colPrimary
-                                            : Appearance.colors.colLayer2
-                        enabled: !here
-                        contentItem: StyledText {
-                            horizontalAlignment: Text.AlignHCenter
-                            verticalAlignment: Text.AlignVCenter
-                            text: wsId
-                            font.pixelSize: Appearance.font.pixelSize.smaller
-                            color: here ? Appearance.colors.colOnPrimary
-                                        : Appearance.colors.colOnLayer2
-                        }
-                        onClicked: root.dispatch(`movetoworkspacesilent ${wsId}`)
-                    }
-                }
-            }
-
-            Rectangle {
-                Layout.fillWidth: true
-                Layout.topMargin: 3
-                Layout.bottomMargin: 3
-                implicitHeight: 1
-                color: Appearance.colors.colLayer0Border
-            }
-
-            MenuRow {
-                rowIcon: "close"
-                rowLabel: Translation.tr("Close window")
-                tint: Appearance.m3colors.m3error
-                onClicked: root.dispatch("closewindow")
             }
         }
     }

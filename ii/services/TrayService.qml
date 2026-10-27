@@ -9,8 +9,15 @@ Singleton {
     id: root
 
     property bool smartTray: Config.options.tray.filterPassive
-    property list<var> itemsInUserList: SystemTray.items.values.filter(i => (Config.options.tray.pinnedItems.includes(i.id) && (!smartTray || i.status !== Status.Passive)))
-    property list<var> itemsNotInUserList: SystemTray.items.values.filter(i => (!Config.options.tray.pinnedItems.includes(i.id) && (!smartTray || i.status !== Status.Passive)))
+    // Discord's tray icon turns into a crossed mic while you are muted in a
+    // call; the bar's red mic icon says that already (with a Discord badge)
+    readonly property bool discordMuteShown: DiscordVoice.inVoice && !!DiscordVoice.settings?.mute
+    function shown(i) {
+        return (!smartTray || i.status !== Status.Passive)
+            && !(discordMuteShown && i.id.startsWith("discord_status_icon"))
+    }
+    property list<var> itemsInUserList: SystemTray.items.values.filter(i => Config.options.tray.pinnedItems.includes(i.id) && shown(i))
+    property list<var> itemsNotInUserList: SystemTray.items.values.filter(i => !Config.options.tray.pinnedItems.includes(i.id) && shown(i))
 
     property bool invertPins: Config.options.tray.invertPinnedItems
     property list<var> pinnedItems: invertPins ? itemsNotInUserList : itemsInUserList

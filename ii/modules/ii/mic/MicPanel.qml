@@ -51,6 +51,11 @@ Scope {
         function open(): void   { GlobalStates.micOpen = true }
         function close(): void  { GlobalStates.micOpen = false }
         function mute(): void   { Mic.setMuted(!Mic.muted) }
+        /// Pick the microphone by node name, as the panel's device list does.
+        function select(name: string): string {
+            Mic.selectSource(name);
+            return "preferred -> " + (Mic.preferredName || "default");
+        }
 
         /// Set the capture gain in dB. Exists because the persisted value lives
         /// in the running service: editing the state file underneath it is
@@ -76,6 +81,7 @@ Scope {
         function status(): string {
             return JSON.stringify({
                 device: Mic.deviceName,
+                muted: Mic.muted,
                 nodeName: Mic.source?.name ?? null,
                 preferred: Mic.preferredName,
                 cardIndex: Mic.cardIndex,
@@ -114,12 +120,12 @@ Scope {
             panelId: "mic"
             title: Translation.tr("Microphone")
             icon: "mic"
-            onClosed: GlobalStates.micOpen = false
+            onRequestClose: GlobalStates.micOpen = false
 
             // The meter is an ffmpeg process. It runs while this panel is on
             // screen and not a second longer.
-            Component.onCompleted: Mic.metering = true
-            Component.onDestruction: Mic.metering = false
+            Component.onCompleted: { Mic.metering = true; MicShare.polling = true }
+            Component.onDestruction: { Mic.metering = false; MicShare.polling = false }
 
             ColumnLayout {
                 Layout.fillWidth: true
@@ -181,9 +187,51 @@ Scope {
                             visible: Mic.preferredMissing
                             Layout.fillWidth: true
                             wrapMode: Text.Wrap
-                            text: Translation.tr("Your chosen microphone is not connected — using the default.")
+                            text: Mic.preferredOff
+                                ? Translation.tr("Your chosen microphone is switched off — turning it on.")
+                                : Translation.tr("Your chosen microphone is not connected — using the default.")
                             font.pixelSize: Appearance.font.pixelSize.smallest
                             color: Appearance.m3colors.m3error
+                        }
+
+                        // mics plugged in but switched off (their profile is Off): not in the
+                        // list above until turned on
+                        Repeater {
+                            model: Mic.offCards
+                            delegate: RowLayout {
+                                required property var modelData
+                                Layout.fillWidth: true
+                                spacing: 8
+                                MaterialSymbol {
+                                    text: "mic_off"
+                                    iconSize: 17
+                                    color: Appearance.colors.colSubtext
+                                }
+                                StyledText {
+                                    Layout.fillWidth: true
+                                    elide: Text.ElideRight
+                                    text: Translation.tr("%1 is switched off").arg(modelData.description)
+                                    font.pixelSize: Appearance.font.pixelSize.smaller
+                                    color: Appearance.colors.colOnLayer1
+                                }
+                                RippleButton {
+                                    implicitHeight: 28
+                                    implicitWidth: onLabel.implicitWidth + 24
+                                    buttonRadius: Appearance.rounding.full
+                                    colBackground: Appearance.colors.colPrimary
+                                    colBackgroundHover: Appearance.colors.colPrimaryHover
+                                    onClicked: Mic.wakeCard(modelData.card, modelData.profile)
+                                    contentItem: StyledText {
+                                        id: onLabel
+                                        anchors.centerIn: parent
+                                        horizontalAlignment: Text.AlignHCenter
+                                        text: Translation.tr("Turn on")
+                                        font.pixelSize: Appearance.font.pixelSize.smaller
+                                        color: Appearance.colors.colOnPrimary
+                                    }
+                                    StyledToolTip { text: Translation.tr("Switch it to its %1 profile").arg(modelData.profile) }
+                                }
+                            }
                         }
 
                         // Live input level. The one thing you cannot judge from a
@@ -493,6 +541,153 @@ Scope {
                             onActivated: index => {
                                 Mic.moveStream(target?.index, Mic.sources[index]?.name ?? "");
                                 visible = false;
+                            }
+                        }
+                    }
+                }
+
+                /* --- share audio into the mic --------------------------- */
+
+                Rectangle {
+                    Layout.fillWidth: true
+                    implicitHeight: shareCol.implicitHeight + 24
+                    radius: Appearance.rounding.normal
+                    color: Appearance.colors.colLayer1
+
+                    ColumnLayout {
+                        id: shareCol
+                        anchors { left: parent.left; right: parent.right; top: parent.top; margins: 12 }
+                        spacing: 8
+
+                        RowLayout {
+                            spacing: 8
+                            MaterialSymbol {
+                                text: "podcasts"
+                                iconSize: 17
+                                color: MicShare.enabled ? Appearance.colors.colPrimary : Appearance.colors.colSubtext
+                            }
+                            StyledText {
+                                Layout.fillWidth: true
+                                text: Translation.tr("Play into mic")
+                                font.weight: Font.DemiBold
+                                font.pixelSize: Appearance.font.pixelSize.smaller
+                            }
+                            StyledSwitch {
+                                checked: MicShare.enabled
+                                onClicked: MicShare.setEnabled(checked)
+                            }
+                        }
+
+                        StyledText {
+                            Layout.fillWidth: true
+                            wrapMode: Text.Wrap
+                            text: !MicShare.enabled
+                                ? Translation.tr("Adds a virtual mic, \"Mic + shared audio\": your voice plus any app you pick, so the people in your call hear it.")
+                                : MicShare.listeners.length > 0
+                                    ? Translation.tr("Used by %1. Tap an app below to play it into the call.").arg(MicShare.listeners.join(", "))
+                                    : Translation.tr("Now pick \"Mic + shared audio\" as the input device in Discord (Settings, Voice & Video), once.")
+                            font.pixelSize: Appearance.font.pixelSize.smallest
+                            color: Appearance.colors.colSubtext
+                        }
+
+                        StyledText {
+                            visible: MicShare.lastError !== ""
+                            Layout.fillWidth: true
+                            wrapMode: Text.Wrap
+                            text: MicShare.lastError
+                            font.pixelSize: Appearance.font.pixelSize.smallest
+                            color: Appearance.m3colors.m3error
+                        }
+
+                        StyledText {
+                            visible: MicShare.enabled && MicShare.playingApps.length === 0
+                            Layout.fillWidth: true
+                            text: Translation.tr("Nothing is playing. Start the music, then pick it here.")
+                            font.pixelSize: Appearance.font.pixelSize.smallest
+                            color: Appearance.colors.colSubtext
+                        }
+
+                        // One chip per playing app; tap to send it into the mic.
+                        Flow {
+                            visible: MicShare.enabled && MicShare.playingApps.length > 0
+                            Layout.fillWidth: true
+                            spacing: 6
+
+                            Repeater {
+                                model: MicShare.playingApps
+                                delegate: RippleButton {
+                                    id: appChip
+                                    required property var modelData
+                                    readonly property bool sel: MicShare.sharedApps.indexOf(modelData.binary) >= 0
+                                    implicitHeight: 32
+                                    implicitWidth: chipRow.implicitWidth + 24
+                                    buttonRadius: Appearance.rounding.full
+                                    colBackground: sel ? Appearance.colors.colPrimary : Appearance.colors.colLayer2
+                                    colBackgroundHover: sel ? Appearance.colors.colPrimary : Appearance.colors.colLayer2Hover
+                                    onClicked: MicShare.setShared(modelData.binary, !sel)
+                                    contentItem: RowLayout {
+                                        id: chipRow
+                                        anchors.centerIn: parent
+                                        spacing: 6
+                                        Item {
+                                            implicitWidth: 18
+                                            implicitHeight: 18
+                                            property string iconPath: Quickshell.iconPath(
+                                                AppSearch.guessIcon(appChip.modelData.binary), true)
+                                            IconImage {
+                                                anchors.fill: parent
+                                                visible: parent.iconPath !== ""
+                                                source: parent.iconPath
+                                            }
+                                            MaterialSymbol {
+                                                anchors.centerIn: parent
+                                                visible: parent.iconPath === ""
+                                                text: "music_note"
+                                                iconSize: 16
+                                                color: appChip.sel ? Appearance.colors.colOnPrimary : Appearance.colors.colOnLayer2
+                                            }
+                                        }
+                                        StyledText {
+                                            text: appChip.modelData.binary
+                                            font.pixelSize: Appearance.font.pixelSize.smaller
+                                            color: appChip.sel ? Appearance.colors.colOnPrimary : Appearance.colors.colOnLayer2
+                                        }
+                                    }
+                                    StyledToolTip {
+                                        text: appChip.sel ? Translation.tr("Playing into your mic. Tap to stop.")
+                                                          : Translation.tr("Tap to play this into your mic")
+                                    }
+                                }
+                            }
+                        }
+
+                        MicToggle {
+                            visible: MicShare.enabled
+                            label: Translation.tr("Hear it yourself")
+                            help: Translation.tr("Shared audio still plays in your headphones.")
+                            checked: MicShare.hearIt
+                            available: true
+                            onToggled: on => MicShare.setHearIt(on)
+                        }
+
+                        RowLayout {
+                            visible: MicShare.enabled
+                            Layout.fillWidth: true
+                            spacing: 8
+                            MaterialSymbol { text: "volume_up"; iconSize: 17; color: Appearance.colors.colSubtext }
+                            StyledSlider {
+                                Layout.fillWidth: true
+                                configuration: StyledSlider.Configuration.S
+                                from: 0
+                                to: 1
+                                value: MicShare.level
+                                onMoved: MicShare.setLevel(value)
+                            }
+                            StyledText {
+                                text: Math.round(MicShare.level * 100) + "%"
+                                font.family: Appearance.font.family.monospace
+                                font.pixelSize: Appearance.font.pixelSize.smallie
+                                color: Appearance.colors.colSubtext
                             }
                         }
                     }

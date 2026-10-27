@@ -1,0 +1,13 @@
+[package]
+name = "keybinds-sync"
+version = "0.1.0"
+edition = "2021"
+description = "Collects the keybinds of apps (tmux, WezTerm, …) for the shell's cheatsheet"
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+[profile.release]
+opt-level = 3
+strip = true

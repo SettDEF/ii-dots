@@ -65,7 +65,23 @@ Singleton {
         repeat: true
         running: true
         triggeredOnStart: true
-        onTriggered: memProc.running = true
+        // the shell's Vitals feed has the numbers already; a bash+awk run only when it is down
+        onTriggered: {
+            const m = Vitals.fresh ? Vitals.snap?.mem : null
+            if (m && m.total_kb > 0) root._apply(m.total_kb, m.available_kb ?? 0)
+            else memProc.running = true
+        }
+    }
+    function _apply(total, avail) {
+        root.percentAvailable = (avail / Math.max(1, total)) * 100
+        root.percentUsed      = 100 - root.percentAvailable
+        const newState = root._settledTier(root.percentUsed, root.state)
+        if (newState !== root.state) {
+            const prev = root.state
+            root.state = newState
+            root._onStateChanged(prev, newState)
+        }
+        root.ready = true
     }
     Process {
         id: memProc
@@ -75,17 +91,7 @@ Singleton {
             onStreamFinished: {
                 const parts = (text || "").trim().split(/\s+/)
                 if (parts.length < 2) return
-                const total = parseInt(parts[0]) || 1
-                const avail = parseInt(parts[1]) || 0
-                root.percentAvailable = (avail / total) * 100
-                root.percentUsed      = 100 - root.percentAvailable
-                const newState = root._settledTier(root.percentUsed, root.state)
-                if (newState !== root.state) {
-                    const prev = root.state
-                    root.state = newState
-                    root._onStateChanged(prev, newState)
-                }
-                root.ready = true
+                root._apply(parseInt(parts[0]) || 1, parseInt(parts[1]) || 0)
             }
         }
     }

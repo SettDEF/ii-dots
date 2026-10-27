@@ -85,7 +85,12 @@ Singleton {
     function providerForName(name) {
         const n = String(name ?? "")
         if (n.length === 0) return null
-        return root.providers.find(p => p.names.indexOf(n) !== -1) ?? null
+        return root.providers.find(p => p.names.some(m => root.isModel(n, m))) ?? null
+    }
+
+    /// `name` is model `m` or a renamed one ("JBL Xtreme 5 von Tomi").
+    function isModel(name, m) {
+        return name === m || String(name).startsWith(m + " ")
     }
 
     function hasProvider(name) { return root.providerForName(name) !== null }
@@ -112,7 +117,7 @@ Singleton {
     }
     function _btAttached(provider) {
         return BluetoothStatus.connectedDevices.some(d =>
-            provider.names.indexOf(d?.name ?? "") !== -1)
+            provider.names.some(m => root.isModel(d?.name ?? "", m)))
     }
     function _present(provider) {
         return root._btAttached(provider) || root._usbAttached(provider)
@@ -419,7 +424,8 @@ Singleton {
         if (kind === "mouse")
             out.push({ id: "pointer", label: Translation.tr("Pointer"), icon: "mouse" })
 
-        for (const g of (root.vendorControls[name] ?? []))
+        const model = Object.keys(root.vendorControls).find(m => root.isModel(name, m))
+        for (const g of (model ? root.vendorControls[model] : []))
             out.push({ id: g.id, label: Translation.tr(g.label), icon: g.icon })
 
         // Connect / trust / forget. Universal, which is the point: a paired

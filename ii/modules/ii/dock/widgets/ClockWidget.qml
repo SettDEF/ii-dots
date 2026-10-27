@@ -28,7 +28,7 @@ DockTile {
         : root.seconds ? Qt.formatDateTime(tick.date, "mm:ss")
         : Qt.formatDateTime(tick.date, "mm")
 
-    // The palette is monochrome (matugen read a grey wallpaper), so the tiles
+    // The palette is monochrome (tinct read a grey wallpaper), so the tiles
     // are told apart by LIGHTNESS, not hue. This one is the light tile.
     tint: Appearance.colors.colPrimary
     tooltip: DateTime.longDate

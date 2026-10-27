@@ -153,7 +153,7 @@ Singleton {
     function stop() { root._run(["stop"]); }
     function undo() { root._run(["undo"]); }
     /// the Dotos window, optionally on a page (home, inbox, tasks, board, …)
-    function openApp(page) { Quickshell.execDetached(["dotos-gui"].concat(page ? [page] : [])); }
+    function openApp(page) { Quickshell.execDetached(["/bin/sh", "-c", "hyprctl dispatch exec \"[float; center; size 45% 65%] /home/caesar/.local/bin/dotos-gui " + (page ? page : "home") + "\""]); }
 
     // ── reading ──
     property bool _again: false

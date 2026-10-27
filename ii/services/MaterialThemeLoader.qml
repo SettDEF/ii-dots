@@ -16,6 +16,7 @@ Singleton {
 
     function reapplyTheme() {
         themeFileView.reload()
+        termFileView.reload()
     }
 
     function applyColors(fileContent) {
@@ -71,5 +72,22 @@ Singleton {
             }
         }
         onLoadFailed: root.resetFilePathNextTime();
+    }
+
+    // The theme's own hues (Catppuccin's red, Dracula's green …), from tinct's terminal colours:
+    // colorN lines become m3colors.termN. Missing file: the defaults stay.
+    FileView {
+        id: termFileView
+        path: Qt.resolvedUrl(Directories.generatedTerminalThemePath)
+        watchChanges: true
+        onFileChanged: this.reload()
+        function apply() {
+            for (const line of termFileView.text().split("\n")) {
+                const m = /^color(\d+)\s+(#[0-9a-fA-F]{6})/.exec(line);
+                if (m && +m[1] < 16) Appearance.m3colors[`term${m[1]}`] = m[2];
+            }
+        }
+        onLoaded: apply()
+        Component.onCompleted: if (loaded) apply()
     }
 }

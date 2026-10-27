@@ -51,6 +51,14 @@ Singleton {
             ? String(value)
             : `'${String(value).replace(/\\/g, "\\\\").replace(/'/g, "\\'")}'`;
 
+        // A device name ("asustek-computer-inc.-…") is no Lua identifier, so
+        // device:NAME:key goes through hl.device, which also applies it live.
+        if (parts[0] === "device" && parts.length === 3) {
+            const name = parts[1].replace(/\\/g, "\\\\").replace(/'/g, "\\'");
+            Hyprland.dispatch(`eval hl.device({ name = '${name}', ${parts[2].replace(/-/g, "_")} = ${lit} })`);
+            return;
+        }
+
         let inner = lit;
         for (let i = parts.length - 1; i >= 0; i--)
             inner = `{ ${parts[i]} = ${inner} }`;
@@ -65,7 +73,9 @@ Singleton {
         const comma = cmd.lastIndexOf(",");
         if (comma > 0) {
             const tail = cmd.slice(comma + 1).trim();
-            if (/^(address|class|title|pid|initialclass|initialtitle|floating|tiled):/i.test(tail)) {
+            // "activewindow" is the focused one, which every Lua dispatcher acts on by default
+            if (/^activewindow$/i.test(tail)) cmd = cmd.slice(0, comma).trim();
+            else if (/^(address|class|title|pid|initialclass|initialtitle|floating|tiled):/i.test(tail)) {
                 target = tail;
                 cmd = cmd.slice(0, comma).trim();
             }
@@ -148,6 +158,24 @@ Singleton {
             return `hl.dsp.window.move({ x = ${xy[0]}, y = ${xy[1]}, `
                  + `relative = ${exact ? "false" : "true"}${win} })`;
         }
+        case "resizewindowpixel": {
+            // as movewindowpixel: "exact W H" is the size, a bare "W H" is by how much
+            const parts = arg.trim().split(/\s+/);
+            const exact = parts[0] === "exact";
+            const wh = exact ? parts.slice(1) : parts;
+            const numeric = /^-?[0-9]+(\.[0-9]+)?$/;
+            if (!numeric.test(wh[0] ?? "") || !numeric.test(wh[1] ?? "")) {
+                console.warn("[HyprDispatch] resizewindowpixel needs numeric w/h, got:", arg);
+                return "";
+            }
+            return `hl.dsp.window.resize({ x = ${wh[0]}, y = ${wh[1]}, `
+                 + `relative = ${exact ? "false" : "true"}${win} })`;
+        }
+        // Hyprland 0.56: float's action is toggle / enable / disable
+        case "setfloating":
+            return `hl.dsp.window.float({ action = "enable"${win} })`;
+        case "settiled":
+            return `hl.dsp.window.float({ action = "disable"${win} })`;
         case "movecursor": {
             const p = arg.split(/\s+/);
             return `hl.dsp.cursor.move({ x = ${p[0]}, y = ${p[1]} })`;

@@ -1,6 +1,7 @@
 pragma Singleton
 import QtQuick
 import Quickshell
+import qs
 
 /**
  * qBittorrent WebUI bridge.
@@ -100,12 +101,18 @@ Singleton {
     function isCompletedState(s)   { return s === "uploading" || s === "stalledUP" || s === "queuedUP" || s === "pausedUP" || s === "stoppedUP" || s === "checkingUP" }
 
     Timer {
-        // Poll fast only while qBittorrent is actually up; when it's not
-        // running, back off to 15s instead of hammering a dead endpoint every 2s.
-        interval: root.available ? root.pollMs : 15000
+        // Every 2 s only while someone looks (the shelf, and the bar's torrent filters with it); 30 s
+        // otherwise (the keep-alive toggle's count), 15 s while qBittorrent is down. Each poll is a new
+        // connection that OpenSnitch inspects: every 2 s around the clock kept it at ~40 % of a core.
+        interval: !root.available ? 15000 : GlobalStates.shelfOpen ? root.pollMs : 30000
         running: true
         repeat: true
         triggeredOnStart: true
         onTriggered: root.refresh()
+    }
+    // the shelf opened: fresh at once, not at the end of a 30 s wait
+    Connections {
+        target: GlobalStates
+        function onShelfOpenChanged() { if (GlobalStates.shelfOpen) root.refresh() }
     }
 }

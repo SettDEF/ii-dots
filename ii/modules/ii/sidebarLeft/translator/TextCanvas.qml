@@ -14,9 +14,12 @@ Rectangle {
     property var inputTextArea: isInput ? inputLoader.item : undefined
     readonly property string displayedText: isInput ? inputLoader.item.text : 
         root.text.length > 0 ? outputLoader.item.text : ""
+    property real minHeight: 150
+    property color textColor: Appearance.colors.colOnLayer1
+    property real textSize: Appearance.font.pixelSize.small
     default property alias actionButtons: actions.data
     Layout.fillWidth: true
-    implicitHeight: Math.max(150, inputColumn.implicitHeight)
+    implicitHeight: Math.max(root.minHeight, inputColumn.implicitHeight)
     color: Appearance.colors.colLayer2
     radius: Appearance.rounding.normal
 
@@ -37,8 +40,8 @@ Rectangle {
                 placeholderText: root.placeholderText
                 wrapMode: TextEdit.Wrap
                 textFormat: TextEdit.PlainText
-                font.pixelSize: Appearance.font.pixelSize.small
-                color: Appearance.colors.colOnLayer1
+                font.pixelSize: root.textSize
+                color: root.textColor
                 padding: 15
                 background: null
                 onTextChanged: root.inputTextChanged()
@@ -54,8 +57,9 @@ Rectangle {
                 id: outputTextArea
                 padding: 15
                 wrapMode: Text.Wrap
-                font.pixelSize: Appearance.font.pixelSize.small
-                color: root.text.length > 0 ? Appearance.colors.colOnLayer1 : Appearance.colors.colSubtext
+                font.pixelSize: root.textSize
+                color: root.text.length > 0 ? root.textColor : Appearance.colors.colSubtext
+                Behavior on font.pixelSize { NumberAnimation { duration: 120 } }
                 text: root.text.length > 0 ? root.text : root.placeholderText
             }
         }
@@ -73,7 +77,7 @@ Rectangle {
                 Layout.leftMargin: 10
                 sourceComponent: Text {
                     text: Translation.tr("%1 characters").arg(inputLoader.item.text.length)
-                    color: Appearance.colors.colOnLayer1
+                    color: Appearance.colors.colSubtext
                     font.pixelSize: Appearance.font.pixelSize.smaller
                 }
             }

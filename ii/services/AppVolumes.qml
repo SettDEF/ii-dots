@@ -95,17 +95,20 @@ Singleton {
         const out = [];
         const seen = ({});
 
+        // One row per app, but `nodes` holds ALL its streams: a browser opens one
+        // per tab/video, and controlling only the first missed the one playing.
         for (const node of (Audio.outputAppNodes ?? [])) {
             if (!node) continue;
             const key = root.keyForNode(node);
-            if (seen[key]) continue;
-            seen[key] = true;
-            out.push({
+            if (seen[key]) { seen[key].nodes.push(node); continue; }
+            seen[key] = {
                 key: key,
                 name: Audio.appNodeDisplayName(node),
                 node: node,
+                nodes: [node],
                 live: true
-            });
+            };
+            out.push(seen[key]);
         }
 
         for (const win of (HyprlandData.windowList ?? [])) {
@@ -119,6 +122,7 @@ Singleton {
                 key: key,
                 name: cls,
                 node: null,
+                nodes: [],
                 live: false
             });
         }
@@ -142,13 +146,20 @@ Singleton {
     function setVolume(row, value) {
         const v = Math.max(0, Math.min(1, value));
         if (row?.live && row.node?.audio) {
-            root._writeLive(row.node.audio, v, root.balanceFor(row));
+            const b = root.balanceFor(row);
+            for (const a of root._audios(row)) root._writeLive(a, v, b);
             return;
         }
         const next = Object.assign({}, root.storedVolumes);
         next[row.key] = v;
         root.storedVolumes = next;
         root._persist();
+    }
+
+    /// Every stream of the row that can be written to.
+    function _audios(row) {
+        // Only bound (tracked) nodes: a write to an unbound one is dropped with an error.
+        return (row?.nodes ?? (row?.node ? [row.node] : [])).filter(n => n?.ready).map(n => n.audio).filter(a => a);
     }
 
     /// Writes a level and a balance together. Assigning `audio.volume` alone sets
@@ -182,8 +193,8 @@ Singleton {
         if (b === 0) delete next[row.key]; else next[row.key] = b;
         root.storedBalances = next;
         root._persist();
-        if (row?.live && row.node?.audio)
-            root._writeLive(row.node.audio, root._peak(row.node.audio), b);
+        if (row?.live)
+            for (const a of root._audios(row)) root._writeLive(a, root._peak(a), b);
     }
 
     function mutedFor(row) {
@@ -191,25 +202,28 @@ Singleton {
     }
 
     function toggleMute(row) {
-        if (row?.live && row.node?.audio)
-            row.node.audio.muted = !row.node.audio.muted;
+        if (!(row?.live && row.node?.audio)) return;
+        const m = !row.node.audio.muted;
+        for (const a of root._audios(row)) a.muted = m;
     }
 
     // A remembered level only becomes real once the app opens a stream, so
-    // apply it the first time we see a node for that app.
+    // apply it the first time we see a node for that app. Balance is kept
+    // current by setBalance, so every new stream of the app gets it.
     property var _applied: ({})
+    property var _panned: ({})
     Connections {
         target: Audio
         function onOutputAppNodesChanged() {
             for (const node of (Audio.outputAppNodes ?? [])) {
-                if (!node?.audio) continue;
+                if (!node?.ready || !node?.audio || root._panned[node.id]) continue;
                 const key = root.keyForNode(node);
-                if (root._applied[key]) continue;
-                const want = root.storedVolumes[key];
+                const want = root._applied[key] ? undefined : root.storedVolumes[key];
                 const pan = root.storedBalances[key];
                 if (want === undefined && pan === undefined) continue;
                 root._writeLive(node.audio, want ?? root._peak(node.audio), pan ?? 0);
                 root._applied[key] = true;
+                root._panned[node.id] = true;
             }
         }
     }

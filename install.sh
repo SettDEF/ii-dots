@@ -44,7 +44,7 @@ CORE_PKGS=(quickshell hyprland
 RECOMMENDED_PKGS=(libnotify wl-clipboard networkmanager pipewire pipewire-pulse
                   wireplumber brightnessctl grim slurp cliphist hyprpicker
                   polkit-gnome xdg-utils jq curl
-                  matugen ddcutil
+                  ddcutil
                   syntax-highlighting       # code blocks in the AI chat
                   # Applications the shell launches BY NAME. Without them the
                   # button is there and does nothing, which is worse than a
@@ -544,7 +544,7 @@ JSON
 
 # ── What is still missing afterwards ────────────────────────────────────────
 report_gaps() {
-    local optional=(warp-cli nordvpn virt-viewer minimeters matugen)
+    local optional=(warp-cli nordvpn virt-viewer minimeters)
     local gaps=()
     for b in "${optional[@]}"; do command -v "$b" >/dev/null 2>&1 || gaps+=("$b"); done
     if [ ${#gaps[@]} -gt 0 ]; then

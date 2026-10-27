@@ -13,6 +13,7 @@
 //     separator   : true → renders a thin divider instead of a menu row
 //     submenu     : array of items → hovering opens a child panel beside this
 //                   one. Nests to any depth; see PopupMenuPanel.
+//     shortcut    : optional key hint shown right-aligned ("Ctrl+D")
 //     onTriggered : callback fired on click (after the menu dismisses)
 //
 // Example
@@ -43,6 +44,8 @@ Item {
     property var menuItems: []
     property real px: 0
     property real py: 0
+    /// the height of the element it opens from (0: the cursor); see PopupMenuPanel.originH
+    property real ph: 0
     property int panelWidth: 226
 
     // The panel draws in the window's top item, not here: it clamps itself
@@ -75,10 +78,11 @@ Item {
     }
 
     property double _openedAt: 0
-    function popup(x, y, model) {
+    function popup(x, y, model, originH) {
         root.menuItems = model
         root.px = x
         root.py = y
+        root.ph = originH ?? 0
         root._openedAt = Date.now()
         root.opened = true
     }
@@ -118,6 +122,7 @@ Item {
                 originX: root.origin.x
                 originW: 0
                 desiredY: root.origin.y
+                originH: root.ph
                 panelWidth: root.panelWidth
                 dismissAll: () => root.dismiss()
             }

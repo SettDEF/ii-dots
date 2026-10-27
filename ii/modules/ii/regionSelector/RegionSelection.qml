@@ -43,7 +43,7 @@ PanelWindow {
 
     // TODO: Ask: sidebar AI
     enum SnipAction { Copy, Edit, Search, CharRecognition, Record, RecordWithSound, AttachToAi, SnapWindow } 
-    enum SelectionMode { RectCorners, Circle }
+    enum SelectionMode { RectCorners, Circle, Window }
     property var action: RegionSelection.SnipAction.Copy
     property var selectionMode: RegionSelection.SelectionMode.RectCorners
     signal dismiss()
@@ -122,8 +122,8 @@ PanelWindow {
 
     property bool isCircleSelection: (root.selectionMode === RegionSelection.SelectionMode.Circle)
     property bool enableWindowRegions: Config.options.regionSelector.targetRegions.windows && !isCircleSelection
-    property bool enableLayerRegions: Config.options.regionSelector.targetRegions.layers && !isCircleSelection
-    property bool enableContentRegions: Config.options.regionSelector.targetRegions.content
+    property bool enableLayerRegions: Config.options.regionSelector.targetRegions.layers && !isCircleSelection && root.selectionMode !== RegionSelection.SelectionMode.Window
+    property bool enableContentRegions: Config.options.regionSelector.targetRegions.content && root.selectionMode !== RegionSelection.SelectionMode.Window
     property real targetRegionOpacity: Config.options.regionSelector.targetRegions.opacity
     property bool contentRegionOpacity: Config.options.regionSelector.targetRegions.contentRegionOpacity
 
@@ -371,6 +371,9 @@ PanelWindow {
             } else if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter || event.key === Qt.Key_Space) {
                 optionsToolbar.activateKey();
                 event.accepted = true;
+            } else if (event.text.length === 1 && optionsToolbar.shapeKey(event.text.toUpperCase())) {
+                // R W F D: rectangle, window, full screen, freeform (the mode box)
+                event.accepted = true;
             }
         }
 
@@ -425,7 +428,7 @@ PanelWindow {
             Loader {
                 z: 2
                 anchors.fill: parent
-                active: root.selectionMode === RegionSelection.SelectionMode.RectCorners
+                active: root.selectionMode !== RegionSelection.SelectionMode.Circle
                 sourceComponent: RectCornersSelectionDetails {
                     regionX: root.regionX
                     regionY: root.regionY
@@ -526,6 +529,9 @@ PanelWindow {
                 }
             }
 
+            // the bar's dropdowns (the mode box, ⋯)
+            PopupContextMenu { id: snipMenu; z: 30 }
+
             // Controls
             Row {
                 id: regionSelectionControls
@@ -565,6 +571,15 @@ PanelWindow {
                     }
                     onDismiss: root.dismiss();
                     onDelayed: seconds => root.delayed(seconds)
+                    onMenu: (items, x, y, h) => snipMenu.popup(x, y, items, h)
+                    // the whole screen, with whatever the bar's action is (copy, text, search, record)
+                    onFullScreen: {
+                        root.regionX = 0;
+                        root.regionY = 0;
+                        root.regionWidth = root.screen.width;
+                        root.regionHeight = root.screen.height;
+                        root.snip();
+                    }
                 }
                 Item {
                     anchors {

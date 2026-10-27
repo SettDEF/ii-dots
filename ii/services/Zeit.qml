@@ -45,7 +45,18 @@ Singleton {
                 root.jobs = []
             }
         }
-        onLoadFailed: root.jobs = []
+        // no jobs.json yet (zeit has run none): a file watch cannot watch what does not exist, so
+        // look again every few seconds until zeit writes it, or the first job never showed
+        printErrors: false
+        onLoadFailed: {
+            root.jobs = []
+            missingRetry.restart()
+        }
+    }
+    Timer {
+        id: missingRetry
+        interval: 5000
+        onTriggered: file.reload()
     }
     // a finished job stops being news after ten minutes
     Timer {

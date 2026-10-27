@@ -18,10 +18,42 @@ Item {
     readonly property var filteredItems: {
         if (!items) return [];
         if (searchQuery === "") return items;
-        var query = searchQuery.toLowerCase();
-        return items.filter(function(item) {
-            return item.toString().toLowerCase().indexOf(query) !== -1;
+        // Accents do not count: "portugues" finds Português.
+        const plain = s => s.toString().toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+        var query = plain(searchQuery).trim();
+        const exact = items.filter(function(item) {
+            return plain(item).indexOf(query) !== -1;
         });
+        if (exact.length > 0 || query.length < 3) return exact;
+        // Nothing contains it: allow a typo or two ("englsih" → English),
+        // closest first, against the start of each word of an item.
+        const allowed = query.length <= 4 ? 1 : 2;
+        return items
+            .map(item => ({ item, d: Math.min(...plain(item).split(/[\s()\-]+/)
+                .filter(w => w.length > 0)
+                .map(w => root._typoDistance(query, w.slice(0, query.length + 1)))) }))
+            .filter(x => x.d <= allowed)
+            .sort((a, b) => a.d - b.d)
+            .map(x => x.item);
+    }
+
+    /// Edits between two short strings, a swap of neighbours counting as one
+    /// (optimal string alignment), with `b` allowed one extra trailing letter.
+    function _typoDistance(a, b) {
+        const m = a.length, n = b.length;
+        const d = [];
+        for (let i = 0; i <= m; i++) { d.push([i]); }
+        for (let j = 1; j <= n; j++) d[0][j] = j;
+        for (let i = 1; i <= m; i++) {
+            for (let j = 1; j <= n; j++) {
+                const cost = a[i - 1] === b[j - 1] ? 0 : 1;
+                d[i][j] = Math.min(d[i - 1][j] + 1, d[i][j - 1] + 1, d[i - 1][j - 1] + cost);
+                if (i > 1 && j > 1 && a[i - 1] === b[j - 2] && a[i - 2] === b[j - 1])
+                    d[i][j] = Math.min(d[i][j], d[i - 2][j - 2] + 1);
+            }
+        }
+        // the query may stop short of the word: best over b's prefixes near m
+        return Math.min(d[m][Math.max(0, n - 1)], d[m][n]);
     }
 
     onFilteredItemsChanged: {
@@ -120,6 +152,11 @@ Item {
                 clip: true
                 currentIndex: root.defaultChoice !== undefined ? root.filteredItems.indexOf(root.defaultChoice) : -1
                 spacing: 6
+                // A search list changes by dozens of rows per keystroke. With
+                // the slide-out remove animation, a row still leaving when the
+                // next keystroke landed was left behind, frozen half-faded on
+                // top of the new rows — names drawn over each other.
+                animateAppearance: false
 
                 model: ScriptModel {
                     id: choiceModel

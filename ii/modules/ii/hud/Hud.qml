@@ -65,7 +65,10 @@ Scope {
                 // Overlap the bar by `notchR` px so the bar shows through
                 // the HUD's top concave bites — that's what creates the
                 // "bar dips into the HUD" look at the corners.
-                topMargin: Appearance.sizes.baseBarHeight
+                // + whatever sits above the bar (Takt's meter strip pushes it down):
+                // the HUD docks to the bar where it is, not where it would be at y 0
+                topMargin: Math.max(0, ScreenFit.reservedTop(panelWindow) - Appearance.sizes.barHeight)
+                           + Appearance.sizes.baseBarHeight
                            + (Config.options.bar.cornerStyle === 1 ? Appearance.sizes.hyprlandGapsOut : 0)
                            - 10
                            + (panelWindow.subTabsPresent ? panelWindow.subTabGap : 0)

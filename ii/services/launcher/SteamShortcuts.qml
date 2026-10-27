@@ -24,13 +24,30 @@ QtObject {
     property var _lists: ({})
     property var _arts: ({})
 
+    /// Game ids a desktop entry already launches (Exec=steam steam://rungameid/<id>).
+    /// Those are listed by the app rows under their proper name and icon, so the
+    /// raw shortcut ("ReSkateLauncher.exe") would only be a worse duplicate.
+    readonly property var _coveredIds: {
+        const ids = new Set();
+        for (const e of (DesktopEntries.applications?.values ?? [])) {
+            const m = String(e.execString ?? "").match(/rungameid\/(\d+)/);
+            if (m) ids.add(m[1]);
+        }
+        return ids;
+    }
+
+    /// Steam keeps whatever was picked as the name, often the file itself.
+    function _displayName(name) {
+        return String(name).replace(/\.(exe|bat|cmd|sh|appimage|x86_64)$/i, "");
+    }
+
     /// Every visible shortcut, by name.
     readonly property var games: {
         const out = [];
         for (const uid in root._lists)
             for (const g of root._lists[uid])
-                if (!g.hidden)
-                    out.push(Object.assign({ art: root._arts[uid]?.[g.appid] ?? "" }, g));
+                if (!g.hidden && !root._coveredIds.has(String(g.gameId)))
+                    out.push(Object.assign({}, g, { art: root._arts[uid]?.[g.appid] ?? "", name: root._displayName(g.name) }));
         return out.sort((a, b) => a.name.localeCompare(b.name));
     }
 

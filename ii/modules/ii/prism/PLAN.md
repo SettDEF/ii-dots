@@ -1,7 +1,7 @@
 # Prism — Plan
 
 A wallpaper + theme command center for the Quickshell config.
-Mashes the wallpaper-browsing of **skwd-wall** with the color-theming UX of **Aether**, all inside the existing matugen pipeline.
+Mashes the wallpaper-browsing of **skwd-wall** with the color-theming UX of **Aether**, all inside the existing tinct pipeline.
 
 Alternate names if Prism is taken: Tincture, Halcyon, Iris, Chroma, Lumen.
 
@@ -11,7 +11,7 @@ Alternate names if Prism is taken: Tincture, Halcyon, Iris, Chroma, Lumen.
 
 1. One place to **browse** wallpapers from local + wallhaven + reddit.
 2. One place to **theme** the desktop: extraction modes, presets, live filter sliders.
-3. Apply via the existing scripts (`switchwall.sh`, `applycolor.sh`, matugen).
+3. Apply via the existing scripts (`switchwall.sh`, `applycolor.sh`, tinct).
 4. No new daemon, no Go backend — pure QML + bash, fits the rest of `modules/ii/*`.
 
 Non-goals (for v1):
@@ -89,9 +89,9 @@ Thumbnails cached in `~/.cache/quickshell/prism/thumbs/`.
 
 1. User clicks `WallpaperCard` → "Apply".
 2. If remote: `curl -L -o ~/Pictures/Wallpapers/prism/<id>.<ext>` (via `Process`).
-3. Run `${Directories.wallpaperSwitchScriptPath} --image <path>` (already wired to matugen + applycolor.sh — reused, untouched).
+3. Run `${Directories.wallpaperSwitchScriptPath} --image <path>` (already wired to tinct + applycolor.sh — reused, untouched).
 4. If user picked an extraction mode other than Auto: pass `--type scheme-<mode>` (the same flag the settings menu now uses; this is the field that crashed earlier on `scheme-content` — now fixed).
-5. If filter sliders are non-default: pipe through the magick command from `WallTuneContent.qml::reprocess()` first, then matugen on the processed file.
+5. If filter sliders are non-default: pipe through the magick command from `WallTuneContent.qml::reprocess()` first, then tinct on the processed file.
 
 ---
 
@@ -102,8 +102,8 @@ Three rows:
 1. **Extraction modes** — 8 chips. Maps to:
    - Auto → no `--type`
    - Mono → `scheme-monochrome`
-   - Analogous / Pastel / Material / Colorful / Muted / Bright → custom matugen extra args (or pre-tinted version of the wall via magick before matugen).
-2. **Presets** — Aether-style fixed palettes. Bypass matugen entirely; write color JSON directly to `~/.local/state/quickshell/user/generated/colors.json` and call `applycolor.sh`. ~10 hand-picked presets (Dracula, Nord, Gruvbox, Catppuccin, Tokyo Night, Sakura, Rose Pine, Everforest, Solarized, Mono).
+   - Analogous / Pastel / Material / Colorful / Muted / Bright → custom tinct extra args (or pre-tinted version of the wall via magick before tinct).
+2. **Presets** — Aether-style fixed palettes. Bypass tinct entirely; write color JSON directly to `~/.local/state/quickshell/user/generated/colors.json` and call `applycolor.sh`. ~10 hand-picked presets (Dracula, Nord, Gruvbox, Catppuccin, Tokyo Night, Sakura, Rose Pine, Everforest, Solarized, Mono).
 3. **Filters** — sliders (brightness/saturation/hue/contrast/sharpness/grain/temperature). Delegates to the existing WallTune logic — share the function, don't duplicate.
 
 ---
@@ -131,7 +131,7 @@ property JsonObject prism: JsonObject {
 2. `LocalSource` + `WallpaperGrid` + `WallpaperCard` — get a working browse-and-apply with local files.
 3. `WallhavenSource` (curl + JSON parse via `Process` SplitParser).
 4. `RedditSource`.
-5. Theme tab: extraction modes (matugen flags only).
+5. Theme tab: extraction modes (tinct flags only).
 6. Theme tab: presets (direct color injection).
 7. Theme tab: filter sliders (reuse WallTune).
 8. Nexus integration (add as a section).
@@ -153,6 +153,6 @@ Each step is a deliverable on its own — Prism is usable after step 2.
 ## 10. Open questions for you
 
 1. Keybind for the toggle (`$mod+P`? `$mod+Shift+W`?).
-2. Should presets fully override matugen or just seed it (Aether does both)?
+2. Should presets fully override tinct or just seed it (Aether does both)?
 3. Filter sliders: live preview on the card, or only after Apply?
 4. Want a "favorites" feature (star a wallpaper → goes to a separate Local subfolder)?

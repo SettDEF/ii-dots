@@ -13,6 +13,8 @@ import Quickshell.Hyprland
 
 Scope { // Scope
     id: root
+    /// Keybinds search (field in the header, filtering in CheatsheetKeybinds).
+    property string keybindQuery: ""
     property var tabButtonList: [
         {
             "icon": "keyboard",
@@ -83,6 +85,32 @@ Scope { // Scope
             function hide() {
                 root.open = false;
             }
+            // Put the cursor in the current tab's search box, so typing
+            // searches right away. Tabs without one keep focus on the card
+            // (the close button) so Esc and Ctrl+PageUp/Down still work.
+            // The page is lazy-loaded, hence the retry while it comes up.
+            function focusSearch() {
+                if (!visible) return;
+                if (tabBar.currentIndex === 0) {
+                    keybindSearch.forceActiveFocus();
+                    return;
+                }
+                const page = swipeView.currentItem?.item;
+                if (page?.focusSearch) page.focusSearch();
+                else if (!page && focusRetry.tries++ < 10) focusRetry.restart();
+                else closeButton.forceActiveFocus();
+            }
+            Timer {
+                id: focusRetry
+                property int tries: 0
+                interval: 30
+                onTriggered: cheatsheetRoot.focusSearch()
+            }
+            onVisibleChanged: if (visible) { focusRetry.tries = 0; Qt.callLater(focusSearch); }
+            Component.onCompleted: {
+                GlobalFocusGrab.addDismissable(cheatsheetRoot);
+                Qt.callLater(focusSearch);
+            }
             exclusiveZone: 0
             implicitWidth: cheatsheetBackground.width + Appearance.sizes.elevationMargin * 2
             implicitHeight: cheatsheetBackground.height + Appearance.sizes.elevationMargin * 2
@@ -100,9 +128,6 @@ Scope { // Scope
                 item: cheatsheetBackground
             }
 
-            Component.onCompleted: {
-                GlobalFocusGrab.addDismissable(cheatsheetRoot);
-            }
             Component.onDestruction: {
                 GlobalFocusGrab.removeDismissable(cheatsheetRoot);
             }
@@ -193,6 +218,12 @@ Scope { // Scope
                         // Ctrl+F focuses the active page's search box, if it has
                         // one. currentItem is the TabLoader; .item is the page.
                         else if (event.key === Qt.Key_F) {
+                            if (tabBar.currentIndex === 0) {
+                                keybindSearch.forceActiveFocus();
+                                keybindSearch.selectAll();
+                                event.accepted = true;
+                                return;
+                            }
                             const page = swipeView.currentItem?.item;
                             if (page?.focusSearch) {
                                 page.focusSearch();
@@ -248,6 +279,18 @@ Scope { // Scope
                                 property alias source: swipeView.currentIndex
                             }
                         }
+                        // fzf-style keybind search, only on the Keybinds tab.
+                        ToolbarTextField {
+                            id: keybindSearch
+                            visible: tabBar.currentIndex === 0
+                            Layout.preferredWidth: 280
+                            placeholderText: Translation.tr("Search keybinds (Ctrl+F)")
+                            text: root.keybindQuery
+                            onTextChanged: root.keybindQuery = text
+                            Keys.onEscapePressed: event => {
+                                if (text.length) { text = ""; event.accepted = true } else event.accepted = false
+                            }
+                        }
                     }
 
                     SwipeView { // Content pages
@@ -259,6 +302,8 @@ Scope { // Scope
                         currentIndex: Persistent.states.cheatsheet.tabIndex
                         onCurrentIndexChanged: {
                             Persistent.states.cheatsheet.tabIndex = currentIndex;
+                            focusRetry.tries = 0;
+                            Qt.callLater(cheatsheetRoot.focusSearch);
                         }
 
                         // Cap implicit size to the *card's* available space,
@@ -294,9 +339,12 @@ Scope { // Scope
                     // aren't treated as pages themselves.
                     Component { id: keybindsComp
                         ScrollView {
-                            ScrollBar.horizontal.policy: ScrollBar.AlwaysOff
+                            id: keybindsScroll
+                            // AsNeeded, not AlwaysOff: on a narrow screen the last column
+                            // was simply cut off with no way to reach it
+                            ScrollBar.horizontal.policy: ScrollBar.AsNeeded
                             clip: true
-                            CheatsheetKeybinds { heightBudget: swipeView.height }
+                            CheatsheetKeybinds { heightBudget: swipeView.height - 70; viewWidth: keybindsScroll.availableWidth; floatHost: keybindsScroll; query: root.keybindQuery }
                         }
                     }
                     Component { id: elementsComp

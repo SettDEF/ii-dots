@@ -1,0 +1,11 @@
+module qs.modules.ii.firewall
+FirewallPanel 1.0 FirewallPanel.qml
+FwHead 1.0 FwHead.qml
+FwBox 1.0 FwBox.qml
+FwMicro 1.0 FwMicro.qml
+FwMono 1.0 FwMono.qml
+FwHairline 1.0 FwHairline.qml
+FwDot 1.0 FwDot.qml
+FwToggle 1.0 FwToggle.qml
+FwCmd 1.0 FwCmd.qml
+FwSeg 1.0 FwSeg.qml

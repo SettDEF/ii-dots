@@ -429,7 +429,14 @@ QtObject {
         path: doc.stateDir + "/recents.json"
         blockLoading: true
         printErrors: false
-        onLoaded: { try { doc.recents = JSON.parse(text()); } catch (e) { doc.recents = []; } }
+        // Merge, don't replace: the recording opened at start is often added before this
+        // load finishes, and replacing dropped it (then the old list was saved back)
+        onLoaded: {
+            let saved = [];
+            try { saved = JSON.parse(text()); } catch (e) {}
+            const mine = doc.recents;
+            doc.recents = mine.concat(saved.filter(p => !mine.includes(p))).slice(0, 12);
+        }
     }
     function addRecent(path) {
         const r = [path].concat(recents.filter(p => p !== path)).slice(0, 12);

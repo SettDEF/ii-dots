@@ -20,6 +20,15 @@ Scope {
         WlrLayershell.layer: WlrLayer.Overlay
         exclusiveZone: 0
 
+        // Over a real fullscreen window (mode 2, not maximised) the bar is
+        // covered but its reserved strip stays, so the popup floated a bar's
+        // height below the corner. Ignore the strip then and sit in the corner.
+        readonly property bool overFullscreen: {
+            const ws = HyprlandData.activeWorkspace?.id;
+            return (HyprlandData.windowList ?? []).some(w => w?.workspace?.id === ws && (w.fullscreen ?? 0) >= 2);
+        }
+        exclusionMode: root.overFullscreen ? ExclusionMode.Ignore : ExclusionMode.Normal
+
         anchors {
             top: true
             right: true

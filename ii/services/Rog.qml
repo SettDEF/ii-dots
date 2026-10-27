@@ -31,9 +31,13 @@ Singleton {
     property string acProfile: ""                // applied when the charger connects
     property string batteryProfile: ""           // applied when it disconnects
 
+    // Writes go through Vitals, which records them: its watcher keeps the power settings as chosen
+    // and would otherwise put back a choice made here (vitals power, docs/CLI.md).
+    readonly property string vitals: `${Quickshell.env("HOME")}/.local/bin/vitals`
+
     function setProfile(p) {
         root.profile = p
-        root._run(["asusctl", "profile", "set", p])
+        root._run([root.vitals, "power", "profile", p])
     }
     function setAcProfile(p) {
         Persistent.states.rog.chargerProfile = p
@@ -43,9 +47,23 @@ Singleton {
     function setBatteryProfile(p) {
         root.batteryProfile = p
         if (!root.onAc) root.profile = p
-        root._run(["asusctl", "profile", "set", "--battery", p])
+        root._run([root.vitals, "power", "profile", p, "--battery"])
     }
-    function nextProfile() { root._run(["asusctl", "profile", "next"]) }
+    function nextProfile() { root.setProfile(root.profiles[(root.profiles.indexOf(root.profile) + 1) % root.profiles.length]) }
+
+    /// A profile something needs for a while (the lock screen's "quiet until the downloads are
+    /// done"): the charger steps below leave it alone until released, then decide again.
+    property string held: ""
+    function hold(p) {
+        root.held = p
+        root.setProfile(p)
+    }
+    function release(back) {
+        root.held = ""
+        root._applied = ""
+        if (back) root.setProfile(back)
+        root._chargerTick()
+    }
 
 
     // ── On the charger ───────────────────────────────────────────────────────
@@ -59,6 +77,7 @@ Singleton {
     property string _applied: ""
 
     function _chargerTick() {
+        if (root.held !== "") return
         if (!root.onAc || capacityFile.value <= 0 || root.batteryStatus === "") {
             root._applied = ""
             root._cap = 2
@@ -79,7 +98,7 @@ Singleton {
         root._applied = target
         root.acProfile = target
         root.profile = target
-        root._run(["asusctl", "profile", "set", "--ac", target])
+        root._run([root.vitals, "power", "profile", target, "--ac"])
     }
 
     Timer {
@@ -104,7 +123,7 @@ Singleton {
     function setBatteryLimit(v) {
         const clamped = Math.max(20, Math.min(100, Math.round(v)))
         root.batteryLimit = clamped
-        root._run(["asusctl", "battery", "limit", String(clamped)])
+        root._run([root.vitals, "power", "limit", String(clamped)])
     }
     /// Charge once to `percent` (default 100), then fall back to the limit.
     function chargeOnce(percent) {

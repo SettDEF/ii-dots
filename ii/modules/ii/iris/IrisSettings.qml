@@ -43,7 +43,7 @@ Scope {
             panelId: "iris"
             title: Translation.tr("Keyboard light")
             icon: "keyboard"
-            onClosed: GlobalStates.irisOpen = false
+            onRequestClose: GlobalStates.irisOpen = false
 
             Component.onCompleted: Iris.refresh()
 

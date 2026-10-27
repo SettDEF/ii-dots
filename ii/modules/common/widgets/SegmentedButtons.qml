@@ -23,6 +23,10 @@ Rectangle {
     property real segmentHeight: 36
 
     signal selected(var id)
+    /// Highlight behind the active segment and its text. secondaryContainer
+    /// can sit almost on the background colour; pass colPrimary to stand out.
+    property color colIndicator: Appearance.colors.colSecondaryContainer
+    property color colActiveText: Appearance.m3colors.m3onSecondaryContainer
 
     readonly property int currentIndex: {
         for (let i = 0; i < root.model.length; ++i)
@@ -45,7 +49,7 @@ Rectangle {
         width: root.segmentWidth
         height: parent.height - 4
         radius: parent.radius - 2
-        color: Appearance.colors.colSecondaryContainer
+        color: root.colIndicator
 
         Behavior on x {
             NumberAnimation {
@@ -74,7 +78,7 @@ Rectangle {
                 readonly property bool active: root.currentIndex === index
 
                 width: root.segmentWidth
-                height: parent.height
+                height: parent?.height ?? 0  // null for a moment while the model rebuilds
 
                 Row {
                     anchors.centerIn: parent
@@ -86,7 +90,7 @@ Rectangle {
                         text: (root.showCheck && segment.active) ? "check"
                             : (segment.modelData.icon ?? "")
                         iconSize: Appearance.font.pixelSize.small
-                        color: segment.active ? Appearance.m3colors.m3onSecondaryContainer
+                        color: segment.active ? root.colActiveText
                                               : Appearance.colors.colOnLayer1
                         opacity: segment.active ? 1 : 0.8
                         Behavior on color { ColorAnimation { duration: 140 } }
@@ -97,7 +101,7 @@ Rectangle {
                         text: segment.modelData.label ?? ""
                         font.pixelSize: Appearance.font.pixelSize.smaller
                         font.weight: segment.active ? Font.Medium : Font.Normal
-                        color: segment.active ? Appearance.m3colors.m3onSecondaryContainer
+                        color: segment.active ? root.colActiveText
                                               : Appearance.colors.colOnLayer1
                         opacity: segment.active ? 1 : 0.85
                         Behavior on color { ColorAnimation { duration: 140 } }

@@ -17,7 +17,8 @@ import Quickshell.Io
 Singleton {
     id: root
 
-    readonly property string path: `${Quickshell.env("XDG_RUNTIME_DIR") ?? "/tmp"}/ii-discord-voice.json`
+    // Written next to BetterDiscord's own data by scripts/discord/IIVoiceOverlay.plugin.js.
+    readonly property string path: `${Quickshell.env("HOME")}/.config/BetterDiscord/data/ii-discord-voice.json`
 
     /// The plugin beats every 10 s while running; older than this means Discord
     /// died mid-call and the file is a ghost.
@@ -34,6 +35,39 @@ Singleton {
     /// [{ id, name, avatar, speaking, muted, deafened, streaming, video, self }]
     readonly property var members: root.inVoice ? (root._doc.members ?? []) : []
     readonly property int speakingCount: root.members.filter(m => m.speaking).length
+
+    /// Your voice settings as Discord holds them (plugin 0.2+), or null:
+    /// { mute, deaf, mode: "VOICE_ACTIVITY"|"PUSH_TO_TALK", autoThreshold, threshold,
+    ///   noiseSuppression, noiseCancellation (Krisp), echoCancellation, automaticGainControl,
+    ///   inputVolume 0..100, outputVolume 0..200, inputDevice, outputDevice,
+    ///   inputDevices [{id,name}], outputDevices [{id,name}], can: {…which controls work} }
+    readonly property var settings: root.fresh ? (root._doc.settings ?? null) : null
+    /// The plugin is there and can take commands.
+    readonly property bool controllable: root.settings !== null
+
+    /// Ask Discord (through the plugin) to change a voice setting. The plugin
+    /// polls the command file, applies it with Discord's own action creators —
+    /// the same calls its Voice & Video page makes — and republishes.
+    function command(action, value) {
+        const body = JSON.stringify({ id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`, at: Date.now(), action, value });
+        cmdWriter.setText(body);
+        // Optimistic: the menu reflects the change at once; the plugin's
+        // republish confirms (or corrects) it a moment later.
+        if (root._doc.settings) {
+            const s = Object.assign({}, root._doc.settings);
+            if (action === "toggleMute") s.mute = !s.mute;
+            else if (action === "toggleDeaf") s.deaf = !s.deaf;
+            else if (action === "autoThreshold") s.autoThreshold = !!value;
+            else if (action in s) s[action] = value;
+            root._doc = Object.assign({}, root._doc, { settings: s });
+        }
+    }
+    FileView {
+        id: cmdWriter
+        path: `${Quickshell.env("HOME")}/.config/BetterDiscord/data/ii-discord-cmd.json`
+        printErrors: false
+        blockWrites: false
+    }
 
     // Only ticks while there is something to expire.
     Timer {

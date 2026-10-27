@@ -27,6 +27,13 @@ CACHE_DIR="$XDG_CACHE_HOME/quickshell"
 STATE_DIR="$XDG_STATE_HOME/quickshell"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
+# Quarry 2026-10-20+ has an osu! seasonal source: go through it, and fall back
+# to downloading directly below if it cannot answer.
+quarry_bin=$(command -v quarry || true)
+if [[ -n "$quarry_bin" ]] && grep -q 'wallpaper --random' "$quarry_bin" 2>/dev/null; then
+    QUARRY_WALL_QUIET=1 "$SCRIPT_DIR/random_quarry_wall.sh" osu_seasonal 2>/dev/null && exit 0
+fi
+
 mkdir -p "$PICTURES_DIR/Wallpapers"
 
 response=$(curl "https://osu.ppy.sh/api/v2/seasonal-backgrounds")

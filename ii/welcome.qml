@@ -19,6 +19,10 @@ import qs.modules.settings
 import qs.modules.common.functions
 
 ApplicationWindow {
+
+    // browser-like scrolling for every list in the window (Momentum.qml)
+
+    MomentumInjector { root: parent }
     id: root
     property string firstRunFilePath: FileUtils.trimFileProtocol(`${Directories.state}/user/first_run.txt`)
     property string firstRunFileContent: "This file is just here to confirm you've been greeted :>"
@@ -45,7 +49,7 @@ ApplicationWindow {
     Process {
         id: konachanWallProc
         property string status: ""
-        command: ["bash", "-c", Quickshell.shellPath("scripts/colors/random/random_konachan_wall.sh")]
+        command: [Quickshell.shellPath("scripts/colors/random/random_quarry_wall.sh"), "konachan"]
         stdout: SplitParser {
             onRead: data => {
                 console.log(`Konachan wall proc output: ${data}`);

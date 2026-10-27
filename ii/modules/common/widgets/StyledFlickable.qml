@@ -59,8 +59,10 @@ Flickable {
     /// Off while something else animates contentY; two animators step, not glide.
     property bool animateContentY: true
 
+    Momentum { id: momentum }
+
     Behavior on contentY {
-        enabled: root.animateContentY
+        enabled: root.animateContentY && !momentum.active && !root.moving
         NumberAnimation {
             id: scrollAnim
             duration: Appearance.animation.scroll.duration

@@ -5,254 +5,173 @@ import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
 
+/**
+ * The sidebar's To Do: Dotos, at a glance. One line to capture a task (Dotos
+ * syntax: "Dentist @fri 14:00 !high +health"), what is being tracked now, and
+ * the open tasks grouped like Dotos. N focuses the capture line, Esc leaves it.
+ */
 Item {
     id: root
-    property var tabButtonList: [{"icon": "checklist", "name": Translation.tr("Unfinished")}, {"name": Translation.tr("Done"), "icon": "check_circle"}]
-    property bool showAddDialog: false
-    property int dialogMargins: 20
-    property int fabSize: 48
-    property int fabMargins: 14
+    property int tick: 0
+    Timer { interval: 30000; running: root.visible && !!Todo.active; repeat: true; onTriggered: root.tick++ }
 
     Keys.onPressed: (event) => {
-        if ((event.key === Qt.Key_PageDown || event.key === Qt.Key_PageUp) && event.modifiers === Qt.NoModifier) {
-            if (event.key === Qt.Key_PageDown) {
-                tabBar.incrementCurrentIndex();
-            } else if (event.key === Qt.Key_PageUp) {
-                tabBar.decrementCurrentIndex();
-            }
-            event.accepted = true;
-        }
-        // Open add dialog on "N" (any modifiers)
-        else if (event.key === Qt.Key_N) {
-            root.showAddDialog = true
-            event.accepted = true;
-        }
-        // Close dialog on Esc if open
-        else if (event.key === Qt.Key_Escape && root.showAddDialog) {
-            root.showAddDialog = false
+        if (event.key === Qt.Key_N && !capture.activeFocus) {
+            capture.forceActiveFocus();
             event.accepted = true;
         }
     }
 
     ColumnLayout {
-        anchors.fill: parent
-        spacing: 0
+        anchors { fill: parent; rightMargin: 14; topMargin: 12 }
+        spacing: 10
 
-        SecondaryTabBar {
-            id: tabBar
-            currentIndex: swipeView.currentIndex
-
+        // ── summary + actions ──
+        RowLayout {
+            Layout.fillWidth: true
+            Layout.leftMargin: 4
+            spacing: 4
+            ColumnLayout {
+                Layout.fillWidth: true
+                spacing: 0
+                // the Dotos page header: a title over a mono summary
+                StyledText {
+                    Layout.fillWidth: true
+                    text: Translation.tr("Tasks")
+                    font.pixelSize: Appearance.font.pixelSize.larger
+                    font.weight: Font.DemiBold
+                    color: Appearance.colors.colOnLayer1
+                }
+                StyledText {
+                    Layout.fillWidth: true
+                    elide: Text.ElideRight
+                    text: {
+                        if (Todo.error) return Todo.error;
+                        if (!Todo.loaded) return Translation.tr("loading…");
+                        const parts = [Translation.tr("%1 open").arg(Todo.open.length)];
+                        if (Todo.overdue > 0) parts.push(Translation.tr("%1 overdue").arg(Todo.overdue));
+                        if (Todo.dueToday > 0) parts.push(Translation.tr("%1 today").arg(Todo.dueToday));
+                        if (Todo.doing.length > 0) parts.push(Translation.tr("%1 doing").arg(Todo.doing.length));
+                        return parts.join(" · ");
+                    }
+                    font.family: Appearance.font.family.monospace
+                    font.pixelSize: Appearance.font.pixelSize.smallest
+                    color: Todo.error ? Appearance.m3colors.m3error : Appearance.colors.colSubtext
+                }
+            }
             Repeater {
-                model: root.tabButtonList
-                delegate: SecondaryTabButton {
-                    buttonText: modelData.name
-                    buttonIcon: modelData.icon
+                model: [
+                    { icon: "undo", tip: Translation.tr("Undo the last change"), run: () => Todo.undo() },
+                    { icon: "open_in_new", tip: Translation.tr("Open Dotos"), run: () => Todo.openApp("tasks") }
+                ]
+                delegate: Rectangle {
+                    id: headBtn
+                    required property var modelData
+                    implicitWidth: 28; implicitHeight: 28; radius: 14
+                    color: headHov.hovered ? Appearance.colors.colLayer2Hover : "transparent"
+                    MaterialSymbol { anchors.centerIn: parent; text: headBtn.modelData.icon; iconSize: 18; color: Appearance.colors.colSubtext }
+                    HoverHandler { id: headHov; cursorShape: Qt.PointingHandCursor }
+                    TapHandler { onTapped: headBtn.modelData.run() }
+                    StyledToolTip { extraVisibleCondition: false; alternativeVisibleCondition: headHov.hovered; text: headBtn.modelData.tip }
                 }
             }
         }
 
-        SwipeView {
-            id: swipeView
-            Layout.topMargin: 10
+        // ── capture ──
+        Rectangle {
+            Layout.fillWidth: true
+            implicitHeight: 40
+            radius: Appearance.rounding.normal
+            color: Appearance.colors.colLayer2
+            border.width: capture.activeFocus ? 1 : 0
+            border.color: Appearance.colors.colPrimary
+            RowLayout {
+                anchors { fill: parent; leftMargin: 12; rightMargin: 6 }
+                spacing: 10
+                MaterialSymbol { text: "add_task"; iconSize: 18; color: capture.activeFocus ? Appearance.colors.colPrimary : Appearance.colors.colSubtext }
+                TextField {
+                    id: capture
+                    Layout.fillWidth: true
+                    background: null
+                    padding: 0
+                    color: Appearance.colors.colOnLayer2
+                    font.pixelSize: Appearance.font.pixelSize.small
+                    renderType: Text.NativeRendering
+                    selectionColor: Appearance.colors.colSecondaryContainer
+                    selectedTextColor: Appearance.m3colors.m3onSecondaryContainer
+                    placeholderText: Translation.tr("New task…  @fri 14:00 !high +project")
+                    placeholderTextColor: Appearance.colors.colSubtext
+                    onAccepted: {
+                        if (text.trim().length === 0) return;
+                        Todo.capture(text);
+                        text = "";
+                    }
+                    Keys.onEscapePressed: { text = ""; root.forceActiveFocus(); }
+                }
+                Rectangle {
+                    visible: capture.text.trim().length > 0
+                    implicitWidth: 28; implicitHeight: 28; radius: 14
+                    color: Appearance.colors.colPrimary
+                    MaterialSymbol { anchors.centerIn: parent; text: "arrow_upward"; iconSize: 17; color: Appearance.colors.colOnPrimary }
+                    HoverHandler { cursorShape: Qt.PointingHandCursor }
+                    TapHandler { onTapped: capture.accepted() }
+                }
+            }
+        }
+
+        // ── being tracked now ──
+        Rectangle {
+            Layout.fillWidth: true
+            visible: !!Todo.active
+            implicitHeight: 36
+            radius: Appearance.rounding.small
+            color: Qt.alpha(Appearance.colors.colPrimary, 0.14)
+            RowLayout {
+                anchors { fill: parent; leftMargin: 10; rightMargin: 4 }
+                spacing: 8
+                Rectangle {
+                    implicitWidth: 8; implicitHeight: 8; radius: 4
+                    color: Appearance.colors.colPrimary
+                    SequentialAnimation on opacity {
+                        running: !!Todo.active && root.visible
+                        loops: Animation.Infinite
+                        NumberAnimation { to: 0.3; duration: 900 }
+                        NumberAnimation { to: 1; duration: 900 }
+                    }
+                }
+                StyledText {
+                    Layout.fillWidth: true
+                    text: Todo.active?.title ?? ""
+                    elide: Text.ElideRight
+                    font.pixelSize: Appearance.font.pixelSize.smaller
+                    color: Appearance.colors.colOnLayer2
+                }
+                StyledText {
+                    text: (root.tick, Todo.active ? (() => {
+                        const m = Math.floor((Date.now() / 1000 - (Todo.active.since ?? 0)) / 60);
+                        return m >= 60 ? `${Math.floor(m / 60)} h ${m % 60} m` : `${m} min`;
+                    })() : "")
+                    font.family: Appearance.font.family.monospace
+                    font.pixelSize: Appearance.font.pixelSize.smaller
+                    color: Appearance.colors.colPrimary
+                }
+                Rectangle {
+                    implicitWidth: 28; implicitHeight: 28; radius: 14
+                    color: stopHov.hovered ? Qt.alpha(Appearance.colors.colPrimary, 0.2) : "transparent"
+                    MaterialSymbol { anchors.centerIn: parent; text: "stop"; iconSize: 18; fill: 1; color: Appearance.colors.colPrimary }
+                    HoverHandler { id: stopHov; cursorShape: Qt.PointingHandCursor }
+                    TapHandler { onTapped: Todo.stop() }
+                    StyledToolTip { extraVisibleCondition: false; alternativeVisibleCondition: stopHov.hovered; text: Translation.tr("Stop the timer") }
+                }
+            }
+        }
+
+        TaskList {
             Layout.fillWidth: true
             Layout.fillHeight: true
-            spacing: 10
             clip: true
-            currentIndex: tabBar.currentIndex
-
-            // To Do tab
-            TaskList {
-                listBottomPadding: root.fabSize + root.fabMargins * 2
-                emptyPlaceholderIcon: "check_circle"
-                emptyPlaceholderText: Translation.tr("Nothing here!")
-                taskList: Todo.list
-                    .map(function(item, i) { return Object.assign({}, item, {originalIndex: i}); })
-                    .filter(function(item) { return !item.done; })
-            }
-            TaskList {
-                listBottomPadding: root.fabSize + root.fabMargins * 2
-                emptyPlaceholderIcon: "checklist"
-                emptyPlaceholderText: Translation.tr("Finished tasks will go here")
-                taskList: Todo.list
-                    .map(function(item, i) { return Object.assign({}, item, {originalIndex: i}); })
-                    .filter(function(item) { return item.done; })
-            }
-
-        }
-    }
-
-    // + FAB
-    StyledRectangularShadow {
-        target: fabButton
-        radius: fabButton.buttonRadius
-        blur: 0.6 * Appearance.sizes.elevationMargin
-    }
-    FloatingActionButton {
-        id: fabButton
-        anchors.right: parent.right
-        anchors.bottom: parent.bottom
-        anchors.rightMargin: root.fabMargins
-        anchors.bottomMargin: root.fabMargins
-
-        onClicked: root.showAddDialog = true
-        iconText: "add"
-    }
-
-    Item {
-        anchors.fill: parent
-        z: 9999
-
-        visible: opacity > 0
-        opacity: root.showAddDialog ? 1 : 0
-        Behavior on opacity {
-            NumberAnimation {
-                duration: Appearance.animation.elementMoveFast.duration
-                easing.type: Appearance.animation.elementMoveFast.type
-                easing.bezierCurve: Appearance.animation.elementMoveFast.bezierCurve
-            }
-        }
-
-        onVisibleChanged: {
-            if (visible) {
-                // The sidebar content Loader holds keyboard focus while open,
-                // so declarative `focus: true` on the field loses the tug-of-war.
-                // Force it imperatively once the dialog is shown.
-                Qt.callLater(() => titleInput.forceActiveFocus())
-            } else {
-                titleInput.text = ""
-                todoInput.text = ""
-                fabButton.focus = true
-            }
-        }
-
-        Rectangle { // Scrim
-            anchors.fill: parent
-            radius: Appearance.rounding.small
-            color: Appearance.colors.colScrim
-            MouseArea {
-                hoverEnabled: true
-                anchors.fill: parent
-                preventStealing: true
-                propagateComposedEvents: false
-            }
-        }
-
-        Rectangle { // The dialog
-            id: dialog
-            anchors.left: parent.left
-            anchors.right: parent.right
-            anchors.verticalCenter: parent.verticalCenter
-            anchors.margins: root.dialogMargins
-            implicitHeight: dialogColumnLayout.implicitHeight
-
-            color: Appearance.m3colors.m3surfaceContainerHigh
-            radius: Appearance.rounding.normal
-
-            function addTask() {
-                // Title required; description optional.
-                if (titleInput.text.length > 0) {
-                    Todo.addTask(titleInput.text, todoInput.text)
-                    titleInput.text = ""
-                    todoInput.text = ""
-                    root.showAddDialog = false
-                    tabBar.setCurrentIndex(0) // Show unfinished tasks
-                }
-            }
-
-            ColumnLayout {
-                id: dialogColumnLayout
-                anchors.fill: parent
-                spacing: 16
-
-                StyledText {
-                    Layout.topMargin: 16
-                    Layout.leftMargin: 16
-                    Layout.rightMargin: 16
-                    Layout.alignment: Qt.AlignLeft
-                    color: Appearance.m3colors.m3onSurface
-                    font.pixelSize: Appearance.font.pixelSize.larger
-                    text: Translation.tr("Add task")
-                }
-
-                TextField { // Task name (required)
-                    id: titleInput
-                    Layout.fillWidth: true
-                    Layout.leftMargin: 16
-                    Layout.rightMargin: 16
-                    padding: 10
-                    color: activeFocus ? Appearance.m3colors.m3onSurface : Appearance.m3colors.m3onSurfaceVariant
-                    renderType: Text.NativeRendering
-                    selectedTextColor: Appearance.m3colors.m3onSecondaryContainer
-                    selectionColor: Appearance.colors.colSecondaryContainer
-                    placeholderText: Translation.tr("Task name")
-                    placeholderTextColor: Appearance.m3colors.m3outline
-                    focus: root.showAddDialog
-                    // Enter moves to the description rather than submitting.
-                    onAccepted: todoInput.forceActiveFocus()
-
-                    background: Rectangle {
-                        anchors.fill: parent
-                        radius: Appearance.rounding.verysmall
-                        border.width: 2
-                        border.color: titleInput.activeFocus ? Appearance.colors.colPrimary : Appearance.m3colors.m3outline
-                        color: "transparent"
-                    }
-
-                    cursorDelegate: Rectangle {
-                        width: 1
-                        color: titleInput.activeFocus ? Appearance.colors.colPrimary : "transparent"
-                        radius: 1
-                    }
-                }
-
-                TextField { // Description (optional)
-                    id: todoInput
-                    Layout.fillWidth: true
-                    Layout.leftMargin: 16
-                    Layout.rightMargin: 16
-                    Layout.topMargin: -6
-                    padding: 10
-                    color: activeFocus ? Appearance.m3colors.m3onSurface : Appearance.m3colors.m3onSurfaceVariant
-                    renderType: Text.NativeRendering
-                    selectedTextColor: Appearance.m3colors.m3onSecondaryContainer
-                    selectionColor: Appearance.colors.colSecondaryContainer
-                    placeholderText: Translation.tr("Description (optional)")
-                    placeholderTextColor: Appearance.m3colors.m3outline
-                    onAccepted: dialog.addTask()
-
-                    background: Rectangle {
-                        anchors.fill: parent
-                        radius: Appearance.rounding.verysmall
-                        border.width: 2
-                        border.color: todoInput.activeFocus ? Appearance.colors.colPrimary : Appearance.m3colors.m3outline
-                        color: "transparent"
-                    }
-
-                    cursorDelegate: Rectangle {
-                        width: 1
-                        color: todoInput.activeFocus ? Appearance.colors.colPrimary : "transparent"
-                        radius: 1
-                    }
-                }
-
-                RowLayout {
-                    Layout.bottomMargin: 16
-                    Layout.leftMargin: 16
-                    Layout.rightMargin: 16
-                    Layout.alignment: Qt.AlignRight
-                    spacing: 5
-
-                    DialogButton {
-                        buttonText: Translation.tr("Cancel")
-                        onClicked: root.showAddDialog = false
-                    }
-                    DialogButton {
-                        buttonText: Translation.tr("Add")
-                        enabled: titleInput.text.length > 0
-                        onClicked: dialog.addTask()
-                    }
-                }
-            }
+            tick: root.tick
+            taskList: Todo.list.map((item, i) => Object.assign({}, item, { originalIndex: i }))
         }
     }
 }

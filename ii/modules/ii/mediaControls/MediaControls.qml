@@ -86,7 +86,7 @@ Scope {
                 right: Config.options.bar.vertical && Config.options.bar.bottom
             }
             margins {
-                top: Config.options.bar.vertical ? ((panelWindow.screen.height / 2) - widgetHeight * 1.5) : Appearance.sizes.barHeight
+                top: Config.options.bar.vertical ? ((panelWindow.screen.height / 2) - widgetHeight * 1.5) : (ScreenFit.reservedTop(panelWindow) || Appearance.sizes.barHeight)
                 bottom: Appearance.sizes.barHeight
                 left: Config.options.bar.vertical ? Appearance.sizes.barHeight : ((panelWindow.screen.width / 2) - (osdWidth / 2) - widgetWidth)
                 right: Appearance.sizes.barHeight

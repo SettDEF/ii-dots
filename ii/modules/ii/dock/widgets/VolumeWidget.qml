@@ -19,8 +19,12 @@ DockTile {
         onClicked: if (Audio.sink?.audio) Audio.sink.audio.muted = !Audio.sink.audio.muted
         onWheel: wheel => {
             if (!Audio.sink?.audio) return;
+            const dx = wheel.angleDelta.x, dy = wheel.angleDelta.y;
+            // Sideways follows the bar: swipe right = louder, natural scroll or not.
+            const up = Math.abs(dx) > Math.abs(dy) ? (wheel.inverted ? dx : -dx) : dy;
+            if (up === 0) return;
             const pct = (DockWidgets.get("volume", "step") ?? 2) / 100;
-            const step = wheel.angleDelta.y > 0 ? pct : -pct;
+            const step = up > 0 ? pct : -pct;
             Audio.sink.audio.volume = Math.max(0, Math.min(1, root.vol + step));
         }
     }

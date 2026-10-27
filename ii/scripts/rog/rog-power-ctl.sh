@@ -27,11 +27,9 @@ case "${1:-}" in
     # Drawing a curve enables it (below), so the deliberate-off flag no longer
     # holds — clear it or the keeper stays stood down over an enabled curve.
     rm -f "${XDG_STATE_HOME:-$HOME/.local/state}/fan-curve-keeper.off"
-    for fan in cpu gpu; do
-        asusctl fan-curve --mod-profile "$prof" --fan "$fan" --data "$data" >/dev/null 2>&1 || true
-        asusctl fan-curve --mod-profile "$prof" --fan "$fan" --enable-fan-curve true >/dev/null 2>&1 || true
-    done
-    echo ok ;;
+    # Through Vitals: it checks the curve (rising, never falling, loud enough when hot), sets both
+    # fans, and records it, so its watcher keeps this curve instead of putting another back.
+    if out=$("$HOME/.local/bin/vitals" power fans "$prof" "$data" 2>&1); then echo ok; else echo "$out" >&2; exit 1; fi ;;
   fancurve)
     # Flip the whole profile between the user's custom curve and the firmware's
     # default one. Both fans together on purpose: they were found in DIFFERENT
@@ -50,9 +48,9 @@ case "${1:-}" in
     ovr="${XDG_STATE_HOME:-$HOME/.local/state}/fan-curve-keeper.off"
     mkdir -p "$(dirname "$ovr")"
     if [ "$v" = false ]; then : > "$ovr"; else rm -f "$ovr"; fi
-    # --enable-fan-curves (plural) covers every fan of the profile in one call.
-    asusctl fan-curve --mod-profile "$prof" --enable-fan-curves "$v" >/dev/null 2>&1 || true
-    echo ok ;;
+    # Through Vitals (both fans of the profile), which records it for its watcher.
+    if [ "$v" = true ]; then arg=on; else arg=firmware; fi
+    if out=$("$HOME/.local/bin/vitals" power fans "$prof" "$arg" 2>&1); then echo ok; else echo "$out" >&2; exit 1; fi ;;
   fanstate)
     # asusctl is the source of truth here. The hwmon pwmN_enable values also
     # encode this but INVERTED from the obvious reading (1 = manual/custom

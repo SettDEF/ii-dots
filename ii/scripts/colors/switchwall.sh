@@ -15,7 +15,6 @@ TINCT_BIN="$HOME/.local/bin/tinct"
 # "W<tab>H" from the header, without decoding the image.
 img_dims() { "$TINCT_BIN" image probe "$1" 2>/dev/null | cut -f1,2; }
 WALL_DB="$STATE_DIR/wallpaper_history.jsonl"
-MATUGEN_DIR="$XDG_CONFIG_HOME/matugen"
 terminalscheme="$SCRIPT_DIR/terminal/scheme-base.json"
 
 mkdir -p "$(dirname "$WALL_DB")"
@@ -71,7 +70,7 @@ cleanup_history() {
     notify-send -a "Wallpaper switcher" "Cleanup done" "History: $keep_days days kept"
 }
 
-handle_kde_material_you_colors() {
+handle_kde_colors() {
     if [ -f "$SHELL_CONFIG_FILE" ]; then
         enable_qt_apps=$(jq -r '.appearance.wallpaperTheming.enableQtApps' "$SHELL_CONFIG_FILE")
         if [ "$enable_qt_apps" == "false" ]; then
@@ -79,17 +78,9 @@ handle_kde_material_you_colors() {
         fi
     fi
 
-    local kde_scheme_variant=""
-    case "$type_flag" in
-        scheme-content|scheme-expressive|scheme-fidelity|scheme-fruit-salad|scheme-monochrome|scheme-neutral|scheme-rainbow|scheme-tonal-spot)
-            kde_scheme_variant="$type_flag"
-            ;;
-        *)
-            kde_scheme_variant="scheme-tonal-spot"
-            ;;
-    esac
-    "$XDG_CONFIG_HOME"/tinct/templates/kde/kde-material-you-colors-wrapper.sh --scheme-variant "$kde_scheme_variant" \
-        >/dev/null 2>&1 || true
+    # the scheme tinct rendered from the theme's own colours (Dracula's are Dracula's), not a
+    # Material You one from a seed: its light selection made hovered rows unreadable in GTK
+    "$XDG_CONFIG_HOME"/tinct/templates/kde/apply-tinct-colors.sh >/dev/null 2>&1 || true
 }
 
 pre_process() {
@@ -117,7 +108,7 @@ post_process() {
     local screen_height="$2"
     local wallpaper_path="$3"
 
-    handle_kde_material_you_colors
+    handle_kde_colors
     "$SCRIPT_DIR/code/material-code-set-color.sh" > /tmp/vscode-theme-apply.log 2>&1
 }
 
@@ -869,11 +860,10 @@ switch() {
     cursorposy=$(bc <<< "scale=0; ($cursorposy - $screeny) * $scale / 1")
     cursorposy_inverted=$((screensizey - cursorposy))
 
-    local matugen_args=() generate_colors_material_args=()
+    local tinct_args=()
 
     if [[ "$color_flag" == "1" ]]; then
-        matugen_args=(color hex "$color")
-        generate_colors_material_args=(--color "$color")
+        tinct_args=(--color "$color")
     else
         if [[ -z "$imgpath" ]]; then
             echo 'Aborted'
@@ -961,8 +951,7 @@ switch() {
             set_thumbnail_path "$thumbnail"
 
             if [ -f "$thumbnail" ]; then
-                matugen_args=(image "$thumbnail")
-                generate_colors_material_args=(--path "$thumbnail")
+                tinct_args=(--path "$thumbnail")
                 create_restore_script "$video_path"
             else
                 echo "Cannot create image to colorgen"
@@ -970,8 +959,7 @@ switch() {
                 exit 1
             fi
         else
-            matugen_args=(image "$imgpath")
-            generate_colors_material_args=(--path "$imgpath")
+            tinct_args=(--path "$imgpath")
             [[ -z "$no_wallpaper_update" ]] && set_wallpaper_path "$imgpath"
             remove_restore
         fi
@@ -988,18 +976,15 @@ switch() {
     fi
 
     if [[ -n "$mode_flag" ]]; then
-        matugen_args+=(--mode "$mode_flag")
         if [[ $(jq -r '.appearance.wallpaperTheming.terminalGenerationProps.forceDarkMode' "$SHELL_CONFIG_FILE") == "true" ]]; then
-            generate_colors_material_args+=(--mode "dark")
+            tinct_args+=(--mode "dark")
         else
-            generate_colors_material_args+=(--mode "$mode_flag")
+            tinct_args+=(--mode "$mode_flag")
         fi
     fi
-    [[ -n "$type_flag" ]] && matugen_args+=(--type "$type_flag") && generate_colors_material_args+=(--scheme "$type_flag")
-    # Non-interactive: pick most vibrant color when matugen finds multiple candidates
-    matugen_args+=(--prefer saturation)
-    generate_colors_material_args+=(--termscheme "$terminalscheme" --blend_bg_fg)
-    generate_colors_material_args+=(--cache "$STATE_DIR/user/generated/color.txt")
+    [[ -n "$type_flag" ]] && tinct_args+=(--scheme "$type_flag")
+    tinct_args+=(--termscheme "$terminalscheme" --blend_bg_fg)
+    tinct_args+=(--cache "$STATE_DIR/user/generated/color.txt")
 
     pre_process "$mode_flag"
 
@@ -1007,7 +992,7 @@ switch() {
         local enable_apps_shell
         enable_apps_shell=$(jq -r '.appearance.wallpaperTheming.enableAppsAndShell' "$SHELL_CONFIG_FILE")
         if [ "$enable_apps_shell" == "false" ]; then
-            echo "App and shell theming disabled, skipping matugen and color generation"
+            echo "App and shell theming disabled, skipping colour generation"
             return
         fi
     fi
@@ -1017,31 +1002,44 @@ switch() {
         harmony=$(jq -r '.appearance.wallpaperTheming.terminalGenerationProps.harmony' "$SHELL_CONFIG_FILE")
         harmonize_threshold=$(jq -r '.appearance.wallpaperTheming.terminalGenerationProps.harmonizeThreshold' "$SHELL_CONFIG_FILE")
         term_fg_boost=$(jq -r '.appearance.wallpaperTheming.terminalGenerationProps.termFgBoost' "$SHELL_CONFIG_FILE")
-        [[ "$harmony" != "null" && -n "$harmony" ]] && generate_colors_material_args+=(--harmony "$harmony")
-        [[ "$harmonize_threshold" != "null" && -n "$harmonize_threshold" ]] && generate_colors_material_args+=(--harmonize_threshold "$harmonize_threshold")
-        [[ "$term_fg_boost" != "null" && -n "$term_fg_boost" ]] && generate_colors_material_args+=(--term_fg_boost "$term_fg_boost")
+        [[ "$harmony" != "null" && -n "$harmony" ]] && tinct_args+=(--harmony "$harmony")
+        [[ "$harmonize_threshold" != "null" && -n "$harmonize_threshold" ]] && tinct_args+=(--harmonize_threshold "$harmonize_threshold")
+        [[ "$term_fg_boost" != "null" && -n "$term_fg_boost" ]] && tinct_args+=(--term_fg_boost "$term_fg_boost")
     fi
 
     # Clean up any stale temp files
-    rm -f /tmp/matugen-temp-colors.json /tmp/matugen-temp-material_colors.scss
+    rm -f /tmp/tinct-temp-colors.json /tmp/tinct-temp-material_colors.scss
 
-    # ── tinct fast path ──────────────────────────────────────────────────
-    # The Rust engine (one native call, byte-identical output) replaces
-    # matugen + generate_colors_material.py + palette_transform.py.
-    # TINCT=0 forces the legacy python pipeline for rollback.
+    # An exact named theme (Palette panel > Exact theme): its own colours, not the wallpaper's.
+    # Nothing that reshapes a palette applies then (theory, style, remap would move them).
+    local exact_theme
+    exact_theme=$(jq -r '.appearance.wallpaperTheming.exactTheme // ""' "$SHELL_CONFIG_FILE" 2>/dev/null)
+    if [[ -n "$exact_theme" && "$exact_theme" != "null" ]]; then
+        tinct_args=(--theme "$exact_theme")
+        # the theme decides light or dark (Latte is light), for the apps that follow the hint
+        if tinct theme show "$exact_theme" --json 2>/dev/null | jq -e .dark >/dev/null; then
+            gsettings set org.gnome.desktop.interface color-scheme prefer-dark
+        else
+            gsettings set org.gnome.desktop.interface color-scheme prefer-light
+        fi
+        theory_flag="" style_flag="" practical_flag="" remap_flag=""
+    fi
+
+    # ── Palette ──────────────────────────────────────────────────────────
+    # tinct generates the palette, SCSS and colors.json in one native call.
     local tinct_ok=0
     if [[ "${TINCT:-1}" == "1" ]] && command -v tinct >/dev/null 2>&1; then
         # A failed generate (e.g. reading an image mid-write) must not apply
-        # an empty palette — fall through to the python path instead.
-        if tinct generate "${generate_colors_material_args[@]}" \
-                --out-json /tmp/matugen-temp-colors.json \
-                > /tmp/matugen-temp-material_colors.scss \
-            && [[ -s /tmp/matugen-temp-material_colors.scss ]] \
-            && [[ -s /tmp/matugen-temp-colors.json ]]; then
+        # an empty palette — the failure branch below stops instead.
+        if tinct generate "${tinct_args[@]}" \
+                --out-json /tmp/tinct-temp-colors.json \
+                > /tmp/tinct-temp-material_colors.scss \
+            && [[ -s /tmp/tinct-temp-material_colors.scss ]] \
+            && [[ -s /tmp/tinct-temp-colors.json ]]; then
             tinct_ok=1
         else
-            echo "switchwall: tinct generate failed — falling back to python pipeline" >&2
-            rm -f /tmp/matugen-temp-colors.json /tmp/matugen-temp-material_colors.scss
+            echo "switchwall: tinct generate failed" >&2
+            rm -f /tmp/tinct-temp-colors.json /tmp/tinct-temp-material_colors.scss
         fi
     fi
 
@@ -1053,19 +1051,18 @@ switch() {
                 --practical "$practical_flag" \
                 --remap     "$remap_flag" \
                 --mix-order "$mix_order_flag" \
-                --json /tmp/matugen-temp-colors.json \
-                --scss /tmp/matugen-temp-material_colors.scss \
+                --json /tmp/tinct-temp-colors.json \
+                --scss /tmp/tinct-temp-material_colors.scss \
                 2>/dev/null || true
         fi
     fi
 
     if [[ "$tinct_ok" != "1" ]]; then
-        # tinct is the only engine now (matugen + the python palette scripts
-        # are gone). Fail loudly rather than applying a half-written palette.
+        # tinct is the only colour engine. Fail loudly rather than applying a half-written palette.
         echo "switchwall: tinct is required for colour generation but did not produce a palette" >&2
         command -v notify-send >/dev/null 2>&1 && \
             notify-send -a "Wallpaper" "Theming failed" "tinct could not generate a palette" 2>/dev/null
-        rm -f /tmp/matugen-temp-colors.json /tmp/matugen-temp-material_colors.scss
+        rm -f /tmp/tinct-temp-colors.json /tmp/tinct-temp-material_colors.scss
         return 1
     fi
 
@@ -1073,11 +1070,11 @@ switch() {
     # This will generate terminal sequences, broadcast gsettings theme mode,
     # and run rebuild_templates.py to rewrite all other config files (GTK, Hyprland, etc.)
     # BEFORE colors.json is placed in its final location.
-    "$SCRIPT_DIR"/applycolor.sh /tmp/matugen-temp-material_colors.scss /tmp/matugen-temp-colors.json
+    "$SCRIPT_DIR"/applycolor.sh /tmp/tinct-temp-material_colors.scss /tmp/tinct-temp-colors.json
 
     # Atomically move the files to their final positions to trigger the Quickshell UI reload
-    [[ -f /tmp/matugen-temp-colors.json ]] && mv /tmp/matugen-temp-colors.json "$STATE_DIR/user/generated/colors.json"
-    [[ -f /tmp/matugen-temp-material_colors.scss ]] && mv /tmp/matugen-temp-material_colors.scss "$STATE_DIR/user/generated/material_colors.scss"
+    [[ -f /tmp/tinct-temp-colors.json ]] && mv /tmp/tinct-temp-colors.json "$STATE_DIR/user/generated/colors.json"
+    [[ -f /tmp/tinct-temp-material_colors.scss ]] && mv /tmp/tinct-temp-material_colors.scss "$STATE_DIR/user/generated/material_colors.scss"
 
     command -v deactivate >/dev/null 2>&1 && deactivate || true   # only set in the legacy venv path
 

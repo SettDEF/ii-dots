@@ -4,6 +4,14 @@ import Quickshell
 Singleton {
     id: root
 
+    /// 1536 -> "1.5 KB". Binary units, one decimal below 10.
+    function formatBytes(b) {
+        const u = ["B", "KB", "MB", "GB", "TB"];
+        let n = Number(b) || 0, i = 0;
+        while (n >= 1024 && i < u.length - 1) { n /= 1024; i++; }
+        return `${n < 10 && i > 0 ? n.toFixed(1) : Math.round(n)} ${u[i]}`;
+    }
+
     /**
      * Formats a string according to the args that are passed inc
      * @param { string } str

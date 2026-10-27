@@ -143,7 +143,7 @@ Scope {
                 // reads as "not moved far enough" rather than as two separate
                 // surfaces. The gap only applies while the drawer is open, so
                 // the closed layout is untouched.
-                anchors.topMargin: Appearance.sizes.barHeight
+                anchors.topMargin: (ScreenFit.reservedTop(win) || Appearance.sizes.barHeight)
                     + Appearance.sizes.hyprlandGapsOut
                     + WallpaperHub.detailsHeight
                     + (WallpaperHub.detailsHeight > 1 ? card.detailsClearance : 0)

@@ -338,6 +338,17 @@ ApplicationWindow {
                 animation: Appearance.animation.elementMoveFast.numberAnimation.createObject(this)
             }
             HoverHandler { id: titleHover }
+            // Drag the window by its header. This sits behind everything else in the bar, so only
+            // the empty parts move the window; the buttons and the search box keep their clicks.
+            Item {
+                anchors.fill: parent
+                z: -1
+                DragHandler {
+                    target: null
+                    acceptedButtons: Qt.LeftButton
+                    onActiveChanged: if (active) root.startSystemMove()
+                }
+            }
             Timer {
                 // a short grace before closing, so passing over the edge does not flicker
                 id: collapseDelay

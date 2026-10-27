@@ -12,7 +12,9 @@ Singleton {
     property bool available: UPower.displayDevice.isLaptopBattery
     property var chargeState: UPower.displayDevice.state
     property bool isCharging: chargeState == UPowerDeviceState.Charging
-    property bool isPluggedIn: isCharging || chargeState == UPowerDeviceState.PendingCharge
+    // UPower's own AC check: a full battery (or one held at the charge limit)
+    // is neither Charging nor PendingCharge, which used to read as "on battery".
+    property bool isPluggedIn: !UPower.onBattery || isCharging || chargeState == UPowerDeviceState.PendingCharge
     property real percentage: UPower.displayDevice?.percentage ?? 1
     readonly property bool allowAutomaticSuspend: Config.options.battery.automaticSuspend
     readonly property bool soundEnabled: Config.options.sounds.battery
@@ -27,9 +29,10 @@ Singleton {
     property bool isSuspendingAndNotCharging: allowAutomaticSuspend && isSuspending && !isCharging
     property bool isFullAndCharging: isFull && isCharging
 
-    property real energyRate: UPower.displayDevice.changeRate
-    property real timeToEmpty: UPower.displayDevice.timeToEmpty
-    property real timeToFull: UPower.displayDevice.timeToFull
+    // undefined while UPower has not answered yet (at startup): 0, not a warning
+    property real energyRate: UPower.displayDevice?.changeRate ?? 0
+    property real timeToEmpty: UPower.displayDevice?.timeToEmpty ?? 0
+    property real timeToFull: UPower.displayDevice?.timeToFull ?? 0
 
     property real health: (function() {
         const devList = UPower.devices.values;

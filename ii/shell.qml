@@ -15,12 +15,17 @@ import QtQuick.Window
 import Quickshell
 import Quickshell.Io
 import Quickshell.Hyprland
+import qs
 
 ShellRoot {
     id: root
 
     // Stuff for every panel family
     ReloadPopup {}
+
+    // No reloads while locked: a reload resets the lock state and unlocked the session (2026-10-21).
+    // Saves made meanwhile load with the next save after unlocking.
+    Binding { target: Quickshell; property: "watchFiles"; value: !GlobalStates.screenLocked }
 
     // QML singletons are lazy: they don't actually instantiate until something
     // reads a property. Services that own timers, event listeners, or IPC
@@ -43,6 +48,8 @@ ShellRoot {
           why: "wires the Toplevel listener that swaps the default sink when Bitwig is focused" },
         { service: WallpaperRotation,     prop: "enabled",
           why: "starts the wallpaper rotation Timer" },
+        { service: Glass,                 prop: "active",
+          why: "applies Palette > Glass (blur, window rules, app glass files) at startup" },
         { service: Qbt,                   prop: "baseUrl",
           why: "starts the 2s polling Timer feeding the Torrents shelf sub-tab" },
         { service: MouseService,          prop: "enabled",

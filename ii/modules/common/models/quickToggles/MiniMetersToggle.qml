@@ -54,8 +54,10 @@ QuickToggleModel {
             }
         }
     }
+    // only while the sidebar shows the toggle (it stays loaded): a bash, pgrep and hyprctl every
+    // 3 s around the clock otherwise; checked again the moment the sidebar opens
     Timer {
-        interval: 3000; running: true; repeat: true
+        interval: 3000; running: GlobalStates.sidebarRightOpen; repeat: true; triggeredOnStart: true
         onTriggered: mmCheckProc.running = true
     }
     Component.onCompleted: mmCheckProc.running = true

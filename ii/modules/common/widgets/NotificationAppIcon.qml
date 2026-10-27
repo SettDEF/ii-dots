@@ -9,10 +9,17 @@ import Quickshell.Services.Notifications
 MaterialShape { // App icon
     id: root
     property var appIcon: ""
+    /// "" when the theme has no such icon, instead of an image-missing URL.
+    readonly property string appIconPath: root.appIcon ? Quickshell.iconPath(root.appIcon, true) : ""
     property var summary: ""
     property var urgency: NotificationUrgency.Normal
     property bool isUrgent: urgency === NotificationUrgency.Critical
     property var image: ""
+    // The image is the notification's own (image://qsimage/…): freed with the notification, while
+    // the shell's list still shows it. Gone: the app icon instead of an empty circle.
+    property bool imageFailed: false
+    onImageChanged: imageFailed = false
+    readonly property bool showImage: root.image !== "" && !root.imageFailed
     property real materialIconScale: 0.57
     property real appIconScale: 0.8
     property real smallAppIconScale: 0.49
@@ -41,7 +48,7 @@ MaterialShape { // App icon
     // square (most icon themes, Reversal included) leaves the coloured circle
     // showing around its corners. The backdrop exists for the Material-symbol
     // fallback, which is a bare glyph and genuinely needs the contrast.
-    color: (root.appIcon !== "" || root.image !== "")
+    color: (root.appIcon !== "" || root.showImage)
         ? "transparent"
         : (isUrgent ? Appearance.colors.colPrimaryContainer : Appearance.colors.colSecondaryContainer)
     Loader {
@@ -64,7 +71,7 @@ MaterialShape { // App icon
     }
     Loader {
         id: appIconLoader
-        active: root.image == "" && root.appIcon != ""
+        active: !root.showImage && root.appIcon != ""
         anchors.centerIn: parent
         sourceComponent: IconImage {
             id: appIconImage
@@ -75,7 +82,7 @@ MaterialShape { // App icon
     }
     Loader {
         id: notifImageLoader
-        active: root.image != ""
+        active: root.showImage
         anchors.fill: parent
         sourceComponent: Item {
             anchors.fill: parent
@@ -85,6 +92,7 @@ MaterialShape { // App icon
                 readonly property int size: parent.width
 
                 source: root.image
+                onStatusChanged: if (status === Image.Error) root.imageFailed = true
                 fillMode: Image.PreserveAspectCrop
                 cache: false
                 antialiasing: true
@@ -104,7 +112,8 @@ MaterialShape { // App icon
             }
             Loader {
                 id: notifImageAppIconLoader
-                active: root.appIcon != ""
+                // No badge at all beats the theme's red "image-missing" glyph.
+                active: root.appIconPath !== ""
                 anchors.bottom: parent.bottom
                 anchors.right: parent.right
                 // Circular badge so the app icon reads as a corner badge over
@@ -121,7 +130,7 @@ MaterialShape { // App icon
                         anchors.centerIn: parent
                         implicitSize: root.smallAppIconSize
                         asynchronous: true
-                        source: Quickshell.iconPath(root.appIcon, "image-missing")
+                        source: root.appIconPath
                     }
                 }
             }

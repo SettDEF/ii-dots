@@ -51,10 +51,13 @@ QuickToggleModel {
         command: [`${Quickshell.env("HOME")}/.config/quickshell/ii/scripts/vm_notification_daemon.py`]
     }
 
+    // only while the sidebar shows the toggle (it stays loaded): virsh opened a libvirt connection
+    // every 3 s around the clock otherwise; checked again the moment the sidebar opens
     Timer {
         interval: 3000
-        running: true
+        running: GlobalStates.sidebarRightOpen
         repeat: true
+        triggeredOnStart: true
         onTriggered: vmCheckProc.running = true
     }
 

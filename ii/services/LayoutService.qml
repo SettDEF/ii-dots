@@ -1,235 +1,107 @@
 pragma Singleton
 import qs.modules.common
 import QtQuick
-import qs.services
 import Quickshell
 import Quickshell.Io
 import Quickshell.Hyprland
 
+/**
+ * AwesomeWM-style layouts, per workspace like Awesome's tags.
+ *
+ * The layouts run inside Hyprland (~/.config/hypr/lua/awesome_layouts.lua):
+ * natively where Hyprland has the layout (tile = master, dwindle, max =
+ * monocle, so mouse resizing works), as the Lua layout "lua:awesomewm"
+ * otherwise. This service only sends commands for the focused workspace and
+ * mirrors the state file, so the bar indicator and the OSD show what Hyprland is doing.
+ *
+ * The old version faked layouts by flipping GLOBAL master/dwindle settings,
+ * which re-tiled every workspace on every monitor; this one never touches
+ * global state.
+ */
 Singleton {
     id: root
 
-    // ── Public API ────────────────────────────────────────────────────
+    // Same names as awful.layout.suit. Order = Super+Y cycle order.
     readonly property var availableLayouts: [
-        { id: "tile",       icon: "splitscreen_right",    label: "Tile (master right)" },
-        { id: "tileleft",   icon: "splitscreen_left",     label: "Tile (master left)"  },
-        { id: "tiletop",    icon: "splitscreen_top",      label: "Tile (master top)"   },
-        { id: "tilebottom", icon: "splitscreen_bottom",   label: "Tile (master bottom)"},
-        { id: "dwindle",    icon: "calendar_view_week",   label: "Spiral / Dwindle"    },
-        { id: "max",        icon: "fullscreen",           label: "Maximised"           },
-        { id: "floating",   icon: "drag_pan",             label: "Floating"            },
+        { id: "tile",       icon: "splitscreen_left",    label: "Tile" },
+        { id: "tileleft",   icon: "splitscreen_right",   label: "Tile (master right)" },
+        { id: "tilebottom", icon: "splitscreen_top",     label: "Tile (master top)" },
+        { id: "tiletop",    icon: "splitscreen_bottom",  label: "Tile (master bottom)" },
+        { id: "fair",       icon: "grid_view",           label: "Fair" },
+        { id: "fairh",      icon: "view_agenda",         label: "Fair (rows)" },
+        { id: "spiral",     icon: "cyclone",             label: "Spiral" },
+        { id: "dwindle",    icon: "auto_awesome_mosaic", label: "Dwindle" },
+        { id: "max",        icon: "fullscreen",          label: "Max" },
+        { id: "cornernw",   icon: "north_west",          label: "Corner (top left)" },
+        { id: "cornerne",   icon: "north_east",          label: "Corner (top right)" },
+        { id: "cornersw",   icon: "south_west",          label: "Corner (bottom left)" },
+        { id: "cornerse",   icon: "south_east",          label: "Corner (bottom right)" },
     ]
 
-    property string defaultLayout: "tile"
+    readonly property string defaultLayout: "tile"
+    /// workspace name -> { suit, mwfact, nmaster, ncol }, as Hyprland saved it.
     property var perWorkspace: ({})
 
-    // Emitted whenever the layout for the focused workspace changes.
+    /// Emitted when the focused workspace's layout changes (drives the OSD).
     signal layoutChanged(string layoutId)
 
-    // Currently focused workspace id (-1 = unknown)
-    readonly property int focusedWsId: Hyprland.focusedWorkspace ? Hyprland.focusedWorkspace.id : -1
+    readonly property string focusedWs: Hyprland.focusedWorkspace?.name ?? ""
+    readonly property var current: root.perWorkspace[root.focusedWs]
+        ?? { suit: root.defaultLayout, mwfact: 0.5, nmaster: 1, ncol: 1 }
 
-    function layoutFor(wsId) {
-        const id = String(wsId)
-        return root.perWorkspace[id] ?? root.defaultLayout
+    function currentLayout() { return root.current.suit }
+    function layoutFor(wsName) { return (root.perWorkspace[String(wsName)] ?? {}).suit ?? root.defaultLayout }
+
+    /// Any layout command: "suit tile", "next", "mwfact +0.05", "nmaster +1",
+    /// "ncol -1", "swapmaster", "reset". Goes through the Lua module's cmd(),
+    /// which knows whether the workspace runs a native layout (tile = master,
+    /// dwindle, max = monocle) or the Lua one, and speaks the matching dialect.
+    function message(msg) {
+        cmdProc.exec(["hyprctl", "eval",
+            `package.loaded["lua.awesome_layouts"].cmd(${JSON.stringify(String(msg))})`]);
     }
+    Process { id: cmdProc }
 
-    function currentLayout() { return root.layoutFor(root.focusedWsId) }
-
-    function setLayout(wsId, name) {
-        const id = String(wsId)
-        const cur = root.perWorkspace[id] ?? root.defaultLayout
-        if (cur === name) { applyLayout(wsId); root.layoutChanged(name); return }
-        const next = Object.assign({}, root.perWorkspace)
-        next[id] = name
-        root.perWorkspace = next
-        save()
-        applyLayout(wsId)
-        if (wsId === root.focusedWsId) root.layoutChanged(name)
+    function setCurrent(name) { root.message(`suit ${name}`) }
+    /// Layout for any workspace, focused or not (the bar's workspace menu).
+    function setFor(wsName, suit) {
+        cmdProc.exec(["hyprctl", "eval",
+            `package.loaded["lua.awesome_layouts"].apply(${JSON.stringify(String(wsName))}, ${JSON.stringify(suit)})`]);
     }
+    function cycle(dir) { root.message(dir < 0 ? "prev" : "next") }
 
-    function setCurrent(name) { setLayout(root.focusedWsId, name) }
-
-    function cycle(dir) {
-        const list = root.availableLayouts
-        const cur = root.currentLayout()
-        let i = list.findIndex(l => l.id === cur)
-        if (i < 0) i = 0
-        const j = (i + dir + list.length) % list.length
-        setCurrent(list[j].id)
-    }
-
-    // ── Float-mode bookkeeping ────────────────────────────────────────
-    // Per-workspace last-applied layout so transitions are detected correctly.
-    property var lastApplied: ({})
-    // Per-workspace list of window addresses we floated when entering "floating" mode.
-    // Only these are returned to tiled when leaving — manually-floated windows stay floating.
-    property var floatedByUs: ({})
-
-    function setMasterOrientation(dir) {
-        // Was `exec hyprctl keyword ...`, which shells out to a request this
-        // Hyprland answers with "unknown request" — silently, exit code 0.
-        HyprDispatch.config("general:layout", "master")
-        HyprDispatch.config("master:orientation", dir)
-    }
-
-    // Float every currently-tiled window on the focused workspace and remember
-    // which ones we floated so we can revert exactly those later.
-    Process {
-        id: enterFloatingProc
-        property int targetWs: -1
-        stdout: StdioCollector {
-            onStreamFinished: {
-                const list = text.trim() === "" ? [] : text.trim().split(",")
-                const next = Object.assign({}, root.floatedByUs)
-                next[String(enterFloatingProc.targetWs)] = list
-                root.floatedByUs = next
-            }
-        }
-    }
-
-    function enterFloating(wsId) {
-        enterFloatingProc.targetWs = wsId
-        enterFloatingProc.command = ["bash", "-c",
-            `hyprctl -j clients | python3 -c '
-import json, sys, subprocess
-data = json.load(sys.stdin)
-ws = json.loads(subprocess.check_output(["hyprctl","-j","activeworkspace"]))["id"]
-addrs = []
-for c in data:
-    if c.get("workspace",{}).get("id") == ws and not c.get("floating"):
-        subprocess.run(["hyprctl","dispatch","setfloating","address:"+c["address"]])
-        addrs.append(c["address"])
-print(",".join(addrs))
-'`]
-        enterFloatingProc.running = true
-    }
-
-    Process { id: exitFloatingProc }
-
-    function exitFloating(wsId) {
-        const key = String(wsId)
-        const ours = root.floatedByUs[key] ?? []
-        if (ours.length === 0) return
-        const arg = ours.join(" ")
-        exitFloatingProc.command = ["bash", "-c",
-            `for a in ${arg}; do
-                state=$(hyprctl -j clients | python3 -c "
-import json, sys
-for c in json.load(sys.stdin):
-    if c['address'] == '$a':
-        print('1' if c.get('floating') else '0')
-        break
-")
-                if [ "$state" = "1" ]; then
-                    hyprctl dispatch "hl.dsp.window.float({ action = \"set\", window = \"address:$a\" })"
-                fi
-            done`]
-        exitFloatingProc.running = true
-        const next = Object.assign({}, root.floatedByUs)
-        delete next[key]
-        root.floatedByUs = next
-    }
-
-    // ── Apply ─────────────────────────────────────────────────────────
-    function applyLayout(wsId) {
-        if (wsId !== root.focusedWsId) return  // layouts apply to focused ws only
-        const name = root.layoutFor(wsId)
-        const prev = root.lastApplied[String(wsId)] ?? null
-
-        // No-op if the workspace already has this layout applied. Without this
-        // guard, every onFocusedWorkspaceChanged event reissues
-        // `hyprctl keyword master:orientation X` (a GLOBAL setting), which
-        // forces Hyprland to re-tile every master-layout workspace on every
-        // monitor — visible as windows on other monitors swapping positions
-        // in a loop whenever you switch workspaces.
-        if (prev === name) return
-
-        // Float-mode transitions
-        if (prev !== "floating" && name === "floating") enterFloating(wsId)
-        else if (prev === "floating" && name !== "floating") exitFloating(wsId)
-
-        switch (name) {
-        case "tile":       setMasterOrientation("right");  break
-        case "tileleft":   setMasterOrientation("left");   break
-        case "tiletop":    setMasterOrientation("top");    break
-        case "tilebottom": setMasterOrientation("bottom"); break
-        case "dwindle":    HyprDispatch.config("general:layout", "dwindle"); break
-        case "max":
-            HyprDispatch.config("general:layout", "dwindle")
-            HyprDispatch.run("fullscreen 0")
-            break
-        case "floating":
-            // floating geometry is already set by enterFloating; nothing else to do
-            break
-        }
-
-        const nextApplied = Object.assign({}, root.lastApplied)
-        nextApplied[String(wsId)] = name
-        root.lastApplied = nextApplied
-    }
-
-    // ── Layout application policy ─────────────────────────────────────
-    // Layouts are applied ONLY when the user explicitly cycles them
-    // (Super+Y → setLayout → applyLayout). We deliberately do NOT reapply
-    // on focused-workspace change because every apply path writes global
-    // Hyprland state (`master:orientation`, `general:layout`) — which retiles
-    // every master-layout workspace on every monitor, producing visible
-    // window-swap loops when you bounce focus between workspaces or monitors.
-    //
-    // Trade-off: a workspace's saved layout is no longer asserted just by
-    // visiting it. If you want it enforced, cycle once with Super+Y and it
-    // sticks until you change global state elsewhere.
-    //
-    // The "max" auto-fullscreen on activeToplevelChanged was removed for the
-    // same reason — `HyprDispatch.run("fullscreen 0")` fired on every focus
-    // change, including focus events that originate on other monitors.
-
-    // ── Persistence ───────────────────────────────────────────────────
-    readonly property string statePath: `${Quickshell.env("HOME")}/.local/state/quickshell/user/generated/layouts.json`
-
+    // ── State mirror ──────────────────────────────────────────────────
     FileView {
         id: stateFile
-        path: root.statePath
+        path: `${Quickshell.env("HOME")}/.cache/hypr-awesome.json`
+        watchChanges: true
+        onFileChanged: reload()
         onLoaded: {
             try {
-                const data = JSON.parse(stateFile.text())
-                if (data && typeof data === "object") {
-                    if (typeof data.default === "string") root.defaultLayout = data.default
-                    if (data.perWorkspace && typeof data.perWorkspace === "object")
-                        root.perWorkspace = data.perWorkspace
-                }
-            } catch (e) {
-                console.warn("[LayoutService] state parse failed:", e)
-            }
-        }
-        onLoadFailed: function(err) {
-            // No file yet — that's fine, defaults stay.
+                const before = root.currentLayout();
+                root.perWorkspace = JSON.parse(stateFile.text()) ?? {};
+                if (root.currentLayout() !== before) root.layoutChanged(root.currentLayout());
+            } catch (e) {}
         }
     }
 
-    function save() {
-        const json = JSON.stringify({
-            default: root.defaultLayout,
-            perWorkspace: root.perWorkspace
-        }, null, 2)
-        stateFile.setText(json)
-    }
-
-    Component.onCompleted: stateFile.reload()
-
-    // ── IPC: `qs ipc call layout <fn> [args]` ─────────────────────────
+    // ── IPC: `qs -c ii ipc call layout <fn> [arg]` ────────────────────
     IpcHandler {
         target: "layout"
 
         function set(name: string): void { root.setCurrent(name) }
-        function cycle(dirStr: string): void {
-            const d = parseInt(dirStr || "1", 10)
-            root.cycle(isNaN(d) ? 1 : d)
-        }
-        function next(): void  { root.cycle(1) }
-        function prev(): void  { root.cycle(-1) }
+        function next(): void { root.cycle(1) }
+        function prev(): void { root.cycle(-1) }
+        function cycle(dirStr: string): void { root.cycle(parseInt(dirStr || "1", 10) < 0 ? -1 : 1) }
         function get(): string { return root.currentLayout() }
-        function reapply(): void { root.applyLayout(root.focusedWsId) }
+        /// Awesome's Mod+l / Mod+h: master width, e.g. "+0.05" or "0.6".
+        function mwfact(arg: string): void { root.message(`mwfact ${arg}`) }
+        /// Awesome's Mod+Shift+h / l: number of masters, e.g. "+1".
+        function nmaster(arg: string): void { root.message(`nmaster ${arg}`) }
+        /// Awesome's Mod+Ctrl+h / l: number of stack columns, e.g. "+1".
+        function ncol(arg: string): void { root.message(`ncol ${arg}`) }
+        /// Awesome's Mod+Ctrl+Return: focused window becomes the master.
+        function swapmaster(): void { root.message("swapmaster") }
+        function reset(): void { root.message("reset") }
     }
 }

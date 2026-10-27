@@ -112,7 +112,7 @@ Scope {
             exclusionMode: ExclusionMode.Ignore
             exclusiveZone: 0
             margins {
-                top: Appearance.sizes.barHeight
+                top: (ScreenFit.reservedTop(osdRoot) || Appearance.sizes.barHeight)
                 bottom: Appearance.sizes.barHeight
             }
 

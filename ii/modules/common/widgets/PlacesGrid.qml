@@ -20,13 +20,15 @@ GridLayout {
     /// Surface the chips sit on, so callers can match their own panel.
     property color chipColor: ColorUtils.transparentize(Appearance.colors.colLayer0Base, 0.25)
     property color chipText: Appearance.colors.colOnLayer0
+    /// Leave drives (mount points) out, for callers that list them in a DrivesList.
+    property bool foldersOnly: false
 
     columns: Math.max(2, DockWidgets.get("places", "columns") ?? 3)
     columnSpacing: 6
     rowSpacing: 6
 
     Repeater {
-        model: Places.entries
+        model: grid.foldersOnly ? Places.folders : Places.entries
         delegate: RippleButton {
             id: cell
             required property var modelData

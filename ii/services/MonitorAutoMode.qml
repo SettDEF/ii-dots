@@ -10,6 +10,7 @@ import qs.modules.common
 import qs.services
 import QtQuick
 import Quickshell
+import Quickshell.Io
 
 Singleton {
     id: root
@@ -70,7 +71,7 @@ Singleton {
     /// What is wrong with a monitor right now, changing nothing.
     function inspect(m) {
         if (!m) return null;
-        const best = root.bestMode(m);
+        const best = root.saverMode(m) ?? root.bestMode(m);
         const scale = Number(m.scale) || 1;
         const scaleOk = root.isCleanScale(m.width, m.height, scale);
         const modeOk = !best || (m.width === best.w && m.height === best.h
@@ -101,13 +102,15 @@ Singleton {
         const r = root.inspect(m);
         if (!r || (r.modeOk && r.scaleOk)) return false;
 
-        // MonitorManager owns the eval transport and the type contract.
-        MonitorManager._runMonitor({
-            output: m.name,
+        // Where it is now, not "auto": auto could move the screen.
+        const fields = {
             mode: r.wantMode ? r.wantMode.str : "preferred",
-            position: "auto",
+            position: m.x + "x" + m.y,
             scale: String(r.wantScale ?? m.scale ?? 1)
-        });
+        };
+        // MonitorManager owns the eval transport and the type contract.
+        MonitorManager._runMonitor(Object.assign({ output: m.name }, fields));
+        root._remember(m, fields);
 
         const bits = [];
         if (!r.modeOk && r.wantMode) bits.push(r.current + " to " + r.wantMode.str);
@@ -117,9 +120,24 @@ Singleton {
         root.history = [{ name: m.name, detail: line, reason: why ?? "" }]
             .concat(root.history).slice(0, 20);
 
-        if (root.notify)
-            Quickshell.execDetached(["notify-send",
-                Translation.tr("Display adjusted: %1").arg(m.name), line, "-a", "Shell"]);
+        if (root.notify) {
+            // The screen's model, not its port: "AOC 2590G5", not "DP-12".
+            const model = (m.description ?? "").replace(/\s+0x[0-9A-Fa-f]+$/, "").trim() || m.name;
+            const parts = [];
+            if (!r.modeOk && r.wantMode) {
+                parts.push(r.wantMode.w === m.width && r.wantMode.h === m.height
+                    ? Translation.tr("Refresh rate %1 Hz → %2 Hz")
+                        .arg(Math.round(Number(m.refreshRate) * 100) / 100).arg(r.wantMode.rr)
+                    : Translation.tr("Resolution %1 × %2 at %3 Hz")
+                        .arg(r.wantMode.w).arg(r.wantMode.h).arg(r.wantMode.rr));
+            }
+            if (!r.scaleOk)
+                parts.push(Translation.tr("Scale %1 → %2 for sharp text").arg(m.scale).arg(r.wantScale));
+            Quickshell.execDetached(["notify-send", "-a", Translation.tr("Displays"),
+                "-i", "video-display",
+                Translation.tr("%1 optimised").arg(model),
+                parts.join("\n") + "\n" + Translation.tr("Set to the best mode this screen supports.")]);
+        }
         return true;
     }
 
@@ -157,5 +175,97 @@ Singleton {
         function onMonitorsChanged() { settle.restart() }
     }
 
-    Component.onCompleted: settle.restart()
+    // ── Battery saver ────────────────────────────────────────────────────
+    // The laptop panel at 60 Hz on battery: at 180 Hz the compositor redraws and
+    // blurs three times as often, and the chip ran at ~38 W with the desktop idle.
+    // Full rate again on the charger, or while something is fullscreen on the panel
+    // (a game). Live only: monitor_auto.lua keeps the best mode, so the charger
+    // case needs nothing.
+    readonly property bool lowRefreshOnBattery: Config.options?.monitors?.lowRefreshOnBattery ?? true
+    readonly property int saverHz: 60
+
+    function _internal(m) { return /^(eDP|LVDS|DSI)/.test(m?.name ?? "") }
+
+    /// The mode the panel should be in right now, or null to leave it alone.
+    function saverMode(m) {
+        if (!root.lowRefreshOnBattery || !root._internal(m) || Battery.isPluggedIn) return null;
+        if (HyprlandData.workspaceById?.[m.activeWorkspace?.id]?.hasfullscreen === true) return null;
+        let pick = null;
+        for (const s of (m.availableModes ?? [])) {
+            const p = /^(\d+)x(\d+)@([\d.]+)Hz$/.exec(String(s).trim());
+            if (!p || +p[1] !== m.width || +p[2] !== m.height) continue;
+            const rr = +p[3];
+            if (!pick || Math.abs(rr - root.saverHz) < Math.abs(pick.rr - root.saverHz))
+                pick = { w: +p[1], h: +p[2], rr: rr, str: p[1] + "x" + p[2] + "@" + p[3] };
+        }
+        return pick;
+    }
+
+    function _enforceSaver() {
+        for (const m of (HyprlandData.monitors ?? [])) {
+            if (!root._internal(m)) continue;
+            const low = root.saverMode(m);
+            const want = low ?? root.bestMode(m);
+            if (!want || Math.abs(Number(m.refreshRate) - want.rr) < 0.5) continue;
+            // the panel keeps its rule's vrr 2 (variable refresh while fullscreen)
+            MonitorManager._runMonitor({ output: m.name, mode: want.str,
+                position: m.x + "x" + m.y, scale: String(m.scale ?? 1), vrr: 2 });
+        }
+    }
+
+    // Debounced both ways: a charger that flaps or a quick fullscreen toggle must
+    // not switch the panel mode (a short blank) back and forth.
+    Timer { id: saverSettle; interval: 2500; onTriggered: root._enforceSaver() }
+    Connections {
+        target: Battery
+        function onIsPluggedInChanged() { saverSettle.restart() }
+    }
+    Connections {
+        target: HyprlandData
+        // these fire on most Hyprland events: start the wait, never extend it
+        function onWorkspacesChanged() { if (!saverSettle.running) saverSettle.start() }
+        function onMonitorsChanged() { if (!saverSettle.running) saverSettle.start() }
+    }
+    onLowRefreshOnBatteryChanged: saverSettle.restart()
+
+    // ── Remembering ──────────────────────────────────────────────────────
+    // A choice made only live was undone by the next config apply (any
+    // `hl.config`, e.g. Palette > Glass): the monitors.conf rule put the
+    // screen back to its old mode, this service switched it again, and an
+    // external screen blanked twice per change. So the choice is saved as a
+    // rule in hypr/lua/monitor_auto.lua, which lua/local.lua loads AFTER the
+    // user's monitor rules: every later apply lands on the same mode.
+    readonly property string _rulesPath: Quickshell.env("HOME") + "/.config/hypr/lua/monitor_auto.lua"
+    readonly property string _statePath: Quickshell.env("HOME") + "/.local/state/quickshell/user/monitorAuto.json"
+    /// description -> { mode, position, scale }
+    property var _saved: ({})
+
+    function _remember(m, fields) {
+        const desc = m?.description ?? "";
+        if (!desc) return;
+        const next = Object.assign({}, root._saved);
+        next[desc] = fields;
+        root._saved = next;
+        let lua = "-- Written by the shell (MonitorAutoMode): the best mode it picked for each\n"
+            + "-- screen, so a config re-apply does not switch back. Delete a line to undo.\n";
+        for (const d in next) {
+            const f = next[d];
+            lua += `hl.monitor({ output = ${DisplayProfiles.luaQuote("desc:" + d)}, mode = ${DisplayProfiles.luaQuote(f.mode)},`
+                + ` position = ${DisplayProfiles.luaQuote(f.position)}, scale = ${DisplayProfiles.luaQuote(f.scale)} })\n`;
+        }
+        saveProc.command = ["bash", "-c",
+            "printf '%s' \"$1\" > \"$2\"; mkdir -p \"$(dirname \"$4\")\"; printf '%s' \"$3\" > \"$4\"",
+            "save", lua, root._rulesPath, JSON.stringify(next), root._statePath];
+        saveProc.running = true;
+    }
+
+    Process { id: saveProc; command: ["true"] }
+
+    FileView {
+        path: root._statePath
+        printErrors: false
+        onLoaded: { try { root._saved = JSON.parse(text()) ?? {}; } catch (e) { root._saved = {}; } }
+    }
+
+    Component.onCompleted: { settle.restart(); saverSettle.restart(); }
 }

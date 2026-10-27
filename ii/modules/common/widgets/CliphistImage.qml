@@ -59,7 +59,10 @@ Rectangle {
 
     Process {
         id: decodeImageProcess
-        command: ["bash", "-c", `[ -f ${imageDecodeFilePath} ] || echo '${StringUtils.shellSingleQuoteEscape(root.entry)}' | ${Cliphist.cliphistBinary} decode > '${imageDecodeFilePath}'`]
+        // decoded into a temp file and renamed into place: another row for the same entry saw the
+        // file the redirect had just created (empty, or half written), skipped decoding, and showed
+        // nothing ("Cannot open"). -s: an empty file left by a failed decode counts as missing.
+        command: ["bash", "-c", `f='${imageDecodeFilePath}'; [ -s "$f" ] || { echo '${StringUtils.shellSingleQuoteEscape(root.entry)}' | ${Cliphist.cliphistBinary} decode > "$f.$$" && [ -s "$f.$$" ] && mv -f "$f.$$" "$f"; } ; rm -f "$f.$$"; [ -s "$f" ]`]
         onExited: (exitCode, exitStatus) => {
             if (root._gone) return;
             if (exitCode === 0) {
@@ -75,7 +78,9 @@ Rectangle {
         root._gone = true;
         // Kill the in-flight decode so it can't emit signals after we're gone.
         decodeImageProcess.running = false;
-        Quickshell.execDetached(["bash", "-c", `[ -f '${imageDecodeFilePath}' ] && rm -f '${imageDecodeFilePath}'`]);
+        // The decoded file stays: the list is rebuilt as you type, and a deleted file raced the
+        // new row for the same entry, which found it, skipped decoding, then lost it (an empty
+        // box). The folder is under /tmp and emptied at every shell start (Directories.qml).
     }
 
     layer.enabled: true

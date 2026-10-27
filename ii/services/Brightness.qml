@@ -121,7 +121,7 @@ Singleton {
             // up from there writes every step, dipping the panel to ~1%.
             enabled: monitor.animateChanges && monitor.ready && !monitor.adopting
             NumberAnimation {
-                duration: 200
+                duration: 320
                 easing.type: Easing.BezierSpline
                 easing.bezierCurve: Appearance.animationCurves.expressiveEffects
             }
@@ -191,8 +191,6 @@ Singleton {
                 return;
             }
 
-            let percent = Math.floor(value * 100);
-
             // This panel's firmware curve folds over at the top. Measured on
             // the raw device (max 65535), reading actual_brightness back:
             //     64224  (98%) -> actual 65290   brightest, stable
@@ -201,11 +199,30 @@ Singleton {
             //     65535 (100%) -> actual     0   backlight OFF
             // Above ~64500 the backlight switches off. 98% is 99.6% of maximum
             // light, with margin.
-            if (percent > 98) percent = 98;
+            //
+            // RAW levels, not whole percents: 1% is 655 raw steps, which shows
+            // as a jump at low brightness. Floor 1%, ceiling 98%, as before.
+            const max = monitor.rawMaxBrightness;
+            const raw = Math.max(Math.ceil(max * 0.01), Math.min(Math.floor(max * 0.98), Math.round(value * max)));
+            monitor.writePanel(raw);
+        }
 
-            // "1%" not "1": a bare number is RAW, so "1" means 1/65535.
-            const arg = percent <= 0 ? "1%" : `${percent}%`;
-            writeProc.exec(["brightnessctl", "--class", "backlight", "s", arg, "--quiet"]);
+        /// Latest value wins. The shared writeProc was restarted by every
+        /// animation frame, killing the write in flight, so a fade landed as a
+        /// few jumps. One write at a time per panel; frames that arrive
+        /// meanwhile collapse into the newest, sent when it finishes.
+        property int pendingRaw: -1
+        function writePanel(raw: int): void {
+            if (panelWriter.running) { monitor.pendingRaw = raw; return; }
+            panelWriter.exec(["brightnessctl", "--class", "backlight", "s", String(raw), "--quiet"]);
+        }
+        readonly property Process panelWriter: Process {
+            onExited: {
+                if (monitor.pendingRaw < 0) return;
+                const next = monitor.pendingRaw;
+                monitor.pendingRaw = -1;
+                monitor.writePanel(next);
+            }
         }
 
         /// Takes a level someone else set (firmware, resume, a fallback key bind)

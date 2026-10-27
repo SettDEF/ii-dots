@@ -144,7 +144,8 @@ Singleton {
                             w ? (w.class + " fs=" + w.fullscreen + " xwl=" + w.xwayland
                                  + " " + w.address) : "none",
                             "| will restore:", root.restoreAddress || "(nothing)",
-                            "| cursor kick:", root.restoreNeedsCursor);
+                            "| cursor kick:", root.restoreNeedsCursor,
+                            "| by:", root.dismissable.map(x => x?.WlrLayershell?.namespace ?? String(x)).join(", "));
             }
         } else if (root.grabCleared) {
             console.log("[FocusGrab] grab OFF — dismissed by click, leaving focus alone");

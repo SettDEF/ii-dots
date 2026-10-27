@@ -231,11 +231,13 @@ hidden rather than erroring:
 - **quarry** — a separate daemon of mine, found through `$QUARRY_SOCK`. It
   backs four tabs of the wallpaper picker (wallhaven, videos, local, reddit)
   over one long-lived socket instead of a subprocess per page. Without it those
-  tabs stay quiet and everything else is unaffected; nothing installs it and
-  nothing needs it.
+  tabs stay quiet and everything else is unaffected. `install.sh --with-quarry`
+  installs it.
 
-Wallpaper theming expects [`matugen`](https://github.com/InioX/matugen) if you
-want colours to follow the wallpaper.
+  Its sources are files, not code: drop a TOML manifest in
+  `~/.config/quarry/sources/` and the wallpaper picker gains a site, no rebuild
+  and no Rust. 156 of its sources are already written that way — see
+  `/usr/share/doc/quarry/adding-a-source.md` once it is installed.
 
 [`tinct`](https://github.com/SettDEF/tinct-rs) is the theming engine: palette
 extraction, image transforms, thumbnails and the screenshot editor's crop and

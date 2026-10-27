@@ -15,8 +15,23 @@ MouseArea {
 
     readonly property bool showNext: BarWidgets.get(root.widgetId, "showNext") !== false
     readonly property int maxWidth: BarWidgets.get(root.widgetId, "maxWidth") ?? 220
+    readonly property string launchPage: BarWidgets.get(root.widgetId, "launchPage") ?? "home"
     readonly property var active: Todo.active
     readonly property bool alert: Todo.overdue > 0
+
+    // collapsed by default; right click toggles
+    property bool expanded: false
+    property real expandProgress: 0
+
+    Behavior on expandProgress {
+        NumberAnimation {
+            duration: 250
+            easing.type: Easing.OutBack
+            easing.overshoot: 1.3
+        }
+    }
+
+    onExpandedChanged: expandProgress = expanded ? 1 : 0
 
     // a tick so the timer counts while it is shown
     property int tick: 0
@@ -35,43 +50,54 @@ MouseArea {
     readonly property real minimumWidth: row.implicitWidth - (title.visible ? Math.min(title.implicitWidth, root.maxWidth) + row.spacing : 0) + 4
     implicitHeight: row.implicitHeight + 8
     onClicked: mouse => {
-        if (mouse.button === Qt.RightButton) Todo.openApp()
+        if (mouse.button === Qt.RightButton) root.expanded = !root.expanded
         else if (mouse.button === Qt.MiddleButton && root.active) Todo.stop()
+        else if (mouse.button === Qt.LeftButton) Todo.openApp(root.launchPage)
         else GlobalStates.dotosCaptureOpen = !GlobalStates.dotosCaptureOpen
     }
 
     RowLayout {
         id: row
-        anchors { left: parent.left; right: parent.right; leftMargin: 2; rightMargin: 2; verticalCenter: parent.verticalCenter }
-        spacing: 6
+        anchors { left: parent.left; right: parent.right; leftMargin: 4; rightMargin: 4; verticalCenter: parent.verticalCenter }
+        spacing: 8
 
         MaterialSymbol {
-            text: root.active ? "timer" : "task_alt"
+            text: root.active ? "timer" : "checklist"
             iconSize: Appearance.font.pixelSize.normal
             fill: root.active || root.alert ? 1 : 0
             color: root.alert ? Appearance.m3colors.m3error
-                : root.active ? Appearance.colors.colPrimary : Appearance.colors.colOnLayer1
+                : root.active ? Appearance.colors.colPrimary : Appearance.colors.colPrimary
         }
         StyledText {
             id: title
-            visible: text.length > 0
+            visible: expandProgress > 0.01 && text.length > 0
+            opacity: expandProgress
+            scale: 0.8 + 0.2 * expandProgress
+            transformOrigin: Item.Left
             Layout.fillWidth: true
             Layout.maximumWidth: root.maxWidth
             elide: Text.ElideRight
             text: root.active ? root.active.title
                 : root.showNext && Todo.next ? Todo.next.title : ""
             font.pixelSize: Appearance.font.pixelSize.smaller
+            font.weight: Font.Medium
             color: Appearance.colors.colOnLayer1
         }
         StyledText {
-            visible: !!root.active
+            visible: expandProgress > 0.01 && !!root.active
+            opacity: expandProgress
+            scale: 0.8 + 0.2 * expandProgress
+            transformOrigin: Item.Left
             text: (root.tick, root.dur(Date.now() / 1000 - (root.active?.since ?? 0)))
             font.family: Appearance.font.family.monospace
             font.pixelSize: Appearance.font.pixelSize.smaller
             color: Appearance.colors.colPrimary
         }
         StyledText {
-            visible: !root.active && (Todo.overdue + Todo.dueToday) > 0
+            visible: expandProgress > 0.01 && !root.active && (Todo.overdue + Todo.dueToday) > 0
+            opacity: expandProgress
+            scale: 0.8 + 0.2 * expandProgress
+            transformOrigin: Item.Left
             text: Todo.overdue > 0 ? "!" + Todo.overdue : String(Todo.dueToday)
             font.family: Appearance.font.family.monospace
             font.pixelSize: Appearance.font.pixelSize.smaller
@@ -84,9 +110,9 @@ MouseArea {
 
         ColumnLayout {
             anchors.centerIn: parent
-            spacing: 4
+            spacing: 6
 
-            StyledPopupHeaderRow { icon: "task_alt"; label: "Dotos" }
+            StyledPopupHeaderRow { icon: "checklist"; label: "Dotos" }
             StyledText {
                 visible: Todo.open.length === 0
                 text: Translation.tr("Nothing open")
@@ -101,10 +127,15 @@ MouseArea {
                     task: modelData
                 }
             }
-            StyledText {
-                text: Translation.tr("Click: add a task (Super+R) · right click: open Dotos · middle: stop the timer")
-                font.pixelSize: Appearance.font.pixelSize.smallest
-                color: Appearance.colors.colSubtext
+            // quick actions
+            RowLayout {
+                Layout.fillWidth: true
+                spacing: 8
+                StyledText {
+                    text: Translation.tr("Left: open Dotos · Right: toggle · Middle: stop")
+                    font.pixelSize: Appearance.font.pixelSize.smallest
+                    color: Appearance.colors.colSubtext
+                }
             }
         }
     }

@@ -33,9 +33,11 @@ Singleton {
         Quickshell.execDetached(["bash", "-c", "systemctl suspend || loginctl suspend"]);
     }
 
+    // Ends the compositor, whichever runs (Hyprland or loom): the session closes with it, while
+    // zeit and its shells keep running (terminate-session would kill them too).
     function logout() {
         closeAllWindows();
-        Quickshell.execDetached(["pkill", "-i", "Hyprland"]);
+        Quickshell.execDetached(["bash", "-c", "pkill -i -x Hyprland; pkill -x loom"]);
     }
 
     function launchTaskManager() {

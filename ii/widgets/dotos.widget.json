@@ -1,0 +1,11 @@
+{
+    "id": "dotos",
+    "name": "Dotos: next task / timer",
+    "icon": "task_alt",
+    "provider": "dotos",
+    "settings": [
+        { "key": "showNext", "label": "Show the next task's title", "type": "bool", "def": true },
+        { "key": "maxWidth", "label": "Title width (px)", "type": "int", "def": 220, "min": 80, "max": 500 },
+        { "key": "launchPage", "label": "Page to open on click (home, tasks, inbox, plan, ...)", "type": "string", "def": "home" }
+    ]
+}

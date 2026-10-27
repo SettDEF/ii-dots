@@ -112,6 +112,10 @@ Scope {
         function focus(): void {
             lockContext.shouldReFocus();
         }
+        // `qs ipc call lock locked`: whether the session is locked (scripts check before touching the lock)
+        function locked(): bool {
+            return GlobalStates.screenLocked;
+        }
     }
 
     GlobalShortcut {

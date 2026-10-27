@@ -393,7 +393,16 @@ Item {
                     echo "$name|$model|$size|$rs|$ws|$temp"
                 done
             `] })
-            topProcsProc.exec({ command: ["bash","-c","ps --no-headers -ax -o comm,%cpu,%mem --sort=-%cpu 2>/dev/null | head -7"] })
+            // the shell's one Vitals feed already lists the top processes; ps only when it is down
+            if (Vitals.fresh && Vitals.procs.length > 0) {
+                const total = Vitals.snap?.mem?.total_kb ?? 0;
+                root.topProcs = Vitals.procs.slice(0, 7).map(p => ({
+                    name: p.comm ?? "",
+                    cpu: (p.cpu_pct ?? 0).toFixed(1),
+                    mem: total > 0 ? ((p.rss_mb ?? 0) * 1024 / total * 100).toFixed(1) : "0"
+                }));
+            } else
+                topProcsProc.exec({ command: ["bash","-c","ps --no-headers -ax -o comm,%cpu,%mem --sort=-%cpu 2>/dev/null | head -7"] })
         }
     }
     Component.onCompleted: {

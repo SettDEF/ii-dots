@@ -50,8 +50,18 @@ Singleton {
         onTriggered: root._armed = true
     }
 
+    // Restarted if wl-paste ever exits (killed, compositor hiccup); otherwise
+    // the copy toast stays dead until the shell restarts.
+    Timer {
+        id: watchRestart
+        interval: 2000
+        onTriggered: watchProc.running = true
+    }
+
     Process {
+        id: watchProc
         running: true
+        onExited: watchRestart.restart()
         command: ["wl-paste", "--watch", "bash", "-c",
             't=$(wl-paste --list-types 2>/dev/null | head -1); ' +
             'case "$t" in ' +

@@ -32,7 +32,6 @@ Singleton {
         { cmd: "brightnessctl", pkg: "brightnessctl",   group: "everyday", label: qsTr("Screen brightness") },
         { cmd: "xdg-open",    pkg: "xdg-utils",         group: "everyday", label: qsTr("Opening links and files") },
 
-        { cmd: "matugen",     pkg: "matugen",           group: "extras",   label: qsTr("Colours that follow the wallpaper") },
         { cmd: "tinct",       pkg: "tinct",             group: "everyday", label: qsTr("Theming, thumbnails and screenshot editing") },
         { cmd: "ddcutil",     pkg: "ddcutil",           group: "extras",   label: qsTr("Brightness on an external monitor") },
         { cmd: "ffmpeg",      pkg: "ffmpeg",            group: "extras",   label: qsTr("Screen recording") },

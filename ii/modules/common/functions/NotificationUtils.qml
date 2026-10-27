@@ -109,7 +109,31 @@ Singleton {
         }
 
         processedBody = processedBody.replace(/<img/gi, '\n\n<img');
-        
-        return processedBody
+
+        return root.formatBody(processedBody)
+    }
+
+    /// Light formatting for bodies that arrive as text with markup in it.
+    /// KDE Connect double-escapes what the phone sends ("&lt;br/&gt;",
+    /// "&lt;b&gt;"), so the tags showed literally. Only a safe set is
+    /// unescaped - links and images stay text, so a notification cannot
+    /// inject them. Then chat-style markdown and bare URLs.
+    function formatBody(text) {
+        let t = String(text ?? "");
+        // 1. Escaped safe tags -> real tags.
+        t = t.replace(/&lt;(\/?)(b|i|u|s|em|strong|code|br)\s*\/?&gt;/gi,
+            (m, close, tag) => tag.toLowerCase() === "br" ? "<br/>" : `<${close}${tag.toLowerCase()}>`);
+        // 2. Empty pairs, e.g. "<b></b>" from an empty bold span.
+        t = t.replace(/<(b|i|u|s|em|strong|code)>\s*<\/\1>/gi, "");
+        // 3. Markdown, outside existing tags only (split keeps tags intact).
+        t = t.split(/(<[^>]+>)/).map(part => part.startsWith("<") ? part : part
+            .replace(/`([^`\n]+)`/g, "<code>$1</code>")
+            .replace(/\*\*([^*\n]+)\*\*/g, "<b>$1</b>")
+            .replace(/~~([^~\n]+)~~/g, "<s>$1</s>")
+            .replace(/(^|[\s(])\*([^*\s][^*\n]*?)\*(?=[\s).,!?]|$)/g, "$1<i>$2</i>")
+            .replace(/(^|[\s(])(https?:\/\/[^\s<>"')]+)/g, '$1<a href="$2">$2</a>')
+        ).join("");
+        // 4. A body already carrying its own <a> must not get links inside links.
+        return t.replace(/<a href="([^"]+)">(<a [^>]+>)([^<]*)<\/a><\/a>/g, "$2$3</a>");
     }
 }

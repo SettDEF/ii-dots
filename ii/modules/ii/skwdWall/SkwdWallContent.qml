@@ -35,6 +35,14 @@ Item {
     property bool whLoadingMore: false
     // Prefetch once past this share of the loaded list.
     readonly property real loadMoreThreshold: 0.35
+    /// A tile's colour while its picture loads: the picture's own main colour
+    /// (Wallhaven sends it with the results), dimmed so it reads as "loading".
+    function placeholderFor(item) {
+        const p = item && item.palette
+        if (!p || !p.length || !p[0]) return Appearance.colors.colLayer1Base
+        const c = String(p[0])
+        return Qt.darker(c.startsWith("#") ? c : "#" + c, 1.35)
+    }
     // Also prefetch once this many items remain ahead (keeps the chain alive on long lists).
     readonly property int prefetchHeadroom: 20
 
@@ -237,8 +245,8 @@ Item {
                         id: real,
                         title: real.split("/").pop(),
                         // Carousel shows the poster jpg for videos.
-                        thumb: "file://" + thumb,
-                        full:  "file://" + thumb,
+                        thumb: FileUtils.fileUrl(thumb),
+                        full:  FileUtils.fileUrl(thumb),
                         source: "local",
                         kind: kind,
                         // path is the REAL file — switchwall.sh's is_video() detects .mp4 and runs mpvpaper.
@@ -1078,7 +1086,7 @@ Item {
         monitorApplyProc.monitor = monitor
         monitorApplyProc.path = target
         monitorApplyProc.command = ["bash", "-c",
-            (local ? "" : FileUtils.fetchToFileCommand(item.path, target) + " && ") + stopVideo]
+            (local ? "" : FileUtils.fetchToFileWaitingCommand(item.path, target, { waitSeconds: 300 }) + " && ") + stopVideo]
         monitorApplyProc.running = true
     }
     Process {
@@ -1164,7 +1172,7 @@ Item {
         if (!md || !md.path) return
         const target = root.wallpaperCachePath(md)
         Quickshell.execDetached(["bash", "-c",
-            FileUtils.fetchToFileCommand(md.path, target, { timeout: 60 })
+            FileUtils.fetchToFileWaitingCommand(md.path, target, { waitSeconds: 300 })
             + ` && notify-send -a 'skwd' 'Saved to Wallpapers' ${FileUtils.shQuote(target)}`
             + ` || notify-send -a 'skwd' -u critical 'Save failed' ${FileUtils.shQuote(target)}`])
     }
@@ -1183,10 +1191,24 @@ Item {
             applyProc.command = ["bash", "-c",
                 `${Directories.wallpaperSwitchScriptPath} --image '${item.path.replace(/'/g, "'\\''")}'`]
         } else {
+            // Remote: a detached job, so it outlives the deck — applying while
+            // offline used to fail outright (one curl, 30 s), and closing the
+            // deck killed a download in progress. It waits for the network
+            // (up to 5 min), tells you once that it is waiting, and the newest
+            // apply wins: it replaces any job still waiting.
             const target = root.wallpaperCachePath(item)
-            applyProc.command = ["bash", "-c",
-                FileUtils.fetchToFileCommand(item.path, target)
-                + ` && ${Directories.wallpaperSwitchScriptPath} --image ${FileUtils.shQuote(target)}`]
+            const pidFile = "${XDG_RUNTIME_DIR:-/tmp}/skwd-apply.pid"
+            const job = `old=$(cat "${pidFile}" 2>/dev/null); [ -n "$old" ] && kill "$old" 2>/dev/null; echo $$ > "${pidFile}"; `
+                + FileUtils.fetchToFileWaitingCommand(item.path, target, {
+                    waitSeconds: 300,
+                    waitingNotice: `notify-send -a skwd -i network-offline 'Waiting for the network' 'The wallpaper is applied as soon as it can be downloaded.'`
+                })
+                + ` && ${Directories.wallpaperSwitchScriptPath} --image ${FileUtils.shQuote(target)}`
+                + ` || notify-send -a skwd -u critical 'Wallpaper not applied' 'It could not be downloaded within 5 minutes.'`
+                + `; [ "$(cat "${pidFile}" 2>/dev/null)" = "$$" ] && rm -f "${pidFile}"`
+            Quickshell.execDetached(["setsid", "bash", "-c", job])
+            GlobalStates.skwdWallOpen = false
+            return
         }
         applyProc.running = true
     }
@@ -1524,7 +1546,7 @@ Item {
                                                      0,  0,    0, 1)
                             }
                             radius: parent.active ? 20 : 6
-                            color: Appearance.colors.colLayer1Base
+                            color: root.placeholderFor(parent.parent.modelData)
                             clip: true
                             border.width: parent.active ? 3 : 1
                             border.color: parent.active
@@ -1782,7 +1804,7 @@ Item {
                         anchors.fill: parent
                         anchors.margins: 3
                         radius: 4
-                        color: Appearance.colors.colLayer1Base
+                        color: root.placeholderFor(modelData)
                         clip: true
                         border.width: gridCardHov.hovered ? 2 : 0
                         border.color: Appearance.m3colors.m3primary
@@ -1829,7 +1851,7 @@ Item {
                             id: gridLoadingDot
                             anchors.centerIn: parent
                             width: 10; height: 10; radius: 5
-                            visible: gridImg.status === Image.Loading
+                            visible: gridImg.status === Image.Loading && !(modelData.palette && modelData.palette.length)
                             color: Appearance.m3colors.m3primary
                             opacity: 0.55
                             SequentialAnimation on scale {

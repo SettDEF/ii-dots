@@ -10,7 +10,7 @@ import qs.modules.common.widgets
 
 /**
  * Invisible edge strips that detect finger touch and reveal a glowing
- * matugen-coloured trail behind the contact point. A second finger
+ * palette-coloured trail behind the contact point. A second finger
  * arriving while the first is still down opens the corresponding panel.
  *
  * Each edge strip is wider than its input region so the trail glow can

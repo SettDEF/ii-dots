@@ -86,6 +86,23 @@ Singleton {
                 property string recentColors: "[]"
             }
 
+            // Night light chosen by hand, kept through shell and Hyprland reloads:
+            // "" = follow the schedule, "on" / "off" = what you picked, until
+            // the schedule next changes state (same rule as before a reload).
+            property JsonObject nightLight: JsonObject {
+                property string manual: ""
+                property int sinceMinute: 0
+            }
+
+            property JsonObject snip: JsonObject {
+                property int delay: 3 // the timer button's seconds (right-click cycles)
+                property bool sound: false // recordings take the system sound
+            }
+
+            property JsonObject colorPick: JsonObject {
+                property list<string> recent: [] // newest first, the colour picker's
+            }
+
             property JsonObject cheatsheet: JsonObject {
                 property int tabIndex: 0
                 // Markdown viewer state ─────────────────────────────────
@@ -185,6 +202,12 @@ Singleton {
                 property bool echoCancel: false
                 property bool highPass: false
                 property real highPassHz: 80
+
+                // Share audio into the mic (MicShare.qml): whether you also hear
+                // what you share, and how loud it is mixed in for the others.
+                property bool shareEnabled: false
+                property bool shareHear: true
+                property real shareLevel: 0.6
             }
 
             property JsonObject lid: JsonObject {

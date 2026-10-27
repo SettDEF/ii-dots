@@ -424,21 +424,24 @@ WindowDialog {
         id: connectionSection
         RowLayout {
             spacing: 6
-            PrimaryActionButton {
-                buttonText: root.device?.connected ? Translation.tr("Disconnect") : Translation.tr("Connect")
+            ActionPillButton {
+                icon: root.device?.connected ? "link_off" : "link"
+                tone: root.device?.connected ? "tonal" : "filled"
+                colBackground: Appearance.colors.colPrimary   // the old colours
+                colText: Appearance.colors.colOnPrimary
+                text: root.device?.connected ? Translation.tr("Disconnect") : Translation.tr("Connect")
                 onClicked: {
                     if (root.device?.connected) root.device.disconnect()
                     else root.device.connect()
                 }
             }
-            Item { Layout.fillWidth: true }
-            PrimaryActionButton {
+            ActionPillButton {
                 visible: root.device?.paired ?? false
-                colBackground: Appearance.colors.colError
-                colBackgroundHover: Appearance.colors.colErrorHover
-                colRipple: Appearance.colors.colErrorActive
+                icon: "delete"
+                tone: "danger"
+                colBackground: Appearance.colors.colError     // the old solid red
                 colText: Appearance.colors.colOnError
-                buttonText: Translation.tr("Forget")
+                text: Translation.tr("Forget")
                 onClicked: root.device?.forget()
             }
         }

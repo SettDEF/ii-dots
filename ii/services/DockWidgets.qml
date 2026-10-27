@@ -82,9 +82,12 @@ Singleton {
             ]
         },
         {
-            id: "resources", name: Translation.tr("CPU / RAM"), icon: "memory", w: Appearance.sizes.dockWidgetWindow.widthNormal, h: Appearance.sizes.dockWidgetWindow.heightNormal,
+            id: "resources", name: Translation.tr("CPU / RAM"), icon: "memory",
+            // installed by vitals/install.sh: a copy, so editing the project never reloads an open window
+            app: Quickshell.env("HOME") + "/.local/share/vitals/gui/vitals.qml", appName: "Vitals", w: Appearance.sizes.dockWidgetWindow.widthNormal, h: Appearance.sizes.dockWidgetWindow.heightNormal,
             settings: [
-                { key: "showSwap", label: Translation.tr("Show swap bar"), type: "bool", def: false }
+                { key: "showSwap", label: Translation.tr("Show swap bar"), type: "bool", def: false },
+                { key: "showTemp", label: Translation.tr("Show CPU temperature bar (from Vitals)"), type: "bool", def: true }
             ]
         }
     ]

@@ -95,7 +95,7 @@ Singleton {
     }
 
     // ── Per-player audio-mute tracking (sink-input mute state) ─────────
-    // Updated every 2s by polling pactl. Map is { lowercased-key → bool }
+    // Rebuilt when pactl subscribe reports a stream change (see PulseEvents). Map is { lowercased-key → bool }
     // keyed by the player's desktopEntry / first identity word / dbusName head.
     property var mutedKeys: ({})
 
@@ -182,7 +182,7 @@ Singleton {
         return firstAudibleActivePlayer() === null
     }
 
-    // Poll pactl every 2s directly and rebuild the muted-key map using native JS.
+    // One pactl listing, parsed here, rebuilds the muted-key map (run on stream events).
     Process {
         id: muteScanProc
         command: ["pactl", "list", "sink-inputs"]
@@ -221,8 +221,17 @@ Singleton {
             }
         }
     }
+    // Rescan when a stream changes (mute, a new one, one gone), announced by the shell's one
+    // `pactl subscribe` (PulseEvents), instead of a pactl run every 3 s around the clock. Bursts are
+    // folded into one scan.
+    Connections {
+        target: PulseEvents
+        function onSinkInput() { muteScanSoon.restart() }
+    }
+    Timer { id: muteScanSoon; interval: 150; onTriggered: muteScanProc.running = true }
+    // a slow safety net, in case an event was missed
     Timer {
-        interval: 3000 // was 2000 — a per-app mute indicator doesn't need 2s
+        interval: 60000
         running: true
         repeat: true
         onTriggered: muteScanProc.running = true

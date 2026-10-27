@@ -67,7 +67,7 @@ Item {
         }
     }
 
-    property var    artUrl:      player?.trackArtUrl ?? ""
+    property var    artUrl:      MprisController.artFor(player)
     property string trackTitle:  player?.trackTitle  ?? ""
     property string trackArtist: player?.trackArtist ?? ""
     property bool   isPlaying:   player?.isPlaying   ?? false

@@ -1,10 +1,12 @@
 import qs.services
 import qs.modules.common
 import qs.modules.common.functions
+import qs.modules.common.widgets
 import Qt5Compat.GraphicalEffects
 import QtQuick
 import QtQuick.Layouts
 import Quickshell
+import Quickshell.Hyprland
 import Quickshell.Widgets
 
 DockButton {
@@ -72,8 +74,33 @@ DockButton {
             AppLaunch.launch(root.desktopEntry);
             return;
         }
+        // A minimized window (special:minimized, see hypr custom/scripts/
+        // minimize.sh) comes back to the current workspace; activate() alone
+        // would open the hidden workspace instead.
+        const minimized = appToplevel.toplevels.find(t => root.isMinimized(t));
+        if (minimized) {
+            root.restore(minimized);
+            return;
+        }
         lastFocused = (lastFocused + 1) % appToplevel.toplevels.length
         appToplevel.toplevels[lastFocused].activate()
+    }
+
+    function addressOf(toplevel) {
+        const a = toplevel?.HyprlandToplevel?.address;
+        return a ? `0x${a}` : "";
+    }
+    function isMinimized(toplevel) {
+        const a = root.addressOf(toplevel);
+        return a.length > 0
+            && HyprlandData.windowByAddress[a]?.workspace?.name === "special:minimized";
+    }
+    function restore(toplevel) {
+        const a = root.addressOf(toplevel);
+        const here = HyprlandData.activeWorkspace?.id;
+        if (a.length === 0 || here === undefined) return;
+        HyprDispatch.run(`movetoworkspace ${here}, address:${a}`);
+        HyprDispatch.run(`focuswindow address:${a}`);
     }
 
     middleClickAction: () => {
@@ -123,7 +150,86 @@ DockButton {
                 }
             }
 
+            // Download ring around the browser while Downloads sees a .part file.
+            // Spins while the size is unknown; fills once progress is reported.
+            CircularProgress {
+                id: downloadRing
+                readonly property bool isBrowser: /zen|firefox|tela/i.test(appToplevel.appId ?? "")
+                visible: isBrowser && Downloads.count > 0 && !root.isSeparator
+                anchors.centerIn: iconImageLoader
+                implicitSize: root.iconSize + 8
+                lineWidth: 3
+                value: Downloads.progress >= 0 ? Downloads.progress : 0.28
+                colPrimary: Appearance.colors.colPrimary
+                colSecondary: ColorUtils.transparentize(Appearance.colors.colPrimary, 0.8)
+                RotationAnimation on rotation {
+                    running: downloadRing.visible && Downloads.progress < 0
+                    from: 0; to: 360
+                    duration: 1400
+                    loops: Animation.Infinite
+                }
+            }
+
+            // The number for the ring: only once tela-zen reports real progress
+            // (downloads.json). Bottom-centre, so it never covers the unread
+            // badge in the top-right corner.
+            Rectangle {
+                id: downloadPct
+                visible: downloadRing.visible && Downloads.progress >= 0
+                anchors {
+                    horizontalCenter: iconImageLoader.horizontalCenter
+                    verticalCenter: iconImageLoader.verticalCenter
+                    verticalCenterOffset: root.iconSize / 2 - 2
+                }
+                implicitHeight: 16
+                implicitWidth: pctText.implicitWidth + 10
+                radius: Appearance.rounding.full
+                color: Appearance.colors.colPrimary
+                border.width: 2
+                border.color: Appearance.colors.colLayer0
+                StyledText {
+                    id: pctText
+                    anchors.centerIn: parent
+                    text: Math.floor(Downloads.progress * 100) + "%"
+                    font.pixelSize: Appearance.font.pixelSize.smallest - 1
+                    font.family: Appearance.font.family.monospace
+                    font.weight: Font.Bold
+                    color: Appearance.colors.colOnPrimary
+                }
+            }
+
+            // Unread badge: notifications still in the history for this app
+            // (AppBadges). Pinned to the icon's top-right corner, ringed in
+            // the dock colour so it separates from any icon artwork.
+            Rectangle {
+                id: badge
+                readonly property int count: AppBadges.countFor(appToplevel.appId)
+                visible: count > 0 && !root.isSeparator
+                anchors {
+                    horizontalCenter: iconImageLoader.horizontalCenter
+                    horizontalCenterOffset: root.iconSize / 2 - 3
+                    verticalCenter: iconImageLoader.verticalCenter
+                    verticalCenterOffset: -root.iconSize / 2 + 3
+                }
+                implicitHeight: 18
+                implicitWidth: Math.max(implicitHeight, badgeText.implicitWidth + 9)
+                radius: Appearance.rounding.full
+                color: Appearance.colors.colPrimary
+                border.width: 2
+                border.color: Appearance.colors.colLayer0
+                StyledText {
+                    id: badgeText
+                    anchors.centerIn: parent
+                    text: badge.count > 99 ? "99+" : String(badge.count)
+                    font.pixelSize: Appearance.font.pixelSize.smallest
+                    font.family: Appearance.font.family.monospace
+                    font.weight: Font.Bold
+                    color: Appearance.colors.colOnPrimary
+                }
+            }
+
             RowLayout {
+                visible: !downloadPct.visible
                 spacing: 3
                 anchors {
                     top: iconImageLoader.bottom

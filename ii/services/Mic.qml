@@ -42,22 +42,53 @@ Singleton {
     readonly property list<var> sources: Audio.devices(false)
 
     readonly property PwNode source: {
-        if (root.preferredName !== "") {
-            const pick = root.sources.find(n => n.name === root.preferredName);
+        // A filter's own output is never "the microphone": it was saved here
+        // once (preferredSource = mic_rnnoise), and with the filter not running
+        // the panel reported the mic as disconnected.
+        if (root.preferredName !== "" && !root._isOwn(root.preferredName)) {
+            const pick = root.sources.find(n => n.name === root.preferredName)
+                // the same device under another profile: an update left the RØDE with only
+                // "pro-audio", so ….mono-fallback became ….pro-input-0 (2026-10-22)
+                ?? root.sources.find(n => root._sameDevice(n.name, root.preferredName));
             if (pick) return pick;
         }
-        return Pipewire.defaultAudioSource;
+        const def = Pipewire.defaultAudioSource;
+        if (def && !root._isOwn(def.name)) return def;
+        // The default is one of OUR nodes: makeDefault() put the end of the
+        // chain there on purpose. Treating it as "the microphone" made every
+        // chain read its own output after a shell reload — the mic-share mixer
+        // fed the mix back into itself. Use the last real default instead.
+        return root.sources.find(n => n.name === root._lastRealDefault)
+            ?? root.sources.find(n => !root._isOwn(n.name))
+            ?? null;
     }
+
+    /// Nodes this service and MicShare create are all named mic_*.
+    function _isOwn(name) { return (name ?? "").startsWith("mic_") }
+    function _exists(name) { return root.sources.some(n => n.name === name) }
+    /// The ALSA device a source belongs to (its name without the profile part), "" for others.
+    function _device(name) {
+        const n = name ?? "";
+        return n.startsWith("alsa_input.") ? n.slice(0, n.lastIndexOf(".")) : "";
+    }
+    function _sameDevice(a, b) { return root._device(a) !== "" && root._device(a) === root._device(b) }
+
+    property string _lastRealDefault: ""
+    readonly property string _defaultName: Pipewire.defaultAudioSource?.name ?? ""
+    on_DefaultNameChanged: if (root._defaultName !== "" && !root._isOwn(root._defaultName)) root._lastRealDefault = root._defaultName
 
     /// True when the user asked for a device that is not currently present —
     /// worth saying out loud rather than silently metering something else.
-    readonly property bool preferredMissing: root.preferredName !== ""
-        && !root.sources.some(n => n.name === root.preferredName)
+    readonly property bool preferredMissing: root.preferredName !== "" && !root._isOwn(root.preferredName)
+        && !root.sources.some(n => n.name === root.preferredName || root._sameDevice(n.name, root.preferredName))
 
     readonly property bool ready: source?.ready ?? false
     readonly property string deviceName: source?.description ?? source?.name ?? ""
     readonly property bool muted: source?.audio?.muted ?? false
-    readonly property real volume: source?.audio?.volume ?? 0
+    /// the node volume as pactl reads it (the node is untracked, so `audio.volume` stays 0 for a
+    /// mic that appeared later: the panel said "input volume is 0%" at 100%, 2026-10-22)
+    property real _pactlVolume: -1
+    readonly property real volume: root._pactlVolume >= 0 ? root._pactlVolume : (source?.audio?.volume ?? 0)
 
     // NO PwObjectTracker, deliberately — services/Devices.qml documents that
     // tracking device nodes writes back into the PipeWire objects and re-runs
@@ -68,6 +99,7 @@ Singleton {
     // resolved from that instead — in the shell, which can read what QML cannot.
 
     function selectSource(name) {
+        if (root._isOwn(name)) name = "";   // see `source`: never a filter output
         root.preferredName = name ?? "";
         Persistent.states.mic.preferredSource = root.preferredName;
     }
@@ -88,6 +120,7 @@ Singleton {
     function setVolume(v) {
         if (root.source?.audio)
             root.source.audio.volume = Math.max(0, Math.min(1, v));
+        if (root._pactlVolume >= 0) root._pactlVolume = Math.max(0, Math.min(1, v));
     }
 
     /* --- hardware gain ----------------------------------------------------- */
@@ -142,6 +175,8 @@ Singleton {
         command: ["bash", "-c",
             "name=\"$1\"\n" +
             "[ -n \"$name\" ] || { echo none; exit 0; }\n" +
+            "vol=$(pactl get-source-volume \"$name\" 2>/dev/null | grep -m1 -oE '[0-9]+%' | tr -d %)\n" +
+            "echo \"VOL=${vol:--1}\"\n" +
             "card=$(pactl list sources 2>/dev/null | grep -A40 \"Name: $name\" " +
                 "| grep -m1 'alsa.card = ' | tr -d '\"' | awk '{print $3}')\n" +
             "[ -n \"$card\" ] || { echo none; exit 0; }\n" +
@@ -154,7 +189,11 @@ Singleton {
             "sh", root.source?.name ?? ""]
         stdout: StdioCollector {
             onStreamFinished: {
-                const out = text.trim();
+                const lines = text.trim().split("\n");
+                const vl = lines.find(l => l.startsWith("VOL="));
+                const v = vl ? parseInt(vl.slice(4)) : -1;
+                root._pactlVolume = isNaN(v) || v < 0 ? -1 : v / 100;
+                const out = lines.filter(l => !l.startsWith("VOL=")).join("\n").trim();
                 root.probeRaw = out === "" ? "(empty)" : out;
                 if (out === "none" || out === "") {
                     root.cardIndex = -1; root.gainControl = ""; root.actualGainDb = -1; return
@@ -214,6 +253,12 @@ Singleton {
     /// A different device means a different card and a fresh driver at factory
     /// defaults, so re-probe at once and restore the attempt budget.
     onSourceChanged: {
+        // found under its new name (a profile change): remembered so, after this change (at once
+        // it re-ran this binding inside itself: a binding loop)
+        if (root.source && root.source.name !== root.preferredName && root._sameDevice(root.source.name, root.preferredName)) {
+            const now = root.source.name;
+            Qt.callLater(() => root.selectSource(now));
+        }
         // The remembered gain belongs to the PREVIOUS device. Carrying it over
         // is how 60 dB intended for one card ended up being forced onto another
         // whose range stops at 30.
@@ -224,7 +269,117 @@ Singleton {
         root.actualGainDb = -1;
         root._restoreAttempts = 0;
         if (!probeGain.running) probeGain.running = true;
+        chainRetarget.restart();
+        liveOnArrival.restart();
     }
+
+    /// A mic that appears (boot, replug, newly picked) starts live. WirePlumber
+    /// restores the last saved mute per device, and a stale "muted" left the
+    /// RØDE silent in Discord after every replug. Delayed past that restore.
+    Timer {
+        id: liveOnArrival
+        interval: 2000
+        // pactl, not `root.muted`: the source is untracked (see above), so its
+        // mute flag here can be stale.
+        onTriggered: {
+            const dev = root.source?.name ?? "";
+            if (!dev || root._isOwn(dev)) return;
+            unmuteProc.command = ["bash", "-c",
+                "pactl get-source-mute \"$1\" | grep -q yes && pactl set-source-mute \"$1\" 0; true",
+                "sh", dev];
+            unmuteProc.running = true;
+        }
+    }
+    Process { id: unmuteProc; command: ["true"] }
+
+    /// Running chains read the device they were STARTED on, so picking another
+    /// mic left them on the old one (Discord heard the laptop mic, 2026-10-11).
+    /// Moved live, never restarted: nodes appearing or vanishing crash Discord.
+    Timer {
+        id: chainRetarget
+        interval: 300
+        onTriggered: {
+            const dev = root.source?.name ?? "";
+            if (!dev || root._isOwn(dev)) return;
+            chainMove.command = ["bash", "-c",
+                "for n in \"$2\" mic_monitor_in; do "
+                + "for i in $(pactl -f json list source-outputs | jq -r --arg n \"$n\" "
+                + "'.[]|select(.properties.\"node.name\"==$n)|.index'); do "
+                + "pactl move-source-output \"$i\" \"$1\"; done; done",
+                "sh", dev, root.highPass ? "mic_hp_in" : "mic_rnnoise_in"];
+            chainMove.running = true;
+        }
+    }
+    Process { id: chainMove; command: ["true"] }
+
+    /* --- switched-off microphones ----------------------------------------- */
+
+    /// Sound cards that have an input but whose profile is "off", so PipeWire makes no source
+    /// for them and they are missing from the picker. An update left the RØDE offering only
+    /// "pro-audio", sitting at "off": the panel said "not connected" while it was plugged in
+    /// (2026-10-22). Each is {card, description, profile}: the profile it would be turned on to.
+    property var offCards: []
+    /// The card a source belongs to (alsa_input.X.port → alsa_card.X).
+    function _cardFor(name) {
+        const d = root._device(name);
+        return d ? "alsa_card." + d.slice("alsa_input.".length) : "";
+    }
+    /// The chosen mic is plugged in but switched off (not unplugged).
+    readonly property bool preferredOff: root.preferredMissing
+        && root.offCards.some(c => c.card === root._cardFor(root.preferredName))
+
+    /// Turns a card on, to its best profile with an input (mono-fallback, then analog, then
+    /// pro-audio). Only adds a source: no stream is moved (voice apps crash when moved).
+    function wakeCard(card, profile) {
+        if (!card || !profile) return;
+        wakeProc.command = ["pactl", "set-card-profile", card, profile];
+        wakeProc.running = true;
+    }
+    Process {
+        id: wakeProc
+        command: ["true"]
+        onExited: cardsProbe.running = true
+    }
+
+    Process {
+        id: cardsProbe
+        // jq, as chainRetarget uses. Only ALSA cards whose profile is exactly "off": a headset
+        // left on an output-only profile on purpose (the HDB 630's mic costs it its good audio)
+        // is not "off" and is never touched.
+        command: ["bash", "-c",
+            "pactl -f json list cards 2>/dev/null | jq -r '.[] | select(.name|startswith(\"alsa_card.\")) "
+            + "| select(.active_profile == \"off\") | . as $c "
+            + "| [$c.profiles | to_entries[] | select(.value.sources > 0 and .value.available != false)] as $in "
+            + "| select(($in|length) > 0) "
+            + "| ($in | sort_by((if .key == \"mono-fallback\" then 0 elif (.key|test(\"analog|input\")) then 1 elif .key == \"pro-audio\" then 2 else 3 end), -.value.priority) | .[0].key) as $p "
+            + "| [$c.name, ($c.properties[\"device.description\"] // $c.name), $p] | join(\"|\")'"]
+        stdout: StdioCollector {
+            onStreamFinished: {
+                root.offCards = text.split("\n").filter(l => l.includes("|")).map(l => {
+                    const p = l.split("|");
+                    return { card: p[0], description: p[1], profile: p[2] };
+                });
+                // the chosen mic, switched off: on again, a few tries at most
+                const mine = root.offCards.find(c => c.card === root._cardFor(root.preferredName));
+                if (mine && root._wakeTries < 3) {
+                    root._wakeTries += 1;
+                    root.wakeCard(mine.card, mine.profile);
+                } else if (!mine) {
+                    root._wakeTries = 0;
+                }
+            }
+        }
+    }
+    property int _wakeTries: 0
+    onSourcesChanged: if (!cardsProbe.running) cardsProbe.running = true
+    Timer {
+        // a card switched off by something else, with nothing in the source list changing
+        interval: 15000
+        running: root.preferredMissing
+        repeat: true
+        onTriggered: if (!cardsProbe.running) cardsProbe.running = true
+    }
+    Component.onCompleted: cardsProbe.running = true
 
     /* --- level ------------------------------------------------------------- */
 
@@ -321,8 +476,11 @@ Singleton {
                         // are this panel. Listing them showed the user two rows
                         // of "Unknown app" that were the noise suppression and
                         // high-pass they had just switched on here.
+                        // Every stream this panel creates is named mic_* (filter
+                        // chains, monitoring, MicShare's mixer). Retargeting one
+                        // of those onto the mix would loop the mix into itself.
                         if (app === root.meterAppName) continue;
-                        if (node.startsWith("mic_rnnoise") || node.startsWith("mic_hp")) continue;
+                        if (node.startsWith("mic_") || node.indexOf("mic_share") >= 0) continue;
 
                         // Name it from whatever the client actually provided,
                         // best first. "Unknown app" is the last resort, not the
@@ -396,6 +554,9 @@ Singleton {
         if (!dest) return;
         for (const row of root.recordingStreams) {
             if (row.sourceName === dest) continue;
+            // Apps the user pointed at "Mic + shared audio" stay there: moving
+            // a live voice stream is what crashed Discord's renderer.
+            if (row.sourceName === MicShare.mixSource) continue;
             root.moveStream(row.index, dest);
         }
     }
@@ -536,11 +697,16 @@ Singleton {
      * the one that gives RNNoise less to chew on. Whichever is last is what
      * apps should use.
      */
-    readonly property string effectiveSource: {
-        if (root.noiseSuppression) return "mic_rnnoise";
-        if (root.highPass) return "mic_hp";
+    // A stage counts only once its node exists: the switch can be on while
+    // the chain is still starting (or died), and naming a missing node made
+    // PipeWire fall back to the default source.
+    readonly property string processedSource: {
+        if (root.noiseSuppression && root._exists("mic_rnnoise")) return "mic_rnnoise";
+        if (root.highPass && root._exists("mic_hp")) return "mic_hp";
         return root.source?.name ?? "";
     }
+
+    readonly property string effectiveSource: root.processedSource
 
     /// Each chain's input: the previous stage if there is one, else the device.
     function _inputFor(slot) {
@@ -548,13 +714,14 @@ Singleton {
         return root.source?.name ?? "";
     }
 
-    function _startChain(slot, desc, nodeName, graphNodes) {
+    function _startChain(slot, desc, nodeName, graphNodes, adopt) {
         const dir = (Quickshell.env("XDG_RUNTIME_DIR") || "/tmp") + "/ii-mic";
         const path = dir + "/" + slot + ".conf";
         // Written and launched in one shell: Quickshell has no file-write API,
         // and a temp file plus a detached child is exactly what this needs.
         chainWriter.command = ["bash", "-c",
-            "mkdir -p \"$1\"; cat > \"$2\" <<'EOF'\n" + _chainConf(desc, nodeName, graphNodes, _inputFor(slot))
+            (adopt ? "pgrep -f \"pipewire -c $2\" >/dev/null && { echo adopted; exit 0; }\n" : "")
+            + "mkdir -p \"$1\"; cat > \"$2\" <<'EOF'\n" + _chainConf(desc, nodeName, graphNodes, _inputFor(slot))
             + "EOF\n"
             + "pkill -f \"pipewire -c $2\" 2>/dev/null; "
             + "setsid pipewire -c \"$2\" >/dev/null 2>&1 < /dev/null & echo started",
@@ -582,11 +749,41 @@ Singleton {
         root.noiseSuppression = on;
         Persistent.states.mic.noiseSuppression = on;
         if (!on) { _stopChain("rnnoise"); retargetDelay.restart(); return }
+        _startRnnoise();
+        retargetDelay.restart();
+    }
+
+    function _startRnnoise(adopt) {
         _startChain("rnnoise", "Mic (denoised)", "mic_rnnoise",
             "{ type = ladspa name = rn plugin = /usr/lib/ladspa/librnnoise_ladspa.so "
             + "label = noise_suppressor_mono control = { \"VAD Threshold (%)\" = "
-            + Math.round(root.vadThreshold) + " \"VAD Grace Period (ms)\" = 200 } }");
-        retargetDelay.restart();
+            + Math.round(root.vadThreshold) + " \"VAD Grace Period (ms)\" = 200 } }", adopt);
+    }
+
+    function _startHighPass(adopt) {
+        _startChain("highpass", "Mic (high-pass)", "mic_hp",
+            "{ type = builtin name = hp label = bq_highpass control = { Freq = "
+            + Math.round(root.highPassHz) + " Q = 0.707 } }", adopt);
+    }
+
+    /**
+     * Bring the saved filters back after a login or shell restart.
+     *
+     * The chains are child processes; nothing restarted them, so after a
+     * reboot "Noise suppression" showed ON while no filter existed. This path
+     * only starts them: unlike the switches it does NOT retarget apps, because
+     * moving a live capture is what crashed Discord's voice engine. Apps keep
+     * the device they chose.
+     */
+    Timer {
+        interval: 1500
+        running: true
+        onTriggered: {
+            // Adopt a chain that is still running: a shell reload restarting it
+            // made mic_rnnoise vanish and reappear, which Discord does not survive.
+            if (root.highPass) root._startHighPass(true);
+            if (root.noiseSuppression && root.rnnoiseAvailable) root._startRnnoise(true);
+        }
     }
 
     function setEchoCancel(on) {
@@ -604,7 +801,8 @@ Singleton {
         root.monitoring = on;
         if (on) _load("monitor", ["module-loopback", "latency_msec=30",
                                   "source=" + (root.source?.name ?? "@DEFAULT_SOURCE@"),
-                                  "sink=@DEFAULT_SINK@"]);
+                                  "sink=@DEFAULT_SINK@",
+                                  "source_output_properties=node.name=mic_monitor_in"]);
         else _unload("monitor");
     }
 
@@ -618,9 +816,7 @@ Singleton {
         root.highPass = on;
         Persistent.states.mic.highPass = on;
         if (!on) { _stopChain("highpass"); }
-        else _startChain("highpass", "Mic (high-pass)", "mic_hp",
-            "{ type = builtin name = hp label = bq_highpass control = { Freq = "
-            + Math.round(root.highPassHz) + " Q = 0.707 } }");
+        else _startHighPass();
         // The denoiser sits downstream of this, so it has to be rebuilt to read
         // the new stage rather than the bare device.
         if (root.noiseSuppression) root.setNoiseSuppression(true);

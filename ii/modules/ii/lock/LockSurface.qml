@@ -32,9 +32,11 @@ MouseArea {
     hoverEnabled: true
     acceptedButtons: Qt.LeftButton
     onPressed: mouse => {
+        root.wake();
         forceFieldFocus();
     }
     onPositionChanged: mouse => {
+        root.wake();
         forceFieldFocus();
     }
 
@@ -62,6 +64,7 @@ MouseArea {
     // Key presses
     property bool ctrlHeld: false
     Keys.onPressed: event => {
+        root.wake();
         root.context.resetClearTimer();
         if (event.key === Qt.Key_Control) {
             root.ctrlHeld = true;
@@ -76,6 +79,34 @@ MouseArea {
             root.ctrlHeld = false;
         }
         forceFieldFocus();
+    }
+
+    // Left alone on the lock, it fades towards black (lock.dim); any key, typing or mouse movement
+    // brings it back at once. The dark layer takes no input: the password works through it.
+    readonly property bool dimOn: Config.options.lock.dim?.enable ?? true
+    property bool dimmed: false
+    function wake() {
+        root.dimmed = false;
+        if (root.dimOn) dimTimer.restart();
+    }
+    Timer {
+        id: dimTimer
+        interval: Math.max(2, Config.options.lock.dim?.afterSeconds ?? 8) * 1000
+        running: root.dimOn
+        onTriggered: root.dimmed = true
+    }
+    Connections {
+        target: root.context
+        function onCurrentTextChanged() { root.wake(); }
+    }
+    Rectangle {
+        anchors.fill: parent
+        z: 10000
+        enabled: false
+        color: "black"
+        opacity: root.dimmed ? Math.max(0, Math.min(1, Config.options.lock.dim?.strength ?? 0.92)) : 0
+        // slow into the dark, quick out of it
+        Behavior on opacity { NumberAnimation { duration: root.dimmed ? 1600 : 180; easing.type: Easing.InOutQuad } }
     }
 
     // RippleButton {
@@ -318,13 +349,23 @@ MouseArea {
             text: "dark_mode"
         }
 
-        // Hibernate: save RAM to disk and fully power off, WITHOUT killing
-        // processes — they're restored on next boot. (Needs a disk swap +
-        // resume= setup to actually work; see note.)
-        IconToolbarButton {
-            id: hibernateButton
-            onClicked: Session.hibernate()
-            text: "ac_unit"
+        // Screen off (was Hibernate, which cannot work here: zram swap, no resume=). A key or the
+        // mouse wakes it (misc:key_press/mouse_move_enables_dpms); the delay lets the tap finish.
+        ToolbarButton {
+            id: screenOffButton
+            implicitWidth: height
+            onClicked: Quickshell.execDetached(["bash", "-c", "sleep 0.6; hyprctl dispatch 'hl.dsp.dpms(\"off\")'"])
+            contentItem: Item {
+                CustomIcon {
+                    anchors.centerIn: parent
+                    width: 22
+                    height: 22
+                    source: "screen-off-symbolic.svg"
+                    colorize: true
+                    color: Appearance.colors.colOnSurfaceVariant
+                }
+            }
+            StyledToolTip { text: Translation.tr("Screen off (any key wakes it)") }
         }
 
         PasswordGuardedIconToolbarButton {
@@ -338,6 +379,17 @@ MouseArea {
             text: "restart_alt"
             targetAction: LockContext.ActionEnum.Reboot
         }
+    }
+
+    // Right panel, where the right sidebar sits: the profile, and sleep after the downloads
+    LockSidePanel {
+        anchors {
+            right: parent.right
+            top: parent.top
+            margins: Appearance.sizes.hyprlandGapsOut
+        }
+        scale: root.toolbarScale
+        opacity: root.toolbarOpacity
     }
 
     component PasswordGuardedIconToolbarButton: IconToolbarButton {

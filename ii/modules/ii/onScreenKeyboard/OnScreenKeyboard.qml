@@ -299,7 +299,22 @@ Scope { // Scope
         function open() {
             GlobalStates.oskOpen = true
         }
+
+        // For a text field that gained focus (knurl ime): pinned, so windows
+        // move up above the keyboard instead of the field ending up under it.
+        // follow(false) closes it and puts the pin back as it was.
+        function follow(on: bool) {
+            if (on) {
+                if (!GlobalStates.oskOpen) root._pinBefore = root.pinned
+                root.pinned = true
+                GlobalStates.oskOpen = true
+            } else if (GlobalStates.oskOpen) {
+                GlobalStates.oskOpen = false
+                root.pinned = root._pinBefore
+            }
+        }
     }
+    property bool _pinBefore: false
 
     GlobalShortcut {
         name: "oskToggle"

@@ -4,6 +4,7 @@
 //!                           updates $XDG_RUNTIME_DIR/ai-activity/<session>.json
 //!   ai-activity list        every session, as JSON (for scripts and the CLI)
 //!   ai-activity prune       drop ended sessions older than a day
+//!   ai-activity actions ID  what a session did (commands, reads, writes, deletes), as JSON
 //!
 //! The hook PRINTS NOTHING and always exits 0. Claude Code adds a hook's
 //! stdout to the model's context for some events (SessionStart,
@@ -18,6 +19,9 @@
 //!                  linked agent:<id>, `dotos state ID doing` links that card, each git
 //!                  commit recorded on the session and on the card it is working on
 //!   Stop         → finished       SessionEnd       → ended
+//!
+//! Every tool call (PostToolUse, PostToolUseFailure) is also logged, one JSON line each, in
+//! $XDG_STATE_HOME/ai-activity/<id>.jsonl: kept across reboots, for Dotos' graph and panel.
 
 use serde_json::{json, Map, Value};
 use std::io::Read;
@@ -81,6 +85,9 @@ fn hook() -> Option<()> {
     let d = dir();
     std::fs::create_dir_all(&d).ok()?;
     let path = d.join(format!("claude-{sid}.json"));
+    // hooks of parallel tool calls run at once: one at a time, or a write drops what another added
+    let lock = std::fs::File::create(d.join(format!("claude-{sid}.lock"))).ok()?;
+    lock.lock().ok()?;
     let mut s: Map<String, Value> = std::fs::read_to_string(&path)
         .ok()
         .and_then(|t| serde_json::from_str(&t).ok())
@@ -156,6 +163,13 @@ fn hook() -> Option<()> {
         }
         "PostToolUse" => {
             dotos_mirror(&ev, &mut s, &sid);
+            log_actions(&ev, &s, &sid, true);
+            "working"
+        }
+        "PostToolUseFailure" => {
+            log_actions(&ev, &s, &sid, false);
+            let n = s.get("failed").and_then(|v| v.as_u64()).unwrap_or(0) + 1;
+            s.insert("failed".into(), json!(n));
             "working"
         }
         "Stop" => {
@@ -206,11 +220,16 @@ fn main() {
                 if gone && v["updated"].as_u64().unwrap_or(0) < cutoff {
                     if let Some(id) = v["id"].as_str() {
                         let _ = std::fs::remove_file(dir().join(format!("{id}.json")));
+                        let _ = std::fs::remove_file(dir().join(format!("{id}.lock")));
                     }
                 }
             }
         }
-        _ => eprintln!("usage: ai-activity hook|list|prune"),
+        Some("actions") => {
+            let id = std::env::args().nth(2).unwrap_or_default();
+            println!("{}", serde_json::to_string_pretty(&actions(&id)).unwrap_or_default());
+        }
+        _ => eprintln!("usage: ai-activity hook|list|prune|actions ID"),
     }
 }
 
@@ -353,5 +372,84 @@ fn dotos_mirror(ev: &Value, s: &mut Map<String, Value>, sid: &str) {
     }
     if !map.is_empty() {
         s.insert("dotos_tasks".into(), Value::Object(map));
+    }
+}
+
+/// Where the action logs are kept (state, not runtime: they outlive a reboot).
+fn log_dir() -> PathBuf {
+    let base = std::env::var_os("XDG_STATE_HOME").map(PathBuf::from).unwrap_or_else(|| PathBuf::from(std::env::var("HOME").unwrap_or_default()).join(".local/state"));
+    base.join("ai-activity")
+}
+
+/// A session's actions, oldest first.
+fn actions(id: &str) -> Vec<Value> {
+    let id: String = id.chars().filter(|c| c.is_ascii_alphanumeric() || *c == '-').collect();
+    std::fs::read_to_string(log_dir().join(format!("{id}.jsonl"))).unwrap_or_default().lines().filter_map(|l| serde_json::from_str(l).ok()).collect()
+}
+
+/// The paths an `rm` in a shell command removes (plain words after rm and its flags).
+fn removed_paths(cmd: &str, cwd: &str) -> Vec<String> {
+    let mut out = Vec::new();
+    for part in cmd.split(['&', ';', '|', '\n']) {
+        let w: Vec<&str> = part.split_whitespace().collect();
+        let Some(i) = w.iter().position(|x| *x == "rm" || x.ends_with("/rm")) else { continue };
+        for a in &w[i + 1..] {
+            if a.starts_with('-') || a.contains('$') || a.contains('*') || a.starts_with('>') {
+                continue;
+            }
+            let a = a.trim_matches(['"', '\'']);
+            let p = if a.starts_with('/') { a.to_string() } else if let Some(h) = a.strip_prefix("~/") { format!("{}/{h}", std::env::var("HOME").unwrap_or_default()) } else { format!("{cwd}/{a}") };
+            out.push(p);
+        }
+    }
+    out
+}
+
+/// One line per thing the tool did: kind (cmd read write create edit delete search web agent
+/// tool), what it touched, whether it went through, the card being worked on.
+fn log_actions(ev: &Value, s: &Map<String, Value>, sid: &str, ok: bool) {
+    let tool = ev["tool_name"].as_str().unwrap_or("");
+    let input = &ev["tool_input"];
+    let res = &ev["tool_response"];
+    let cwd = ev["cwd"].as_str().unwrap_or("");
+    let t = now();
+    let task = s.get("task").cloned().unwrap_or(Value::Null);
+    let err = ev["error"].as_str().map(|e| clip(e, 300));
+    let ok = ok && !res["interrupted"].as_bool().unwrap_or(false) && !res["is_error"].as_bool().unwrap_or(false);
+    let file = input["file_path"].as_str().or(input["notebook_path"].as_str()).unwrap_or("").to_string();
+    let mut rows: Vec<Value> = Vec::new();
+    let mut row = |kind: &str, what: String, detail: String| {
+        rows.push(json!({ "t": t, "tool": tool, "kind": kind, "what": what, "detail": detail, "ok": ok, "error": err, "task": task }));
+    };
+    match tool {
+        "Bash" => {
+            let cmd = input["command"].as_str().unwrap_or("");
+            row("cmd", clip(cmd, 400), input["description"].as_str().unwrap_or("").to_string());
+            if ok {
+                for p in removed_paths(cmd, cwd) {
+                    row("delete", p, String::new());
+                }
+            }
+        }
+        "Write" => row(if res["type"] == "create" { "create" } else { "write" }, file, String::new()),
+        "Edit" | "MultiEdit" | "NotebookEdit" => row("edit", file, String::new()),
+        "Read" => row("read", file, String::new()),
+        "Grep" | "Glob" => row("search", input["pattern"].as_str().unwrap_or("").to_string(), input["path"].as_str().unwrap_or("").to_string()),
+        "WebFetch" | "WebSearch" => row("web", input["url"].as_str().or(input["query"].as_str()).unwrap_or("").to_string(), String::new()),
+        "Agent" | "Task" => row("agent", clip(input["description"].as_str().unwrap_or(""), 120), String::new()),
+        "TaskCreate" => row("plan", clip(input["subject"].as_str().unwrap_or(""), 160), "new task".into()),
+        "TaskUpdate" => row("plan", input["taskId"].to_string().trim_matches('"').to_string(), input["status"].as_str().unwrap_or("").to_string()),
+        "" => return,
+        other => row("tool", other.to_string(), String::new()),
+    }
+    let d = log_dir();
+    if std::fs::create_dir_all(&d).is_err() {
+        return;
+    }
+    use std::io::Write;
+    if let Ok(mut f) = std::fs::OpenOptions::new().create(true).append(true).open(d.join(format!("claude-{sid}.jsonl"))) {
+        for r in rows {
+            let _ = writeln!(f, "{r}");
+        }
     }
 }

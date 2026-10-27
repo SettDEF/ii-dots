@@ -5,6 +5,7 @@ import QtQuick.Layouts
 
 Item {
     id: root
+    property bool animate: true
     property int currentIndex: 0
     property bool expanded: false
     default property alias data: tabBarColumn.data  
@@ -30,6 +31,7 @@ Item {
         implicitWidth: root.current?.visualWidth ?? 56
 
         Behavior on anchors.topMargin {
+            enabled: root.animate
             NumberAnimation {
                 duration: Appearance.animationCurves.expressiveFastSpatialDuration
                 easing.type: Appearance.animation.elementMove.type

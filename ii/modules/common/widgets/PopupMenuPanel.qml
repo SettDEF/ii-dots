@@ -22,6 +22,9 @@ Rectangle {
     property real originX: 0
     property real originW: 0
     property real desiredY: 0
+    /// what was clicked, when it was an element: its height above desiredY (its bottom). A menu with
+    /// no room below opens above it (or above the click), as menus do, instead of sliding over it
+    property real originH: 0
     /// A MINIMUM, not the width — the menu grows to its widest row.
     property int panelWidth: 226
     property bool shown: true
@@ -44,7 +47,9 @@ Rectangle {
         : ((originX + originW + 4 + width <= bounds.width - 6)
             ? originX + originW + 4
             : Math.max(6, originX - width - 4))
-    y: Math.max(6, Math.min(desiredY, bounds.height - height - 6))
+    y: originW !== 0 || desiredY + height <= bounds.height - 6
+        ? Math.max(6, Math.min(desiredY, bounds.height - height - 6))
+        : Math.max(6, desiredY - originH - height - 4)
     radius: Appearance.rounding.small
     // OPAQUE on purpose. colLayer1 is not a plain colour: it comes from
     // solveOverlayColor(), which returns rgba(..., 1 - contentTransparency) —
@@ -99,8 +104,9 @@ Rectangle {
             delegate: Rectangle {
                 id: row
                 required property var modelData
+                objectName: "menuItem:" + (modelData.label ?? "")
                 Layout.fillWidth: true
-                implicitHeight: modelData.separator ? 7 : 32
+                implicitHeight: modelData.separator ? 7 : (modelData.slider === true ? 36 : 32)
                 // 20 = anchors' left 9 + right 11. A separator claims nothing.
                 implicitWidth: modelData.separator ? 0
                     : (modelData.slider === true ? 210
@@ -136,6 +142,10 @@ Rectangle {
                     StyledSlider {
                         id: rowSlider
                         Layout.fillWidth: true
+                        // Slim, and a handle shorter than the row: the stock
+                        // 33px one stood out into the separators either side.
+                        configuration: StyledSlider.Configuration.XS
+                        handleHeight: 22
                         value: row.modelData.value ?? 0
                         onValueChanged: {
                             const fn = row.modelData.onMoved;
@@ -172,6 +182,14 @@ Rectangle {
                         elide: Text.ElideRight
                         color: row.modelData.danger
                             ? Appearance.m3colors.m3error : Appearance.colors.colOnLayer1
+                    }
+                    // Optional keyboard shortcut, right-aligned (e.g. "Ctrl+D").
+                    StyledText {
+                        visible: !!row.modelData.shortcut
+                        text: row.modelData.shortcut ?? ""
+                        font.pixelSize: Appearance.font.pixelSize.smallest
+                        font.family: Appearance.font.family.monospace
+                        color: Appearance.colors.colSubtext
                     }
                     MaterialSymbol {
                         visible: !!row.modelData.submenu

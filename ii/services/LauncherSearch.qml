@@ -244,7 +244,7 @@ Singleton {
                     icon: "image_search",
                     description: Translation.tr("Set a random Konachan wallpaper"),
                     execute: () => {
-                        Quickshell.execDetached([Quickshell.shellPath("scripts/colors/random/random_konachan_wall.sh")]);
+                        Quickshell.execDetached([Quickshell.shellPath("scripts/colors/random/random_quarry_wall.sh"), "konachan"]);
                     }
                 },
             ]
@@ -680,16 +680,18 @@ Singleton {
     Process {
         id: mathProc
         property list<string> baseCommand: ["qalc", "-t"]
+        // the last line qalc printed, set once when it is done: one rebuild per answer
+        property string last: ""
         function calculateExpression(expression) {
             mathProc.running = false;
+            mathProc.last = "";
             mathProc.command = baseCommand.concat(expression);
             mathProc.running = true;
         }
         stdout: SplitParser {
-            onRead: data => {
-                root.mathResult = data;
-            }
+            onRead: data => { mathProc.last = data; }
         }
+        onExited: root.mathResult = mathProc.last
     }
 
     /// Walks commandTree by the query tokens. A group token followed by a
@@ -861,8 +863,20 @@ Singleton {
         return root._desktopAppRows(clean).concat(root.steamShortcuts?.rows(clean) ?? []);
     }
 
+    // One result object per app, made the first time it matches and reused on every keystroke
+    // after: making them per keystroke cost ~2.5 ms each time (319 apps, measured headless), and
+    // new objects made the list rebuild every row. Emptied when the app list changes.
+    property var _appRowCache: ({})
+    Connections {
+        target: AppSearch
+        function onListChanged() { root._appRowCache = ({}); }
+    }
+
     function _desktopAppRows(clean) {
-        return AppSearch.fuzzyQuery(clean).map(entry => {
+        return AppSearch.fuzzyQuery(clean).map(entry => root._appRowCache[entry.id] ?? (root._appRowCache[entry.id] = root._appRow(entry)));
+    }
+
+    function _appRow(entry) {
             return resultComp.createObject(null, {
                 type: Translation.tr("App"),
                 id: entry.id,
@@ -899,7 +913,6 @@ Singleton {
                     });
                 })
             });
-        });
     }
 
     // ── Row builders ────────────────────────────────────────────────────
@@ -964,7 +977,44 @@ Singleton {
         })};
     }
 
-    property list<var> results: {
+    // Recomputed on purpose, not a binding: as a binding it depended on every
+    // window title (the /kill tree reads them), so a title that changes every
+    // second (a terminal's spinner) rebuilt every launcher row each second.
+    // Building the rows has no side effects: only a new query starts qalc and the translator,
+    // and their answers only rebuild the rows. (When building restarted qalc, each answer
+    // rebuilt the rows, which restarted qalc again: an endless loop while the launcher was open.)
+    property list<var> results: []
+    function refresh() { root.results = root._computeResults(); }
+    onQueryChanged: {
+        nonAppResultsTimer.restart();
+        refresh();
+    }
+    onMathResultChanged: if (root.query.length > 0) refresh()
+    onTranslateResultChanged: if (root.query.length > 0) refresh()
+    Component.onCompleted: refresh()
+
+    // A launcher that shows these rows is open. Changes while none is (the clipboard, the app
+    // list) only mark the rows stale; they are rebuilt once, when one opens.
+    readonly property bool shown: GlobalStates.overviewOpen || GlobalStates.startMenuOpen || GlobalStates.searchOpen
+    property bool stale: false
+    function refreshWhenShown() {
+        if (root.shown) root.refresh();
+        else root.stale = true;
+    }
+    onShownChanged: if (root.shown && root.stale) {
+        root.stale = false;
+        root.refresh();
+    }
+    Connections {
+        target: Quickshell
+        function onClipboardTextChanged() { root.refreshWhenShown(); }
+    }
+    Connections {
+        target: AppSearch
+        function onListChanged() { root.refreshWhenShown(); }
+    }
+
+    function _computeResults() {
         // Search results are handled here
         ////////////////// Skip? //////////////////
         // An empty query used to return nothing at all. Offer whatever the
@@ -977,7 +1027,6 @@ Singleton {
         const specialCaseRows = root._specialCaseRows();
         if (specialCaseRows !== null) return specialCaseRows;
         ////////////////// Init ///////////////////
-        nonAppResultsTimer.restart();
         const mathResultObject      = root._mathRow();
         const translateResultObject = root._translateRow();
         const dc                    = root._discordPin();

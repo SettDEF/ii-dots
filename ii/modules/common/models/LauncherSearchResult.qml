@@ -29,4 +29,8 @@ QtObject {
 
     // Extra stuff to allow for more flexibility
     property string category: type
+
+    // What the result lists (ScriptModel objectProp "key") tell rows apart by: the same app
+    // keeps its row while typing instead of the row being rebuilt on every keystroke
+    readonly property string key: id.length > 0 ? `${type}:${id}` : `${type}:${name}`
 }

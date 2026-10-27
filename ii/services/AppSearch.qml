@@ -21,6 +21,9 @@ Singleton {
         "wps": "wps-office2019-kprometheus",
         "wpsoffice": "wps-office2019-kprometheus",
         "footclient": "foot",
+        // window classes that differ from their launcher entry's
+        "wavr": "takt",                       // Takt (a Tauri dev build reports its crate name)
+        "org.qt-project.qml6": "rodded",      // Rodded runs under the qml runtime
     })
     property var regexSubstitutions: [
         {

@@ -1,4 +1,5 @@
 //@ pragma UseQApplication
+//@ pragma AppId tinct-cast
 //@ pragma Env QS_NO_RELOAD_POPUP=1
 //@ pragma Env QT_QUICK_CONTROLS_STYLE=Basic
 //@ pragma Env QT_QUICK_FLICKABLE_WHEEL_DECELERATION=10000
@@ -17,13 +18,25 @@ import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
 import Quickshell
+import Quickshell.Io
 import qs.services
 import qs.modules.common
 import qs.modules.common.widgets
 import qs.modules.ii.castEditor
 
 ApplicationWindow {
+
+    // browser-like scrolling for every list in the window (Momentum.qml)
+
+    MomentumInjector { root: parent }
     id: root
+    // the real window buttons, drawn by the compositor over our top-right corner (ii-decor)
+    Process {
+        id: decor
+        command: ["sh", "-c", "sleep 0.4; hyprctl iidecor integrate pid:$PPID overlay >/dev/null 2>&1 || true"]
+    }
+    Timer { interval: 200; running: root.visible; onTriggered: decor.running = true }
+
     visible: true
     width: 1680
     height: 1050

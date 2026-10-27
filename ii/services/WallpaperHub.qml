@@ -172,11 +172,12 @@ Singleton {
 
     // The same colour columns skwd draws in its top bar. `swatch` is the dot
     // colour; `wh` is the Wallhaven query code (used once wallhaven search is
-    // wired — reddit/local filtering by hue is a later pass).
+    // wired — reddit/local filtering by hue is a later pass). Every `wh` must be one
+    // of Wallhaven's 29 palette colours; quarryd snaps others to the nearest.
     readonly property var hues: [
         { id: "red",    swatch: "#e34d4d", wh: "cc0000" },
-        { id: "orange", swatch: "#e58a3d", wh: "cc9933" },
-        { id: "amber",  swatch: "#e6b840", wh: "996633" },
+        { id: "orange", swatch: "#e58a3d", wh: "ff9900" },
+        { id: "amber",  swatch: "#e6b840", wh: "ffcc33" },
         { id: "yellow", swatch: "#e9d635", wh: "cccc33" },
         { id: "lime",   swatch: "#9bd64b", wh: "77cc33" },
         { id: "green",  swatch: "#3fc06d", wh: "336600" },

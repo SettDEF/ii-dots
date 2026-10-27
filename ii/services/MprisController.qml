@@ -18,7 +18,7 @@ Singleton {
 	id: root;
 	property list<MprisPlayer> players: Mpris.players.values.filter(player => isRealPlayer(player));
 	property MprisPlayer trackedPlayer: null;
-	property MprisPlayer activePlayer: trackedPlayer ?? Mpris.players.values[0] ?? null;
+	property MprisPlayer activePlayer: (trackedPlayer && isRealPlayer(trackedPlayer) ? trackedPlayer : null) ?? players[0] ?? null;
 	signal trackChanged(reverse: bool);
 
 	property bool __reverse: false;
@@ -47,7 +47,9 @@ Singleton {
             !(player.dbusName?.endsWith('.mpd') && !player.dbusName.endsWith('MediaPlayer2.mpd')));
     }
 
-	// Original stuff from fox below
+	// Original stuff from fox below. Only real players can become the tracked
+	// one: with the raw bus list a browser's native duplicate (title only, no
+	// artist) or a headless test browser took over the media widget.
 	Instantiator {
 		model: Mpris.players;
 
@@ -56,28 +58,28 @@ Singleton {
 			target: modelData;
 
 			Component.onCompleted: {
-				if (root.trackedPlayer == null || modelData.isPlaying) {
+				if (root.isRealPlayer(modelData) && (root.trackedPlayer == null || modelData.isPlaying)) {
 					root.trackedPlayer = modelData;
 				}
 			}
 
 			Component.onDestruction: {
 				if (root.trackedPlayer == null || !root.trackedPlayer.isPlaying) {
-					for (const player of Mpris.players.values) {
+					for (const player of root.players) {
 						if (player.playbackState.isPlaying) {
 							root.trackedPlayer = player;
 							break;
 						}
 					}
 
-					if (trackedPlayer == null && Mpris.players.values.length != 0) {
-						trackedPlayer = Mpris.players.values[0];
+					if (trackedPlayer == null && root.players.length != 0) {
+						trackedPlayer = root.players[0];
 					}
 				}
 			}
 
 			function onPlaybackStateChanged() {
-				if (root.trackedPlayer !== modelData) root.trackedPlayer = modelData;
+				if (root.isRealPlayer(modelData) && root.trackedPlayer !== modelData) root.trackedPlayer = modelData;
 			}
 		}
 	}
@@ -92,7 +94,7 @@ Singleton {
 		function onTrackArtUrlChanged() {
 			// console.log("arturl:", activePlayer.trackArtUrl)
 			// root.updateTrack();
-			if (root.activePlayer.uniqueId == root.activeTrack.uniqueId && root.activePlayer.trackArtUrl != root.activeTrack.artUrl) {
+			if (root.activePlayer.uniqueId == root.activeTrack.uniqueId && root.artFor(root.activePlayer) != root.activeTrack.artUrl) {
 				// cantata likes to send cover updates *BEFORE* updating the track info.
 				// as such, art url changes shouldn't be able to break the reverse animation
 				const r = root.__reverse;
@@ -105,11 +107,34 @@ Singleton {
 
 	onActivePlayerChanged: this.updateTrack();
 
+	/// Cover for a player. A browser exposes each tab twice (the KDE browser
+	/// integration with full metadata but no cover, and the browser's own bus
+	/// with a cached cover file), so a player without art borrows it from
+	/// another player showing the same title.
+	function artFor(player) {
+		if (!player) return "";
+		if (player.trackArtUrl) return player.trackArtUrl;
+		const title = (player.trackTitle ?? "").toLowerCase();
+		if (!title) return "";
+		for (const p of Mpris.players.values) {
+			if (p === player || !p.trackArtUrl) continue;
+			const t = (p.trackTitle ?? "").toLowerCase();
+			if (t === title || t.startsWith(title + " |") || t.startsWith(title + " - ")) return p.trackArtUrl;
+		}
+		return "";
+	}
+	readonly property string activeArt: artFor(activePlayer)
+	onActiveArtChanged: if (activePlayer && activeTrack && activeArt !== activeTrack.artUrl) {
+		const r = __reverse;
+		updateTrack();
+		__reverse = r;
+	}
+
 	function updateTrack() {
 		//console.log(`update: ${this.activePlayer?.trackTitle ?? ""} : ${this.activePlayer?.trackArtists}`)
 		this.activeTrack = {
 			uniqueId: this.activePlayer?.uniqueId ?? 0,
-			artUrl: this.activePlayer?.trackArtUrl ?? "",
+			artUrl: this.artFor(this.activePlayer),
 			title: this.activePlayer?.trackTitle || Translation.tr("Unknown Title"),
 			artist: this.activePlayer?.trackArtist || Translation.tr("Unknown Artist"),
 			album: this.activePlayer?.trackAlbum || Translation.tr("Unknown Album"),

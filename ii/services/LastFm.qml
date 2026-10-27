@@ -58,8 +58,12 @@ Singleton {
             `&user=${u}&api_key=${apiKey}&format=json&limit=5&period=7day"`] })
     }
 
+    // The key falls back to ~/.secure/apikeys (the one place API keys live):
+    // LASTFM_SCROBBLE_KEY, then LASTFM_API_KEY, each later line winning; a key
+    // in qs-lastfm.conf, read last, still wins over both.
     function loadConfig() {
         loadProc.exec({ command: ["bash", "-c",
+            "sed -n 's/^LASTFM_SCROBBLE_KEY=/apikey=/p; s/^LASTFM_API_KEY=/apikey=/p' ~/.secure/apikeys 2>/dev/null; " +
             "cat ~/.local/share/qs-lastfm.conf 2>/dev/null || true"] })
     }
 
@@ -83,7 +87,7 @@ Singleton {
                     const k = l.substring(0, idx)
                     const v = l.substring(idx + 1)
                     if (k === "username") root.username = v
-                    if (k === "apikey")   root.apiKey   = v
+                    if (k === "apikey" && v.length > 0) root.apiKey = v
                 })
                 if (root.ready) root.refresh()
             }

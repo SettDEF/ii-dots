@@ -49,6 +49,7 @@ CYN=$'\033[36m'; GRN=$'\033[32m'; YEL=$'\033[33m'; RED=$'\033[31m'
 
 c()    { printf '\033[%sm%s\033[0m\n' "$1" "$2"; }
 
+
 banner() {
     local text="Arch Linux — install" w=52 pad
     pad=$(( w - ${#text} - 3 ))
@@ -71,7 +72,7 @@ have_tty() { { : >/dev/tty; } 2>/dev/null; }
 ask() {
     local prompt="$1" default="${2:-}" reply=""
     [ "$ASSUME_YES" = 1 ] && { printf '%s\n' "$default"; return; }
-    if have_tty; then
+                if have_tty; then
         printf '\033[36m?\033[0m %s%s: ' "$prompt" "${default:+ [$default]}" > /dev/tty
         read -r reply < /dev/tty || true
     fi

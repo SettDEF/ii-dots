@@ -1,78 +1,68 @@
 #!/usr/bin/env bash
+# Screen recording with gpu-screen-recorder: encoded on the GPU (VAAPI), so it
+# barely costs CPU even while gaming. Run again to stop; the file is finished
+# on stop.
+#
+#   record.sh                         pick a region (slurp), no sound
+#   record.sh --region 'X,Y WxH'      region in logical (scaled) pixels, as slurp prints it
+#   record.sh --fullscreen            the focused monitor
+#   record.sh --sound                 add desktop audio
+#   record.sh --mic                   add the microphone (with or without --sound)
+#
+# The shell finds a running recording with: pgrep -f '^gpu-screen-recorder .* -o .*\.mp4$'
+# (replay.sh's -o is a folder, not an .mp4, so the replay buffer does not count).
 
 CONFIG_FILE="$HOME/.config/illogical-impulse/config.json"
-JSON_PATH=".screenRecord.savePath"
+RECORDING_DIR=$(jq -r '.screenRecord.savePath // empty' "$CONFIG_FILE" 2>/dev/null)
+# The root disk is nearly full; never default to it.
+[[ -z "$RECORDING_DIR" || "$RECORDING_DIR" == "$HOME" ]] && RECORDING_DIR=/mnt/storage/Videos/Recordings
 
-CUSTOM_PATH=$(jq -r "$JSON_PATH" "$CONFIG_FILE" 2>/dev/null)
+notify() { notify-send "$1" "$2" -a 'Recorder' & disown; }
 
-RECORDING_DIR=""
-
-if [[ -n "$CUSTOM_PATH" ]]; then
-    RECORDING_DIR="$CUSTOM_PATH"
-else
-    RECORDING_DIR="$HOME/Videos" # Use default path
+if pgrep -f '^gpu-screen-recorder .* -o .*\.mp4$' >/dev/null; then
+    pkill -INT -f '^gpu-screen-recorder .* -o .*\.mp4$'
+    notify "Recording stopped" "Saved to $RECORDING_DIR"
+    exit 0
+fi
+if pgrep -x wf-recorder >/dev/null; then   # a recording started by the old script
+    pkill -INT wf-recorder
+    notify "Recording stopped" "Stopped"
+    exit 0
 fi
 
-getdate() {
-    date '+%Y-%m-%d_%H.%M.%S'
-}
-getaudiooutput() {
-    pactl list sources | grep 'Name' | grep 'monitor' | cut -d ' ' -f2
-}
-getactivemonitor() {
-    hyprctl monitors -j | jq -r '.[] | select(.focused == true) | .name'
-}
-
-mkdir -p "$RECORDING_DIR"
-cd "$RECORDING_DIR" || exit
-
-# parse --region <value> without modifying $@ so other flags like --fullscreen still work
-ARGS=("$@")
-MANUAL_REGION=""
-SOUND_FLAG=0
-FULLSCREEN_FLAG=0
-for ((i=0;i<${#ARGS[@]};i++)); do
-    if [[ "${ARGS[i]}" == "--region" ]]; then
-        if (( i+1 < ${#ARGS[@]} )); then
-            MANUAL_REGION="${ARGS[i+1]}"
-        else
-            notify-send "Recording cancelled" "No region specified for --region" -a 'Recorder' & disown
-            exit 1
-        fi
-    elif [[ "${ARGS[i]}" == "--sound" ]]; then
-        SOUND_FLAG=1
-    elif [[ "${ARGS[i]}" == "--fullscreen" ]]; then
-        FULLSCREEN_FLAG=1
-    fi
+REGION="" SOUND=0 MIC=0 FULLSCREEN=0
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --region)
+            [[ -n "$2" ]] || { notify "Recording cancelled" "No region specified for --region"; exit 1; }
+            REGION="$2"; shift ;;
+        --sound) SOUND=1 ;;
+        --mic) MIC=1 ;;
+        --fullscreen) FULLSCREEN=1 ;;
+    esac
+    shift
 done
 
-if pgrep wf-recorder > /dev/null; then
-    notify-send "Recording Stopped" "Stopped" -a 'Recorder' &
-    pkill wf-recorder &
-else
-    if [[ $FULLSCREEN_FLAG -eq 1 ]]; then
-        notify-send "Starting recording" 'recording_'"$(getdate)"'.mp4' -a 'Recorder' & disown
-        if [[ $SOUND_FLAG -eq 1 ]]; then
-            wf-recorder -o "$(getactivemonitor)" --pixel-format yuv420p -f './recording_'"$(getdate)"'.mp4' -t --audio="$(getaudiooutput)"
-        else
-            wf-recorder -o "$(getactivemonitor)" --pixel-format yuv420p -f './recording_'"$(getdate)"'.mp4' -t
-        fi
-    else
-        # If a manual region was provided via --region, use it; otherwise run slurp as before.
-        if [[ -n "$MANUAL_REGION" ]]; then
-            region="$MANUAL_REGION"
-        else
-            if ! region="$(slurp 2>&1)"; then
-                notify-send "Recording cancelled" "Selection was cancelled" -a 'Recorder' & disown
-                exit 1
-            fi
-        fi
+mkdir -p "$RECORDING_DIR"
+FILE="$RECORDING_DIR/recording_$(date '+%Y-%m-%d_%H.%M.%S').mp4"
 
-        notify-send "Starting recording" 'recording_'"$(getdate)"'.mp4' -a 'Recorder' & disown
-        if [[ $SOUND_FLAG -eq 1 ]]; then
-            wf-recorder --pixel-format yuv420p -f './recording_'"$(getdate)"'.mp4' -t --geometry "$region" --audio="$(getaudiooutput)"
-        else
-            wf-recorder --pixel-format yuv420p -f './recording_'"$(getdate)"'.mp4' -t --geometry "$region"
-        fi
+if [[ $FULLSCREEN -eq 1 ]]; then
+    TARGET=(-w "$(hyprctl monitors -j | jq -r '.[] | select(.focused) | .name')")
+else
+    if [[ -z "$REGION" ]] && { ! REGION="$(slurp 2>/dev/null)" || [[ -z "$REGION" ]]; }; then
+        notify "Recording cancelled" "Selection was cancelled"
+        exit 1
     fi
+    # slurp's "X,Y WxH" -> gpu-screen-recorder's "WxH+X+Y" (both logical pixels)
+    read -r pos size <<< "$REGION"
+    TARGET=(-w "${size}+${pos%,*}+${pos#*,}")
 fi
+
+AUDIO=()
+if [[ $SOUND -eq 1 && $MIC -eq 1 ]]; then AUDIO=(-a "default_output|default_input")
+elif [[ $SOUND -eq 1 ]]; then AUDIO=(-a default_output)
+elif [[ $MIC -eq 1 ]]; then AUDIO=(-a default_input)
+fi
+
+notify "Recording started" "$(basename "$FILE")"
+gpu-screen-recorder "${TARGET[@]}" -f 60 -k h264 -q very_high -fm cfr -cursor yes "${AUDIO[@]}" -o "$FILE"

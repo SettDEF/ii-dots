@@ -29,6 +29,8 @@ Singleton {
         property bool isTransient: notification?.hints.transient ?? false
         property string appIcon: notification?.appIcon ?? ""
         property string appName: notification?.appName ?? ""
+        // The sender's .desktop id when it says (the most reliable link to a dock icon).
+        property string desktopEntry: notification?.desktopEntry ?? ""
         property string body: notification?.body ?? ""
         property string image: notification?.image ?? ""
         property string summary: notification?.summary ?? ""
@@ -49,6 +51,7 @@ Singleton {
             "actions": notif.actions,
             "appIcon": notif.appIcon,
             "appName": notif.appName,
+            "desktopEntry": notif.desktopEntry,
             "body": notif.body,
             "image": notif.image,
             "summary": notif.summary,
@@ -215,6 +218,11 @@ Singleton {
 
         onNotification: (notification) => {
             notification.tracked = true
+            // KDE Connect replays the phone's whole shade on every reconnect:
+            // the same messages again, 10-20 within a second. A copy of one we
+            // already hold is dropped (left tracked, so the phone is not told
+            // to dismiss it); for other apps only a repeat within 10 s.
+            if (root._isRepeat(notification)) return;
             const newNotifObject = notifComponent.createObject(root, {
                 "notificationId": notification.id + root.idOffset,
                 "notification": notification,
@@ -224,23 +232,59 @@ Singleton {
 
             // Popup — suppressed for muted apps (they still log to history).
             if (!root.popupInhibited && !root.isAppMuted(newNotifObject.appName)) {
-                newNotifObject.popup = true;
-                if (notification.expireTimeout != 0) {
-                    newNotifObject.timer = notifTimerComponent.createObject(root, {
-                        "notificationId": newNotifObject.notificationId,
-                        "interval": notification.expireTimeout < 0 ? (Config?.options.notifications.timeout ?? 7000) : notification.expireTimeout,
-                    });
-                }
                 root.unread++;
-                // Shell-owned sound, inside the popup branch so it shares its gating.
-                // Disable apps' own sounds (e.g. Telegram) to avoid doubling.
-                if ((Config?.options.notifications.sound ?? false) && !root.isAppSoundOff(newNotifObject.appName)) {
-                    // Per-app choice, falling back to the global one.
-                    NotificationSounds.playForApp(newNotifObject.appName);
-                }
+                // A burst from one app pops its first message now and its
+                // newest when the burst is over, not every one as it lands.
+                const app = newNotifObject.appName, now = Date.now(), b = root._burst[app];
+                if (b && now - b.last < root.burstMs) { b.last = now; b.held = newNotifObject; burstTimer.start(); }
+                else { root._burst[app] = { last: now, held: null }; root._popUp(newNotifObject); }
             }
             root.notify(newNotifObject);
             notifFileView.setText(stringifyList(root.list));
+        }
+    }
+
+    readonly property int burstMs: 1500
+    property var _burst: ({})        // appName -> { last: ms, held: Notif waiting for the burst to end }
+    Timer {
+        id: burstTimer
+        interval: 300
+        repeat: true
+        onTriggered: {
+            const now = Date.now();
+            let waiting = false;
+            for (const app in root._burst) {
+                const b = root._burst[app];
+                if (!b.held) continue;
+                if (now - b.last < root.burstMs) { waiting = true; continue; }
+                // still in the list, not muted or read meanwhile
+                if (root.list.includes(b.held) && !root.popupInhibited && !root.isAppMuted(app)) root._popUp(b.held);
+                b.held = null;
+                b.last = now;
+            }
+            if (!waiting) stop();
+        }
+    }
+    function _isRepeat(n) {
+        const kde = /kde ?connect/i.test(n.appName ?? "") || (n.desktopEntry ?? "").includes("kdeconnect");
+        const now = Date.now();
+        return root.list.some(o => o.appName === n.appName && o.summary === n.summary && o.body === n.body
+                                   && (kde || now - o.time < 10000));
+    }
+    function _popUp(obj) {
+        obj.popup = true;
+        const t = obj.notification?.expireTimeout ?? -1;
+        if (t != 0) {
+            obj.timer = notifTimerComponent.createObject(root, {
+                "notificationId": obj.notificationId,
+                "interval": t < 0 ? (Config?.options.notifications.timeout ?? 7000) : t,
+            });
+        }
+        // Shell-owned sound, inside the popup branch so it shares its gating.
+        // Disable apps' own sounds (e.g. Telegram) to avoid doubling.
+        if ((Config?.options.notifications.sound ?? false) && !root.isAppSoundOff(obj.appName)) {
+            // Per-app choice, falling back to the global one.
+            NotificationSounds.playForApp(obj.appName);
         }
     }
 
@@ -364,6 +408,7 @@ Singleton {
                     "actions": [], // Notification actions are meaningless if they're not tracked by the server or the sender is dead
                     "appIcon": notif.appIcon,
                     "appName": notif.appName,
+                    "desktopEntry": notif.desktopEntry ?? "",
                     "body": notif.body,
                     "image": notif.image,
                     "summary": notif.summary,

@@ -110,8 +110,8 @@ Item { // Bar content region
                     required property var modelData
                     widgetId: modelData
                     Layout.alignment: Qt.AlignHCenter
-                    Layout.topMargin: 2
-                    Layout.bottomMargin: 2
+                    Layout.topMargin: shown ? 2 : 0
+                    Layout.bottomMargin: shown ? 2 : 0
                 }
             }
             

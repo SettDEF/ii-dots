@@ -86,8 +86,8 @@ adjustSrc="$NEW_WALL"
 if [ -n "$remapPalette" ] && [ "$remapPalette" != "null" ]; then
     rdmc="$HOME/.scripts/rdmcpape"
     if [ -f "$rdmc" ]; then
-        if [ "$remapPalette" = "matugen" ]; then
-            palArg="--matugen"
+        if [ "$remapPalette" = "tinct" ]; then
+            palArg="--tinct"
         else
             palArg="--palette $remapPalette"
         fi
@@ -120,7 +120,7 @@ switchwall="$SCRIPT_DIR/switchwall.sh"
 theoryArg=""; [ -n "$selectedTheory" ] && [ "$selectedTheory" != "null" ] && theoryArg="--theory $selectedTheory"
 styleArg=""; [ -n "$selectedStyle" ] && [ "$selectedStyle" != "null" ] && styleArg="--style $selectedStyle"
 practicalArg=""; [ -n "$selectedPractical" ] && [ "$selectedPractical" != "null" ] && practicalArg="--practical $selectedPractical"
-remapArg=""; [ -n "$remapPalette" ] && [ "$remapPalette" != "matugen" ] && [ "$remapPalette" != "null" ] && remapArg="--remap $remapPalette"
+remapArg=""; [ -n "$remapPalette" ] && [ "$remapPalette" != "tinct" ] && [ "$remapPalette" != "null" ] && remapArg="--remap $remapPalette"
 
 typeArg=""; [ -n "$selectedMode" ] && [ "$selectedMode" != "null" ] && typeArg="--type $selectedMode"
 mixOrderArg=""; [ -n "$mixOrder" ] && [ "$mixOrder" != "null" ] && mixOrderArg="--mix-order $mixOrder"

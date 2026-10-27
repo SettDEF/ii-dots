@@ -6,6 +6,7 @@ import Quickshell
 import qs
 import qs.services
 import qs.modules.common
+import qs.modules.common.functions
 import qs.modules.common.widgets
 import qs.modules.common.widgets.widgetCanvas
 import qs.modules.ii.background.widgets
@@ -258,7 +259,7 @@ AbstractBackgroundWidget {
                     anchors.fill: parent
                     visible: false
 
-                    property string effectiveSource: "file://" + (GlobalStates.screenLocked && Config.options.background.lockWall !== ""
+                    property string effectiveSource: FileUtils.fileUrl(GlobalStates.screenLocked && Config.options.background.lockWall !== ""
                         ? Config.options.background.lockWall
                         : Config.options.background.wallpaperPath)
 

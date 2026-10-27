@@ -23,10 +23,9 @@ Scope {
             WlrLayershell.layer: WlrLayer.Overlay
             WlrLayershell.keyboardFocus: WlrKeyboardFocus.OnDemand
             exclusionMode: ExclusionMode.Ignore
-            // Same shape as ScreenDrawSidebar — left-anchored, vertically centered.
-            anchors { left: true }
-            implicitWidth: 520
-            implicitHeight: 720
+            // centred, wide enough for the markup bar (and the picture), never wider than the screen
+            implicitWidth: Math.min((screen?.width ?? 1600) - 80, 1040)
+            implicitHeight: Math.min((screen?.height ?? 1000) - 80, 780)
 
             Component.onCompleted: GlobalFocusGrab.addDismissable(win)
             Component.onDestruction: GlobalFocusGrab.removeDismissable(win)

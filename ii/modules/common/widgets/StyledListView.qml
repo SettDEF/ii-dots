@@ -57,7 +57,10 @@ ListView {
         }
     }
 
+    Momentum { id: momentum }
+
     Behavior on contentY {
+        enabled: !momentum.active && !root.moving
         NumberAnimation {
             id: scrollAnim
             alwaysRunToEnd: true

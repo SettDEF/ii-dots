@@ -401,15 +401,15 @@ MouseArea {
         const theoryArg    = selectedTheory    !== "" ? "--theory "    + selectedTheory    : "";
         const styleArg     = selectedStyle     !== "" ? "--style "     + selectedStyle     : "";
         const practicalArg = selectedPractical !== "" ? "--practical " + selectedPractical : "";
-        const remapArg     = (remapPalette !== "" && remapPalette !== "matugen") ? "--remap " + remapPalette : "";
+        const remapArg     = (remapPalette !== "" && remapPalette !== "tinct") ? "--remap " + remapPalette : "";
 
         // Remap runs FIRST so the adjustments land on top of the
         // palette and stay visible (see WallTuneContent.qml for the rationale).
         let preRemapStep = ":";
         if (remapPalette !== "") {
             const rdmc = home + "/.scripts/rdmcpape";
-            const palArg = remapPalette === "matugen"
-                ? "--matugen"
+            const palArg = remapPalette === "tinct"
+                ? "--tinct"
                 : "--palette " + remapPalette;
             preRemapStep = `'${rdmc}' ${palArg} --colors ${remapColors} --dither ${remapDither} --output '${tmp}' '${srcWall}'`;
             adjustArgs[adjustArgs.length - 2] = tmp;  // adjustments read the remapped file
@@ -841,7 +841,7 @@ notify-send -a "WallTune" -i "color-management" "WallTune" "Applied custom confi
                                     ThumbnailImage {
                                         id: rGridImg
                                         anchors.fill: parent
-                                        sourcePath: "file://" + modelData
+                                        sourcePath: FileUtils.fileUrl(modelData)
                                         sourceSize.width: 320
                                         sourceSize.height: 320
                                         fillMode: Image.PreserveAspectCrop

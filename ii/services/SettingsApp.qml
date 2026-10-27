@@ -26,8 +26,13 @@ Singleton {
     // Tracks the last known state so the UI can reflect it. Updated by check().
     property bool running: false
 
+    // Already open (maybe on another workspace): -n starts no second one, and the window is brought
+    // here instead. Before, opening it again did nothing visible: "cannot open the settings".
     function open() {
-        Quickshell.execDetached(["qs", "-n", "-p", root.qmlPath]);
+        Quickshell.execDetached(["bash", "-c",
+            "if qs list --all 2>/dev/null | grep -qF 'Config path: " + root.qmlPath + "'; then "
+            + "hyprctl dispatch focuswindow 'title:^illogical-impulse Settings$' >/dev/null; else "
+            + "qs -n -p '" + root.qmlPath + "'; fi"]);
         root.running = true;
     }
 

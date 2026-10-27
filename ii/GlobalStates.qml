@@ -10,6 +10,10 @@ pragma ComponentBehavior: Bound
 Singleton {
     id: root
     property bool barOpen: true
+    // a window is being dragged with Super+mouse (Hyprland sends windowDrag on press and release)
+    property bool windowDragging: false
+    // Super+right-drag held (Hyprland sends windowResize on press and release)
+    property bool windowResizing: false
     property bool crosshairOpen: false
     property bool sidebarLeftOpen: false
     property bool sidebarRightOpen: false
@@ -53,12 +57,20 @@ Singleton {
     // any keybind can reach it without holding a reference to the panel.
     property bool cheatsheetOpen: false
     property bool superDown: false
+    // A context menu from the bar is open: the bar window takes input over its
+    // whole area, or clicks on the menu (which hangs below the strip) fall through.
+    property bool barMenuOpen: false
+    /// A workspace pill is being renamed: the bar takes the keyboard meanwhile.
+    property bool barRenaming: false
     property bool superReleaseMightTrigger: true
     // Timestamp of the last searchToggleRelease press — used to ignore the
     // phantom catchall interrupt Hyprland 0.55.4 fires on the Super press
     // itself (same-instant), while real interrupts (another key pressed
     // while holding Super) arrive later and still veto the toggle.
     property real superPressTime: 0
+    /// Last time something happened while Super was held (another key, a
+    /// modifier, a click). A Super release after that is not a tap.
+    property real superInterruptTime: 0
     property bool wallpaperSelectorOpen: false
     property bool workspaceShowNumbers: false
     property bool hudOpen: false
@@ -117,6 +129,9 @@ Singleton {
     property bool kbSettingsOpen: false      // Keyboard settings popup (repeat rate, etc — opened from the OSK)
     property bool wallTuneOpen: false
     property bool dotosCaptureOpen: false     // Dotos quick capture (Super+R)
+    property bool dotosMiniOpen: false        // Dotos mini floating window
+    /// Tab to show when Palette opens via IPC; WallTuneContent follows it.
+    property string wallTuneTab: "wallpaper"
     property bool skwdWallOpen: false
     property bool wallpaperAdjusterOpen: false
     property bool mouseMenuOpen: false
@@ -128,6 +143,8 @@ Singleton {
     property bool audioSettingsOpen: false
     property bool torrentsOpen: false
     property bool deviceToolsOpen: false
+    property bool discordPresenceOpen: false
+    property bool firewallOpen: false
     property bool micOpen: false
     property bool irisOpen: false
     property bool wallEffectVarsOpen: false
@@ -191,7 +208,7 @@ Singleton {
     property bool suspendingOpen: false      // suspend-in-progress popup
     property bool screenshotEditorOpen: false
     property string screenshotEditorPath: "" // image to load when opened
-    property string wallTransition: "slide" // "fade" | "slide" | "zoom" | "wipe"
+    property string wallTransition: "slide" // fade slide zoom wipe iris blinds diagonal rise blur depth
 
     // ── Exclusive popup manager ───────────────────────────────────────
     // Names of properties that represent main popups which should never
@@ -217,6 +234,8 @@ Singleton {
         "rogPower":         "rogPowerOpen",
         "deviceTools":      "deviceToolsOpen",
         "torrents":         "torrentsOpen",
+        "discordPresence":  "discordPresenceOpen",
+        "firewall":         "firewallOpen",
     })
 
     Connections {
@@ -362,9 +381,25 @@ Singleton {
 
         onPressed: {
             root.superDown = true
+            // Start of a possible Super tap; see Overview releaseToggle().
+            root.superPressTime = Date.now()
         }
         onReleased: {
             root.superDown = false
         }
+    }
+
+    GlobalShortcut {
+        name: "windowDrag"
+        description: "Super+drag of a window (sent by Hyprland alongside its own drag): the drop preview"
+        onPressed: root.windowDragging = true
+        onReleased: root.windowDragging = false
+    }
+
+    GlobalShortcut {
+        name: "windowResize"
+        description: "Super+right-drag (sent by Hyprland alongside its own resize): the Lua layouts' split follows it"
+        onPressed: root.windowResizing = true
+        onReleased: root.windowResizing = false
     }
 }

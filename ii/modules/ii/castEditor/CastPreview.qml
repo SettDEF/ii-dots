@@ -87,6 +87,8 @@ Rectangle {
                             onSourceChanged: if (pv.doc.playing) seekAndPlay()
                             source: pv.doc.proxyPath.length > 0 ? "file://" + pv.doc.proxyPath : ""
                             videoOutput: video
+                            // Qt 6 plays no sound without one; the proxy carries the export's mix
+                            audioOutput: AudioOutput {}
                             playbackRate: pv.doc.playbackRate
                             onPositionChanged: (pos) => {
                                 if (!pv.doc.playing) return;

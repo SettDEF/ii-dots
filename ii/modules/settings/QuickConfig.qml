@@ -15,9 +15,10 @@ ContentPage {
         id: randomWallProc
 
         property string status: ""
-        property string scriptPath: `${Directories.scriptPath}/colors/random/random_konachan_wall.sh`
+        property string scriptPath: `${Directories.scriptPath}/colors/random/random_quarry_wall.sh`
+        property list<string> args: []
 
-        command: ["bash", "-c", FileUtils.trimFileProtocol(randomWallProc.scriptPath)]
+        command: [FileUtils.trimFileProtocol(randomWallProc.scriptPath)].concat(randomWallProc.args)
 
         stdout: SplitParser {
             onRead: (data) => {
@@ -74,12 +75,14 @@ ContentPage {
                     materialIcon: "ifl"
                     mainText: randomWallProc.running ? Translation.tr("Be patient...") : Translation.tr("Random: Konachan")
                     onClicked: {
-                        randomWallProc.scriptPath = `${Directories.scriptPath}/colors/random/random_konachan_wall.sh`;
+                        // through Quarry: its Konachan source, saved to ~/Pictures/Wallpapers
+                        randomWallProc.scriptPath = `${Directories.scriptPath}/colors/random/random_quarry_wall.sh`;
+                        randomWallProc.args = ["konachan"];
                         randomWallProc.running = true;
                     }
 
                     StyledToolTip {
-                        text: Translation.tr("Random SFW Anime wallpaper from Konachan\nImage is saved to ~/Pictures/Wallpapers")
+                        text: Translation.tr("Random SFW anime wallpaper from Konachan, through Quarry\nImage is saved to ~/Pictures/Wallpapers")
                     }
 
                 }
@@ -92,7 +95,9 @@ ContentPage {
                     materialIcon: "ifl"
                     mainText: randomWallProc.running ? Translation.tr("Be patient...") : Translation.tr("Random: osu! seasonal")
                     onClicked: {
+                        // Quarry first (its osu_seasonal source), the direct download as a fallback (random_osu_wall.sh)
                         randomWallProc.scriptPath = `${Directories.scriptPath}/colors/random/random_osu_wall.sh`;
+                        randomWallProc.args = [];
                         randomWallProc.running = true;
                     }
 

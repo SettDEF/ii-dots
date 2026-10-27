@@ -1379,7 +1379,7 @@ Rectangle {
             Image {
                 id: wallPreviewImg
                 anchors.fill: parent
-                source: root.currentWall !== "" ? "file://" + root.currentWall : ""
+                source: root.currentWall !== "" ? FileUtils.fileUrl(root.currentWall) : ""
                 fillMode: Image.PreserveAspectCrop; smooth: true; asynchronous: true
                 opacity: status === Image.Ready ? 1 : 0
                 Behavior on opacity { NumberAnimation { duration: 180 } }
@@ -1547,10 +1547,10 @@ Rectangle {
                                 anchors.fill: parent
                                 source: {
                                     if (modelData.thumbnail && modelData.thumbnail !== "") {
-                                        return "file://" + modelData.thumbnail
+                                        return FileUtils.fileUrl(modelData.thumbnail)
                                     }
                                     if (modelData.wallpaper && modelData.wallpaper !== "" && !/processed(-[ab])?\.png$/.test(modelData.wallpaper)) {
-                                        return "file://" + modelData.wallpaper
+                                        return FileUtils.fileUrl(modelData.wallpaper)
                                     }
                                     return ""
                                 }

@@ -45,8 +45,9 @@ StyledOverlayWidget {
             RowLayout {
                 Layout.fillWidth: true
                 spacing: 6
+                visible: DiscordVoice.inVoice
                 MaterialSymbol {
-                    text: DiscordVoice.inVoice ? "headset_mic" : "headset_off"
+                    text: "headset_mic"
                     iconSize: Appearance.font.pixelSize.large
                     color: DiscordVoice.speakingCount > 0 ? Appearance.colors.colPrimary
                                                           : root.subColor
@@ -56,15 +57,14 @@ StyledOverlayWidget {
                     spacing: -2
                     StyledText {
                         Layout.fillWidth: true
-                        text: DiscordVoice.inVoice ? DiscordVoice.channel
-                                                   : Translation.tr("Not in a voice channel")
+                        text: DiscordVoice.channel
                         elide: Text.ElideRight
                         font.pixelSize: Appearance.font.pixelSize.small
                         font.weight: Font.Medium
                         color: root.textColor
                     }
                     StyledText {
-                        visible: DiscordVoice.inVoice && DiscordVoice.guild.length > 0
+                        visible: DiscordVoice.guild.length > 0
                         Layout.fillWidth: true
                         text: DiscordVoice.guild
                         elide: Text.ElideRight
@@ -72,10 +72,51 @@ StyledOverlayWidget {
                         color: root.subColor
                     }
                 }
+                StyledText {
+                    text: `${DiscordVoice.members.length}`
+                    font.pixelSize: Appearance.font.pixelSize.smaller
+                    color: root.subColor
+                }
+            }
+
+            // ── Not in a call: say why, centred, instead of an empty box ─
+            ColumnLayout {
+                visible: !DiscordVoice.inVoice
+                Layout.fillWidth: true
+                Layout.fillHeight: true
+                spacing: 4
+                Item { Layout.fillHeight: true }
+                MaterialSymbol {
+                    Layout.alignment: Qt.AlignHCenter
+                    // no data at all is a different problem from "not in a call"
+                    text: DiscordVoice.fresh ? "headset_off" : "link_off"
+                    iconSize: 28
+                    color: root.subColor
+                }
+                StyledText {
+                    Layout.alignment: Qt.AlignHCenter
+                    text: DiscordVoice.fresh ? Translation.tr("Not in a voice channel")
+                                             : Translation.tr("Discord isn't connected")
+                    font.pixelSize: Appearance.font.pixelSize.small
+                    font.weight: Font.Medium
+                    color: root.textColor
+                }
+                StyledText {
+                    Layout.alignment: Qt.AlignHCenter
+                    Layout.fillWidth: true
+                    horizontalAlignment: Text.AlignHCenter
+                    wrapMode: Text.Wrap
+                    text: DiscordVoice.fresh ? Translation.tr("Join a channel and its people show up here.")
+                                             : Translation.tr("Start or restart Discord — the voice plugin loads with it.")
+                    font.pixelSize: Appearance.font.pixelSize.smallest
+                    color: root.subColor
+                }
+                Item { Layout.fillHeight: true }
             }
 
             // ── Members ──────────────────────────────────────────────────
             Item {
+                visible: DiscordVoice.inVoice
                 Layout.fillWidth: true
                 Layout.fillHeight: true
                 clip: true
@@ -155,6 +196,11 @@ StyledOverlayWidget {
                         }
                     }
                 }
+            }
+
+            // ── Your controls: shared with the voice section of the dock menu ──
+            DiscordVoiceControls {
+                Layout.fillWidth: true
             }
         }
     }

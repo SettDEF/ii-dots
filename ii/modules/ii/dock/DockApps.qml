@@ -38,6 +38,17 @@ Item {
         && root.folderGridMode !== "off"
         && (root.folderGridMode !== "noWindows" || root.hoveredWindowCount === 0)
 
+    /// A file manager's title is "<path> — Dolphin": show where it is
+    /// ("Skate › Mods"), not which app it is. Other apps keep their title.
+    function windowLabel(title) {
+        const t = String(title ?? "");
+        if (!root.hoveredIsFiles) return t;
+        const place = t.replace(/\s+[—–-]\s+[^—–-]+$/, "");
+        if (!/^[\/~]/.test(place)) return place;
+        const parts = place.split("/").filter(p => p.length > 0);
+        return parts.length === 0 ? "/" : parts.slice(-2).join(" › ");
+    }
+
     readonly property color iconColor: {
         const hex = AppIconColors.colors[root.hoveredIcon] ?? "";
         return hex.length > 0 ? hex : Appearance.colors.colPrimaryContainer;
@@ -131,6 +142,8 @@ Item {
         property bool shouldShow: previewPopup.hovered
             && (previewPopup.previewCount > 0 || root.showFolderGrid)
         property bool show: false
+        // Drive usage is a df call, cheap enough to take fresh on every open.
+        onShowChanged: if (show && root.showFolderGrid) Places.refreshUsage()
 
         onShouldShowChanged: updateTimer.restart()
         Timer {
@@ -241,18 +254,6 @@ Item {
                     anchors.centerIn: parent
                     spacing: 6
 
-                    PlacesGrid {
-                        Layout.alignment: Qt.AlignHCenter
-                        Layout.margins: 4
-                        visible: root.showFolderGrid
-                        columns: 4
-                        // A DARK scrim, not a tinted layer: the panel takes the
-                        // app icon's average colour, and Dolphin's is pale, so
-                        // chips derived from it vanished into the background.
-                        chipColor: root.panelRaised
-                        chipText: root.panelText
-                    }
-
                 RowLayout {
                     id: previewRowLayout
                     Layout.alignment: Qt.AlignHCenter
@@ -284,7 +285,7 @@ Item {
                                         StyledText {
                                             Layout.fillWidth: true
                                             font.pixelSize: Appearance.font.pixelSize.small
-                                            text: windowButton.modelData?.title
+                                            text: root.windowLabel(windowButton.modelData?.title)
                                             elide: Text.ElideRight
                                             color: root.panelText
                                         }
@@ -332,6 +333,30 @@ Item {
                         }
                     }
                 }
+
+                    // Below the windows: an open window is the live thing, the
+                    // places are shortcuts. Drives get usage rows, not chips.
+                    PlacesGrid {
+                        Layout.alignment: Qt.AlignHCenter
+                        Layout.margins: 4
+                        visible: root.showFolderGrid
+                        columns: 4
+                        foldersOnly: true
+                        // A DARK scrim, not a tinted layer: the panel takes the
+                        // app icon's average colour, and Dolphin's is pale, so
+                        // chips derived from it vanished into the background.
+                        chipColor: root.panelRaised
+                        chipText: root.panelText
+                    }
+                    DrivesList {
+                        Layout.fillWidth: true
+                        Layout.leftMargin: 4
+                        Layout.rightMargin: 4
+                        Layout.bottomMargin: 4
+                        visible: root.showFolderGrid && Places.drives.length > 0
+                        chipColor: root.panelRaised
+                        chipText: root.panelText
+                    }
                 }
             }
         }

@@ -39,7 +39,8 @@ Singleton {
             id: "dotos", name: Translation.tr("Dotos: next task / timer"), icon: "task_alt",
             settings: [
                 { key: "showNext", label: Translation.tr("Show the next task's title"), type: "bool", def: true },
-                { key: "maxWidth", label: Translation.tr("Title width (px)"), type: "int", def: 220, min: 80, max: 500 }
+                { key: "maxWidth", label: Translation.tr("Title width (px)"), type: "int", def: 220, min: 80, max: 500 },
+                { key: "launchPage", label: Translation.tr("Page to open on click (home, tasks, inbox, plan, ...)"), type: "string", def: "home" }
             ]
         },
         {

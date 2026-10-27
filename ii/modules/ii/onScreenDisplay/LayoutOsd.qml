@@ -2,6 +2,7 @@ import qs.services
 import qs.modules.common
 import qs.modules.common.widgets
 import QtQuick
+import QtQuick.Window
 import Quickshell
 import Quickshell.Wayland
 import Quickshell.Hyprland
@@ -70,15 +71,26 @@ Scope {
             Region { id: maskHidden }
             Region { id: maskShown; item: card }
 
+            StyledRectangularShadow {
+                target: card
+                opacity: card.opacity
+            }
+
             Rectangle {
                 id: card
-                anchors.centerIn: parent
-                implicitWidth: contentRow.implicitWidth + 36
-                implicitHeight: 56
+                // Whole device pixels: centred at 1.6x it sat on a fractional
+                // position, and its 1-device-px outline smeared over two rows.
+                readonly property real dpr: card.Screen.devicePixelRatio > 0 ? card.Screen.devicePixelRatio : 1
+                x: Math.round((parent.width - width) / 2 * dpr) / dpr
+                y: Math.round((parent.height - height) / 2 * dpr) / dpr
+                implicitWidth: Math.round((contentRow.implicitWidth + 36) * dpr) / dpr
+                implicitHeight: Math.round(56 * dpr) / dpr
                 radius: height / 2
+                // No hairline outline: on a curve its antialiased pixels blend with
+                // whatever is behind (a glass terminal shows the wallpaper through),
+                // so it read as grainy. A soft shadow separates it, like the shell's
+                // other popups.
                 color: Appearance.colors.colLayer1Base
-                border.width: 1
-                border.color: Appearance.colors.colLayer0Border
 
                 opacity: osd.effectiveShow ? 1 : 0
                 visible: opacity > 0.01

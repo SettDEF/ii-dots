@@ -20,6 +20,7 @@ pragma ComponentBehavior: Bound
 // Import with `qs.services`.
 
 import qs.modules.common
+import qs.modules.common.functions
 import QtQuick
 import Quickshell
 import Quickshell.Io
@@ -52,12 +53,7 @@ Singleton {
     readonly property int missingFiles:
         root.torrents.filter(t => String(t.state ?? "") === "missingFiles").length
 
-    function fmtBytes(b) {
-        const u = ["B", "KB", "MB", "GB", "TB"]
-        let n = Number(b) || 0, i = 0
-        while (n >= 1024 && i < u.length - 1) { n /= 1024; i++ }
-        return `${n < 10 && i > 0 ? n.toFixed(1) : Math.round(n)} ${u[i]}`
-    }
+    function fmtBytes(b) { return StringUtils.formatBytes(b) }
     function fmtRate(b) { return (Number(b) || 0) <= 0 ? "—" : root.fmtBytes(b) + "/s" }
 
     // ── polling ─────────────────────────────────────────────────────────
@@ -66,44 +62,40 @@ Singleton {
         running: true
         repeat: true
         triggeredOnStart: true
-        onTriggered: if (!poll.running) poll.running = true
+        onTriggered: root._poll()
     }
 
-    Process {
-        id: poll
-        // printf, NOT echo: `echo '\x1e'` prints the four literal characters
-        // \, x, 1, e in sh — so the separator the parser splits on never
-        // appeared, both JSON documents arrived as one blob, and every poll
-        // failed to parse while qBittorrent was perfectly reachable.
-        command: ["sh", "-c",
-            `curl -s --max-time 4 '${root.api}/transfer/info'; printf '\\036'; ` +
-            `curl -s --max-time 4 '${root.api}/torrents/info'`]
-        stdout: StdioCollector {
-            onStreamFinished: {
-                // Two JSON documents in one request, split on a record
-                // separator — one curl round trip instead of two, and they
-                // describe the same instant.
-                const parts = String(text).split("\x1e")
-                if (parts.length < 2) { root.reachable = false; return }
-                let info, list
-                try {
-                    info = JSON.parse(parts[0].trim())
-                    list = JSON.parse(parts[1].trim())
-                } catch (e) { root.reachable = false; return }
-                if (!Array.isArray(list)) { root.reachable = false; return }
-
-                root.reachable = true
-                root.upRate = info.up_info_speed ?? 0
-                root.dlRate = info.dl_info_speed ?? 0
-                root.upTotal = info.up_info_data ?? 0
-                root.dlTotal = info.dl_info_data ?? 0
-
-                root._detectUploads(list)
-                root.torrents = list.slice().sort((a, b) =>
-                    (b.upspeed ?? 0) - (a.upspeed ?? 0)
-                    || (b.dlspeed ?? 0) - (a.dlspeed ?? 0))
-            }
+    // Both documents over XMLHttpRequest, in the shell itself: a sh and two curls every 10 s
+    // before. They describe nearly the same instant; applied together once both are in.
+    property bool _polling: false
+    function _get(path, done) {
+        const xhr = new XMLHttpRequest()
+        xhr.open("GET", root.api + path)
+        xhr.timeout = 4000
+        xhr.onreadystatechange = () => {
+            if (xhr.readyState !== XMLHttpRequest.DONE) return
+            let v = null
+            if (xhr.status === 200) { try { v = JSON.parse(xhr.responseText) } catch (e) {} }
+            done(v)
         }
+        xhr.send()
+    }
+    function _poll() {
+        if (root._polling) return
+        root._polling = true
+        root._get("/transfer/info", info => root._get("/torrents/info", list => {
+            root._polling = false
+            if (!info || !Array.isArray(list)) { root.reachable = false; return }
+            root.reachable = true
+            root.upRate = info.up_info_speed ?? 0
+            root.dlRate = info.dl_info_speed ?? 0
+            root.upTotal = info.up_info_data ?? 0
+            root.dlTotal = info.dl_info_data ?? 0
+            root._detectUploads(list)
+            root.torrents = list.slice().sort((a, b) =>
+                (b.upspeed ?? 0) - (a.upspeed ?? 0)
+                || (b.dlspeed ?? 0) - (a.dlspeed ?? 0))
+        }))
     }
 
     // ── the notification ────────────────────────────────────────────────

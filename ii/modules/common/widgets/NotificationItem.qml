@@ -175,9 +175,13 @@ Item { // Notification item area
                     wrapMode: Text.Wrap // Needed for proper eliding????
                     maximumLineCount: 1
                     textFormat: Text.StyledText
+                    // One line: a line break would push the rest of the message
+                    // out of view, so breaks become " · " here. The expanded
+                    // body below keeps them as real breaks.
                     text: {
                         if (!notificationObject) return ""
-                        return NotificationUtils.processNotificationBody(notificationObject.body, notificationObject.appName || notificationObject.summary).replace(/\n/g, "<br/>")
+                        return NotificationUtils.processNotificationBody(notificationObject.body, notificationObject.appName || notificationObject.summary)
+                            .replace(/(\s*(<br\s*\/?>|\n)\s*)+/gi, " · ")
                     }
                 }
             }

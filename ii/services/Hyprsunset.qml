@@ -58,6 +58,7 @@ Singleton {
 
         if (root.manualActive !== undefined && (inBetween(from, manualActive, t) || inBetween(to, manualActive, t))) {
             root.manualActive = undefined;
+            root.saveManual();
         }
         root.shouldBeOn = inBetween(t, from, to);
         if (firstEvaluation) {
@@ -79,6 +80,52 @@ Singleton {
     }
 
     function load() { } // Dummy to force init
+
+    // ── Surviving reloads ───────────────────────────────────────────────
+    // A hand-picked state used to live only in memory: a shell reload forgot
+    // it, and outside the scheduled hours the schedule then switched night
+    // light back off. It is kept in Persistent now, with the minute it was
+    // picked, so the same "until the schedule next changes" rule still holds.
+    function saveManual() {
+        if (!Persistent.ready) return;
+        Persistent.states.nightLight.manual = root.manualActive === undefined ? "" : (root.manualActive ? "on" : "off");
+        Persistent.states.nightLight.sinceMinute = root.manualActiveHour * 60 + root.manualActiveMinute;
+    }
+    property bool _restored: false
+    function restoreManual() {
+        if (root._restored || !Persistent.ready) return;
+        root._restored = true;
+        const m = Persistent.states.nightLight.manual;
+        if (m !== "on" && m !== "off") return;
+        const since = Persistent.states.nightLight.sinceMinute;
+        root.manualActiveHour = Math.floor(since / 60);
+        root.manualActiveMinute = since % 60;
+        root.manualActive = (m === "on");
+        if (root.manualActive) root.enable(); else root.disable();
+    }
+    Component.onCompleted: root.restoreManual()
+    Connections {
+        target: Persistent
+        function onReadyChanged() { root.restoreManual() }
+    }
+
+    // A Hyprland reload (or restart) can drop the colour transform: put it
+    // back if night light is meant to be on.
+    Connections {
+        target: Hyprland
+        function onRawEvent(event) {
+            if (event.name === "configreloaded" && root.active) reapply.restart();
+        }
+    }
+    Timer {
+        id: reapply
+        interval: 800
+        onTriggered: {
+            if (root.backendOk === false) { root._startFallback(); return; }
+            Quickshell.execDetached(["bash", "-c",
+                `if pidof hyprsunset >/dev/null; then hyprctl hyprsunset temperature ${root.colorTemperature}; else hyprsunset --temperature ${root.colorTemperature}; fi`]);
+        }
+    }
 
     // Empty while the backend is healthy; otherwise why it isn't. Without
     // this a broken hyprsunset just left the toggle sitting on "inactive"
@@ -149,7 +196,10 @@ Singleton {
             id: stateCollector
             onStreamFinished: {
                 const output = stateCollector.text.trim();
-                if (output.length == 0 || output.startsWith("Couldn't"))
+                // a restored hand-picked "on" is still starting hyprsunset here
+                if (root.manualActive === true)
+                    root.active = true;
+                else if (output.length == 0 || output.startsWith("Couldn't"))
                     root.active = false;
                 else
                     root.active = (output != "6500"); // 6500 is the default when off
@@ -166,6 +216,7 @@ Singleton {
         }
 
         root.manualActive = active !== undefined ? active : !root.manualActive;
+        root.saveManual();
         if (root.manualActive) {
             root.enable();
         } else {

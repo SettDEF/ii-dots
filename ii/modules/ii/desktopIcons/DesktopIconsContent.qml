@@ -410,6 +410,24 @@ Item {
     }
 
     // ── Helpers ────────────────────────────────────────────────────────
+    /// "Folder", "PNG image", "Link to folder" … for the hover card.
+    function _kindLabel(e) {
+        const kinds = { folder: qsTr("Folder"), image: qsTr("image"), movie: qsTr("video"), music_note: qsTr("audio"),
+                        picture_as_pdf: qsTr("document"), folder_zip: qsTr("archive"), description: qsTr("text"), code: qsTr("source") }
+        let k = e.fileIsDir ? kinds.folder
+              : (e.suffix ? e.suffix.toUpperCase() + " " : "") + (kinds[_mimeIcon(e.fileName, false)] || qsTr("file"))
+        return e.isSymlink ? qsTr("Link to %1").arg(k.charAt(0).toLowerCase() + k.slice(1)) : k
+    }
+    /// Modified time: the date, and how long ago while it is recent.
+    function _dateLabel(secs) {
+        if (!secs) return ""
+        const d = new Date(secs * 1000), ago = (Date.now() - d.getTime()) / 1000
+        const when = Qt.locale().toString(d, Locale.ShortFormat)
+        if (ago < 60) return qsTr("%1 · just now").arg(when)
+        if (ago < 3600) return qsTr("%1 · %2 min ago").arg(when).arg(Math.round(ago / 60))
+        if (ago < 86400) return qsTr("%1 · %2 h ago").arg(when).arg(Math.round(ago / 3600))
+        return when
+    }
     function _isImage(name) {
         return /\.(jpe?g|png|webp|gif|bmp|svg)$/i.test(name)
     }
@@ -587,24 +605,38 @@ Item {
             + _q(path) + " \"$HOME/.local/share/Trash/files/\")")
     }
     function _setClipboard(paths, cut) {
-        // x-special/gnome-copied-files: the format Nautilus, Dolphin, etc. read.
-        const op = cut ? "cut" : "copy"
-        const lines = [op].concat(paths.map(p => "file://" + p)).join("\n")
-        _sh("printf '%s' " + _q(lines)
-            + " | wl-copy -t x-special/gnome-copied-files 2>/dev/null"
-            + " || printf '%s' " + _q(lines)
-            + " | xclip -i -selection clipboard -t x-special/gnome-copied-files 2>/dev/null")
+        // scripts/filecopy offers text/uri-list + the KDE cut marker (Dolphin,
+        // KIO apps) AND x-special/gnome-copied-files (GTK) in one go — wl-copy
+        // can only offer one type, so a cut here could not be pasted in Dolphin.
+        // It serves the clipboard until the next copy, so it runs detached
+        // (opProc is reused and would kill it).
+        Quickshell.execDetached([Directories.scriptPath.replace(/^file:\/\//, "") + "/filecopy/filecopy",
+                                 cut ? "cut" : "copy"].concat(paths))
     }
     function _paste() {
         const dest = Quickshell.env("HOME") + "/Desktop"
         _sh(`
-            clip="$(wl-paste -t x-special/gnome-copied-files 2>/dev/null || xclip -o -selection clipboard -t x-special/gnome-copied-files 2>/dev/null)"
-            [ -z "$clip" ] && exit 0
-            op="$(printf '%s' "$clip" | head -n1)"
-            urls="$(printf '%s' "$clip" | tail -n +2)"
+            # GTK apps offer x-special/gnome-copied-files ("cut"/"copy" + URIs);
+            # Dolphin/KDE offer text/uri-list, with application/x-kde-cutselection
+            # = 1 for a cut.
+            types="$(wl-paste --list-types 2>/dev/null)"
+            if echo "$types" | grep -qx 'x-special/gnome-copied-files'; then
+                clip="$(wl-paste -n -t x-special/gnome-copied-files)"
+                op="$(printf '%s' "$clip" | head -n1)"
+                urls="$(printf '%s' "$clip" | tail -n +2)"
+            elif echo "$types" | grep -qx 'text/uri-list'; then
+                urls="$(wl-paste -n -t text/uri-list | tr -d '\\r')"
+                op=copy
+                if echo "$types" | grep -qx 'application/x-kde-cutselection' \
+                    && [ "$(wl-paste -n -t application/x-kde-cutselection)" = 1 ]; then op=cut; fi
+            else
+                exit 0
+            fi
             printf '%s\\n' "$urls" | while IFS= read -r u; do
                 [ -z "$u" ] && continue
-                src="$(printf '%s' "$u" | sed -e 's|^file://||' -e 's|%20| |g')"
+                case "$u" in file://*) ;; *) continue ;; esac
+                # full percent-decoding, not just %20
+                src="$(printf '%b' "$(printf '%s' "\${u#file://}" | sed 's/%/\\\\x/g')")"
                 [ ! -e "$src" ] && continue
                 if [ "$op" = "cut" ]; then
                     mv -n -- "$src" ${root._q(dest)}/
@@ -777,6 +809,103 @@ Item {
                 Behavior on color { ColorAnimation { duration: 110 } }
             }
             HoverHandler { id: hov }
+
+            // ── Hover info: name, kind, size, date; folders count their items ──
+            // Shows after a short rest; a click hides it until the pointer leaves
+            // the tile (the menu or a drag must not sit under it).
+            property bool infoShown: false
+            property bool infoSuppressed: false
+            property string infoExtra: ""
+            z: infoShown ? 10 : 0
+            Timer {
+                interval: 650
+                running: hov.hovered && !tile.infoSuppressed && !root.anyDragging && !root._rubberbandActive
+                onTriggered: { tile.infoShown = true; tile.loadInfoExtra(); }
+            }
+            Connections {
+                target: hov
+                function onHoveredChanged() { if (!hov.hovered) { tile.infoShown = false; tile.infoSuppressed = false; } }
+            }
+            Connections {
+                target: tileMa
+                function onPressed() { tile.infoShown = false; tile.infoSuppressed = true; }
+            }
+            Process {
+                id: infoProc
+                stdout: StdioCollector {
+                    onStreamFinished: {
+                        const t = text.trim();
+                        if (tile.modelData.isSymlink) tile.infoExtra = t.length ? "→ " + t : "";
+                        else tile.infoExtra = t.length ? qsTr("%1 items").arg(t) : "";
+                    }
+                }
+            }
+            function loadInfoExtra() {
+                if (infoProc.running || tile.infoExtra.length) return;
+                // timeout: a folder link into an absent automount must not hang
+                if (tile.modelData.isSymlink)
+                    infoProc.command = ["timeout", "1", "readlink", "--", tile.filePath];
+                else if (tile.fileIsDir)
+                    infoProc.command = ["sh", "-c", 'timeout 1 find "$1" -mindepth 1 -maxdepth 1 | wc -l', "sh", tile.filePath];
+                else return;
+                infoProc.running = true;
+            }
+            Loader {
+                active: tile.infoShown
+                z: 100
+                sourceComponent: Rectangle {
+                    id: infoCard
+                    readonly property real gap: 10
+                    // beside the tile, on the side with room; kept on screen
+                    x: tile.x + tile.width + gap + width > tile.parent.width ? -width - gap : tile.width + gap
+                    y: Math.max(-tile.y, Math.min(0, tile.parent.height - tile.y - height))
+                    width: Math.min(320, Math.max(200, infoCol.implicitWidth + 24))
+                    height: infoCol.implicitHeight + 20
+                    radius: Appearance.rounding.normal
+                    color: Appearance.colors.colLayer0
+                    border.width: 1
+                    border.color: Appearance.colors.colLayer0Border
+                    opacity: 0
+                    Component.onCompleted: opacity = 1
+                    Behavior on opacity { NumberAnimation { duration: 120 } }
+                    ColumnLayout {
+                        id: infoCol
+                        anchors { left: parent.left; right: parent.right; top: parent.top; margins: 12; topMargin: 10 }
+                        spacing: 4
+                        StyledText {
+                            Layout.fillWidth: true
+                            text: tile.fileName
+                            wrapMode: Text.WrapAnywhere
+                            maximumLineCount: 3
+                            elide: Text.ElideRight
+                            font.pixelSize: Appearance.font.pixelSize.small
+                            font.weight: Font.DemiBold
+                            color: Appearance.colors.colOnLayer0
+                        }
+                        Repeater {
+                            model: [
+                                { icon: root._mimeIcon(tile.fileName, tile.fileIsDir), text: root._kindLabel(tile.modelData) },
+                                { icon: "straighten", text: tile.fileIsDir ? "" : StringUtils.formatBytes(tile.fileSize) },
+                                { icon: "schedule", text: root._dateLabel(tile.fileModified) },
+                                { icon: tile.modelData.isSymlink ? "link" : "folder_open", text: tile.infoExtra }
+                            ].filter(r => r.text.length > 0)
+                            RowLayout {
+                                required property var modelData
+                                Layout.fillWidth: true
+                                spacing: 6
+                                MaterialSymbol { text: modelData.icon; iconSize: Appearance.font.pixelSize.normal; color: Appearance.colors.colSubtext }
+                                StyledText {
+                                    Layout.fillWidth: true
+                                    text: modelData.text
+                                    elide: Text.ElideMiddle
+                                    font.pixelSize: Appearance.font.pixelSize.smaller
+                                    color: Appearance.colors.colSubtext
+                                }
+                            }
+                        }
+                    }
+                }
+            }
 
             // Icon (thumbnail if available, else MIME symbol)
             Item {

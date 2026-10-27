@@ -9,6 +9,8 @@ import qs.modules.ii.cheatsheet
 import qs.modules.ii.captions
 import qs.modules.ii.torrents
 import qs.modules.ii.deviceTools
+import qs.modules.ii.discordPresence
+import qs.modules.ii.firewall
 import qs.modules.ii.display
 import qs.modules.ii.statsHud
 import qs.modules.ii.audio
@@ -28,6 +30,7 @@ import qs.modules.ii.onScreenTouchpad
 import qs.modules.ii.overview
 import qs.modules.ii.polkit
 import qs.modules.ii.regionSelector
+import qs.modules.ii.colorPicker
 import qs.modules.ii.rog
 import qs.modules.ii.screenCorners
 import qs.modules.ii.sessionScreen
@@ -47,6 +50,7 @@ import qs.modules.ii.desktopIcons
 import qs.modules.ii.mouseMenu
 import qs.modules.ii.kinetix
 import qs.modules.ii.systemHub
+import qs.modules.ii.windowDrag
 import qs.modules.ii.screenDraw
 import qs.modules.ii.screenshotEditor
 import qs.modules.ii.mouseMenu
@@ -65,33 +69,39 @@ Scope {
     // layout. Mouse mode keeps the original bar/dock config.
     PanelLoader {
         extraCondition: !Config.options.bar.vertical && !Config.options.tabletMode
+        stage: 0
         component: Bar {}
     }
-    PanelLoader { component: Background {} }
+    PanelLoader { stage: 0; component: Background {} }
     // Desktop icons (KDE-style). The inner Loader self-gates on
     // Config.options.desktop.icons.enable, so the PanelWindow stays cheap
     // while the toggle is off (no FolderListModel, no delegates).
     PanelLoader {
         extraCondition: Config.options.desktop.icons.enable
+        stage: 1
         component: DesktopIcons {}
     }
     PanelLoader {
         extraCondition: Config.options.dock.enable || Config.options.tabletMode
+        stage: 0
         component: Dock {}
     }
-    PanelLoader { component: Lock {} }
-    PanelLoader { component: MediaControls {} }
-    PanelLoader { component: NotificationPopup {} }
-    PanelLoader { component: OnScreenDisplay {} }
-    PanelLoader { component: LayoutOsd {} }
-    PanelLoader { component: OnScreenKeyboard {} }
+    PanelLoader { stage: 0; component: Lock {} }
+    PanelLoader { stage: 1; component: MediaControls {} }
+    PanelLoader { stage: 0; component: NotificationPopup {} }
+    PanelLoader { stage: 1; component: OnScreenDisplay {} }
+    PanelLoader { stage: 1; component: LayoutOsd {} }
+    PanelLoader { stage: 1; component: WindowDropPreview {} }
+    PanelLoader { stage: 1; component: LayoutResizeDrag {} }
+    PanelLoader { stage: 1; component: OnScreenKeyboard {} }
     PanelLoader { component: OnScreenTouchpad {} }
-    PanelLoader { component: Overlay {} }
-    PanelLoader { component: Polkit {} }
-    PanelLoader { component: RegionSelector {} }
-    PanelLoader { component: ScreenCorners {} }
-    PanelLoader { component: SessionScreen {} }
-    PanelLoader { extraCondition: Config.options.bar.vertical; component: VerticalBar {} }
+    PanelLoader { stage: 1; component: Overlay {} }
+    PanelLoader { stage: 1; component: Polkit {} }
+    PanelLoader { stage: 1; component: RegionSelector {} }
+    PanelLoader { stage: 1; component: ColorPicker {} }
+    PanelLoader { stage: 1; component: ScreenCorners {} }
+    PanelLoader { stage: 1; component: SessionScreen {} }
+    PanelLoader { stage: 0; extraCondition: Config.options.bar.vertical; component: VerticalBar {} }
     LazyPanelLoader {
         isOpen: GlobalStates.hudOpen
         idleMs: 30 * 1000        // unload 30 s after close
@@ -108,7 +118,7 @@ Scope {
         idleMs: 30 * 1000
         component: ConnectivityPopup {}
     }
-    PanelLoader { component: KeybindsHint {} }
+    PanelLoader { stage: 1; component: KeybindsHint {} }
     // Touch-only edge swipe handles.
     //
     // Twice now this made the bar unclickable, because "off" was implemented
@@ -118,6 +128,7 @@ Scope {
     // and the one state that cannot eat a click by construction.
     PanelLoader {
         extraCondition: Appearance.touchUi
+        stage: 1
         component: TouchEdges {}
     }
     // Fullscreen multi-finger / corner gestures — tablet mode only,
@@ -128,13 +139,13 @@ Scope {
     //     component: TouchGestures {}
     // }
     // Cheatsheet has its own internal lazy loader (active=false by default).
-    PanelLoader { component: Cheatsheet {} }
+    PanelLoader { stage: 1; component: Cheatsheet {} }
 
     // Nexus, Overview, SidebarLeft still keep internal-state shortcuts → eager.
     // SidebarRight had its IpcHandler/GlobalShortcuts lifted to Shortcuts.qml
     // so it can be smart-loaded.
-    PanelLoader { component: Overview {} }
-    PanelLoader { component: SidebarLeft {} }
+    PanelLoader { stage: 1; component: Overview {} }
+    PanelLoader { stage: 1; component: SidebarLeft {} }
     LazyPanelLoader {
         isOpen: GlobalStates.sidebarRightOpen
         component: SidebarRight {}
@@ -147,6 +158,7 @@ Scope {
     LazyPanelLoader { isOpen: GlobalStates.kbSettingsOpen;        idleMs: 30 * 1000; component: KeyboardSettings {} }
     LazyPanelLoader { isOpen: GlobalStates.wallTuneOpen;          idleMs: 30 * 1000; component: WallTune {} }
     LazyPanelLoader { isOpen: GlobalStates.dotosCaptureOpen;     idleMs: 5 * 60 * 1000; component: DotosCapture {} }
+    LazyPanelLoader { isOpen: GlobalStates.dotosMiniOpen;       idleMs: 5 * 60 * 1000; component: DotosMini {} }
     LazyPanelLoader { isOpen: GlobalStates.startMenuOpen;         idleMs: 30 * 1000; component: StartMenu {} }
     // Visibility-driven like the connectivity popup, not gated by a Loader:
     // it drives its own `visible` per screen, so it wants to exist already.
@@ -164,6 +176,8 @@ Scope {
     PanelLoader { component: AudioSettings {} }
     PanelLoader { component: MicPanel {} }
     PanelLoader { component: DeviceToolsPanel {} }
+    PanelLoader { component: DiscordPresencePanel {} }
+    PanelLoader { component: FirewallPanel {} }
     CaptionOverlay {}
     TorrentPanel {}
     PanelLoader { component: IrisSettings {} }

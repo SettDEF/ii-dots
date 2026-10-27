@@ -7,6 +7,7 @@ import qs.modules.common.functions
 import qs.modules.common.panels.lock
 import QtQuick
 import Quickshell
+import Quickshell.Io
 import Quickshell.Wayland
 import Quickshell.Hyprland
 
@@ -67,6 +68,27 @@ LockScreen {
 
     lockSurface: LockSurface {
         context: root.context
+    }
+
+    // Locked: the keyboard's backlight off until unlock, then back at the level it had
+    // (lock.dim.keyboardOff). Any laptop: the first LED named *kbd_backlight, through brightnessctl.
+    property string kbdBefore: ""      // "device level", set while locked
+    Connections {
+        target: GlobalStates
+        function onScreenLockedChanged() {
+            if (GlobalStates.screenLocked) {
+                if (Config.options.lock.dim?.keyboardOff ?? true) kbdOff.running = true;
+            } else if (root.kbdBefore !== "") {
+                const [dev, level] = root.kbdBefore.split(" ");
+                Quickshell.execDetached(["brightnessctl", "-q", "-d", dev, "set", level]);
+                root.kbdBefore = "";
+            }
+        }
+    }
+    Process {
+        id: kbdOff
+        command: ["sh", "-c", 'd=$(ls /sys/class/leds | grep -m1 kbd_backlight) || exit 0; echo "$d $(brightnessctl -d "$d" get)"; brightnessctl -q -d "$d" set 0']
+        stdout: StdioCollector { onStreamFinished: root.kbdBefore = text.trim() }
     }
 
     // Push everything down

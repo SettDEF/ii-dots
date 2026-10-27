@@ -61,7 +61,11 @@ LazyLoader {
             item: popupBackground
         }
 
-        exclusionMode: ExclusionMode.Ignore
+        // Under a top bar: respect reserved space, so the popup lands right below
+        // the bar even when something above it (Takt's meter strip) pushed the bar
+        // down. The bar's own zone then does the offset, so top margin is 0.
+        readonly property bool _topBar: !Config.options.bar.vertical && !Config.options.bar.bottom
+        exclusionMode: popupWindow._topBar ? ExclusionMode.Normal : ExclusionMode.Ignore
         exclusiveZone: 0
         // Centred on the hover target, then clamped so no popup can leave the
         // monitor. Without the clamp a wide popup near an edge is simply cut
@@ -77,6 +81,7 @@ LazyLoader {
                 return Math.max(0, Math.min(centred, room));
             }
             top: {
+                if (popupWindow._topBar) return 0;
                 if (!Config.options.bar.vertical) return Appearance.sizes.barHeight;
                 const centred = root.QsWindow?.mapFromItem(
                     root.hoverTarget,
@@ -97,6 +102,7 @@ LazyLoader {
 
         StyledRectangularShadow {
             target: popupBackground
+            opacity: popupBackground.opacity
         }
 
         Rectangle {
@@ -117,6 +123,18 @@ LazyLoader {
 
             border.width: 1
             border.color: Appearance.colors.colLayer0Border
+
+            // Its own short fade-in: the compositor's layer animation is off for
+            // popups (hypr custom/rules.conf), because its fade-OUT of the old
+            // popup overlapped the next one when moving along the bar.
+            opacity: 0
+            transform: Translate { id: dropIn; y: -4 }
+            Component.onCompleted: appear.start()
+            ParallelAnimation {
+                id: appear
+                NumberAnimation { target: popupBackground; property: "opacity"; to: 1; duration: 130; easing.type: Easing.OutCubic }
+                NumberAnimation { target: dropIn; property: "y"; to: 0; duration: 160; easing.type: Easing.OutCubic }
+            }
         }
     }
 }

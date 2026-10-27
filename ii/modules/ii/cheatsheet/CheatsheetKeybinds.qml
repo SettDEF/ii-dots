@@ -3,17 +3,38 @@ pragma ComponentBehavior: Bound
 import qs.services
 import qs.modules.common
 import qs.modules.common.widgets
+import qs.modules.common.functions
 import QtQuick
 import QtQuick.Layouts
 
 Item {
     id: root
-    readonly property var keybinds: HyprlandKeybinds.keybinds
+    /// Sub-category: "desktop" (Hyprland), or an app id from AppKeybinds
+    /// (tmux, wezterm, …). Searching looks through ALL of them.
+    property string app: "desktop"
+    readonly property var appEntry: AppKeybinds.apps.find(a => a.id === root.app) ?? null
+    readonly property var keybinds: {
+        const searching = (root._q ?? "").trim().length > 0;
+        if (!searching && root.app !== "desktop")
+            return { children: (root.appEntry?.sections ?? []).map(s => ({ name: s.name, keybinds: s.keybinds, children: [] })) };
+        if (!searching) return HyprlandKeybinds.keybinds;
+        // search: the desktop's sections, then every app's, named "tmux · Panes"
+        const out = (HyprlandKeybinds.keybinds?.children ?? []).slice();
+        for (const a of AppKeybinds.apps)
+            for (const s of a.sections)
+                out.push({ name: `${a.name} · ${s.name}`, keybinds: s.keybinds, children: [] });
+        return { children: out };
+    }
     property real spacing: 20
     property real titleSpacing: 7
     property real padding: 4
     /// Cap, or one bind whose comment is a command line sets the column width.
     property real maxCommentWidth: 300
+    /// The visible width (the scroll view's), which the columns can exceed:
+    /// the app chips centre in what you see, not over the whole content.
+    property real viewWidth: width
+    /// Where the app bar floats (the page's scroll view); null = inline.
+    property Item floatHost: null
 
     /// Height to fit in, set by the host. 0 = unknown.
     property real heightBudget: 0
@@ -51,8 +72,174 @@ Item {
 
     readonly property var flatSections: root._flatten({ children: root.keybinds?.children ?? [] }, [])
 
+    // ── search: the settings app's matcher (fuzzysort), one ranking ──
+    /// Set by the search field in the cheatsheet header (Cheatsheet.qml).
+    property string query: ""
+    /// The query the results follow: settles 150 ms after the last
+    /// keystroke, so typing does not re-rank and re-lay-out the whole sheet
+    /// on every letter (it lagged).
+    property string _q: ""
+    onQueryChanged: if (query.trim() === "") { qDebounce.stop(); _q = ""; } else qDebounce.restart()
+    Timer { id: qDebounce; interval: 150; onTriggered: root._q = root.query }
+
+    // Names people type for the same key or action. A query word in a group
+    // finds every word of it, so "win" finds Super, "screenshot" finds a bind
+    // labelled "capture", "close" finds "kill".
+    readonly property var keyAliases: ({
+        "win": "super", "windows": "super", "mod": "super", "meta": "super", "cmd": "super", "logo": "super",
+        "control": "ctrl", "strg": "ctrl", "ctl": "ctrl", "option": "alt", "opt": "alt",
+        "enter": "return", "esc": "escape", "del": "delete", "bksp": "backspace", "spc": "space",
+        "pgup": "page_up", "pgdn": "page_down", "lmb": "mouse:272", "rmb": "mouse:273"
+    })
+    readonly property var actionGroups: [
+        ["screenshot", "capture", "grim", "snip", "region", "screen shot"],
+        ["record", "recording", "screencast", "cast", "video"],
+        ["close", "kill", "quit", "exit"],
+        ["terminal", "term", "kitty", "foot", "wezterm", "console", "shell"],
+        ["volume", "audio", "sound", "mute", "speaker"],
+        ["mic", "microphone"],
+        ["brightness", "backlight", "screen light"],
+        ["workspace", "desktop", "virtual desktop"],
+        ["fullscreen", "maximize", "maximise"],
+        ["float", "floating", "tiling", "tile"],
+        ["clipboard", "clip", "paste", "copy"],
+        ["launcher", "search", "apps", "run", "overview"],
+        ["lock", "lockscreen", "screen lock"],
+        ["move", "drag", "send"],
+        ["focus", "switch", "select"],
+        ["media", "music", "play", "pause", "next", "previous", "track"],
+        ["notification", "notifications", "notify"],
+        ["power", "shutdown", "reboot", "logout", "session"],
+        ["emoji", "emojis", "symbol"],
+        ["color", "colour", "picker", "colorpicker"],
+        ["wallpaper", "background"],
+    ]
+    function _norm(t) { return String(t ?? "").toLowerCase(); }
+    /// Text plus its words run together ("scroll bar" → "scrollbar"), like settings.
+    function _sq(t) { return t + " " + t.replace(/\s+/g, ""); }
+
+    /// Every bind, prepared once (not per keystroke).
+    readonly property var haystack: {
+        const out = [];
+        for (const sec of root.flatSections) {
+            for (const kb of sec.keybinds) {
+                const mods = (kb.mods ?? []).map(m => root._norm(m));
+                const key = root._norm(kb.key);
+                const comment = String(kb.comment ?? "");
+                const lc = comment.toLowerCase();
+                const extra = root.actionGroups.filter(g => g.some(w => lc.includes(w))).map(g => g.join(" ")).join(" ");
+                const words = s => String(s).toLowerCase().split(/[^a-z0-9#]+/).filter(w => w);
+                out.push({
+                    kb, section: sec.name ?? "",
+                    lc,
+                    commentWords: words(comment),
+                    otherWords: words(`${sec.name ?? ""} ${extra}`),
+                    keyWords: mods.concat([key]).map(k => k.toLowerCase()),
+                    combo: new Set(mods.concat([key])),
+                    commentKey: Fuzzy.prepare(comment),
+                    comboKey: Fuzzy.prepare(mods.concat([key]).join(" ") + " " + mods.concat([key]).join("+")),
+                    allKey: Fuzzy.prepare(root._sq(`${comment} ${sec.name ?? ""} ${extra}`))
+                });
+            }
+        }
+        return out;
+    }
+
+    /// The query with key aliases spelled the way binds store them.
+    function _canon(q) {
+        return q.toLowerCase().split(/[\s+]+/).filter(t => t).map(t => root.keyAliases[t] ?? t);
+    }
+    /// fuzzysort's highlight, made safe for rich text (the label may hold < or &).
+    function _highlight(res, text) {
+        if (!res) return "";
+        const marked = Fuzzy.highlight(res, "\u0001", "\u0002") || text;
+        const esc = marked.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+        return esc.replace(/\u0001/g, `<b><font color="${Appearance.colors.colPrimary}">`).replace(/\u0002/g, "</font></b>");
+    }
+
+    readonly property var shownSections: {
+        const q = root._q.trim();
+        if (!q) return root.flatSections;
+        const terms = root._canon(q);
+        // a typed key combination ("super shift s", "ctrl+alt+t"): exactly
+        // those keys, first
+        const comboHits = new Set(root.haystack.filter(h => terms.length > 1 && terms.length === h.combo.size && terms.every(t => h.combo.has(t))));
+        const query = terms.join(" ");
+
+        // Strict first: EVERY typed word must match a word of the bind — its
+        // label, its section, an alias group, or one of its keys. Whole words
+        // beat word starts beat text inside a word, the label beats the rest,
+        // and the exact phrase in the label beats everything. The old loose
+        // fuzzy pass let letters scattered across unrelated words count as a
+        // hit, which is what made results look random.
+        const strict = [];
+        for (const h of root.haystack) {
+            if (comboHits.has(h)) continue;
+            let score = 0, ok = true;
+            for (const t of terms) {
+                let best = 0;
+                for (const w of h.commentWords) {
+                    if (w === t) best = Math.max(best, 100);
+                    else if (w.startsWith(t)) best = Math.max(best, 70 + 20 * t.length / w.length);
+                    else if (t.length >= 3 && w.includes(t)) best = Math.max(best, 35);
+                }
+                for (const w of h.otherWords) {
+                    if (w === t) best = Math.max(best, 45);
+                    else if (w.startsWith(t)) best = Math.max(best, 30);
+                }
+                for (const k of h.keyWords) if (k === t) best = Math.max(best, 55);
+                if (best === 0) { ok = false; break; }
+                score += best;
+            }
+            if (!ok) continue;
+            if (terms.length > 1 && h.lc.includes(terms.join(" "))) score += 150;
+            if (h.lc.startsWith(terms[0])) score += 20;
+            score -= h.lc.length * 0.05;   // a short label that matches is the more specific one
+            strict.push({ h, s: score });
+        }
+
+        const ranked = [];
+        for (const h of comboHits) ranked.push({ h, s: 1e9, res: null });
+        if (strict.length > 0) {
+            strict.sort((a, b) => b.s - a.s);
+            for (const it of strict)
+                // fuzzysort over just this bind's label, for the highlight
+                ranked.push({ h: it.h, s: it.s, res: Fuzzy.go(query, [it.h], { key: "commentKey", threshold: -100000 })[0] ?? null });
+        } else {
+            // nothing matched word for word: a typo. Fuzzy, but tight — the
+            // label only, and only close matches.
+            const hits = Fuzzy.go(query, root.haystack, {
+                all: false,
+                keys: ["commentKey", "comboKey"],
+                threshold: -1200,
+                scoreFn: a => Math.max(a[0] ? a[0].score : -9999, a[1] ? a[1].score - 100 : -9999)
+            });
+            for (const r of hits) {
+                if (comboHits.has(r.obj)) continue;
+                ranked.push({ h: r.obj, s: r.score - 1e6, res: r[0] });
+            }
+        }
+        // sections in order of their best hit, binds in order of score
+        const bySec = new Map();
+        for (const it of ranked) {
+            const name = it.h.section;
+            if (!bySec.has(name)) bySec.set(name, { best: it.s, list: [] });
+            const kb = Object.assign({}, it.h.kb);
+            if (it.res) kb._hl = root._highlight(it.res, String(it.h.kb.comment ?? ""));
+            bySec.get(name).list.push(kb);
+        }
+        const out = [];
+        for (const sec of root.flatSections) {
+            const e = bySec.get(sec.name ?? "");
+            if (e) out.push(Object.assign({}, sec, { keybinds: e.list, _best: e.best }));
+        }
+        out.sort((x, y) => y._best - x._best);
+        return out;
+    }
+    readonly property int matchCount: shownSections.reduce((n, s) => n + s.keybinds.length, 0)
+
     readonly property var packedColumns: {
-        const secs = root.flatSections;
+        const secs = root.shownSections;
         if (secs.length === 0) return [];
         // No budget yet: one column per section, so frame one is not wrong.
         if (root.heightBudget <= 100)
@@ -157,6 +344,88 @@ Item {
         id: contentCol
         anchors.centerIn: parent
         spacing: 14
+
+        // ── Sub-categories: the desktop, then each app keybinds-sync found ──
+        // A floating bar at the bottom of the visible page: taken out of the
+        // scrolling column (parent: floatHost) so it stays put while the
+        // keybinds scroll under it.
+        Rectangle {
+            id: appDock
+            parent: root.floatHost ?? contentCol
+            z: 10
+            visible: AppKeybinds.apps.length > 0
+            anchors.horizontalCenter: root.floatHost ? parent.horizontalCenter : undefined
+            anchors.bottom: root.floatHost ? parent.bottom : undefined
+            anchors.bottomMargin: 14
+            implicitWidth: appChips.implicitWidth + 12
+            implicitHeight: appChips.implicitHeight + 12
+            radius: Appearance.rounding.full
+            color: Appearance.colors.colLayer0
+            border.width: 1
+            border.color: Appearance.colors.colLayer0Border
+        Row {
+            id: appChips
+            anchors.centerIn: parent
+            spacing: 6
+            Repeater {
+                model: [{ id: "desktop", name: Translation.tr("Desktop"), icon: "desktop_windows" }].concat(AppKeybinds.apps)
+                delegate: Rectangle {
+                    id: appChip
+                    required property var modelData
+                    readonly property bool sel: root.app === appChip.modelData.id && (root._q ?? "").trim() === ""
+                    implicitWidth: appChipRow.implicitWidth + 26
+                    implicitHeight: 34
+                    radius: Appearance.rounding.full
+                    color: appChip.sel ? Appearance.colors.colPrimary
+                         : appChipHover.hovered ? Appearance.colors.colLayer2 : Appearance.colors.colLayer1
+                    Behavior on color { animation: Appearance.animation.elementMoveFast.colorAnimation.createObject(this) }
+                    HoverHandler { id: appChipHover; cursorShape: Qt.PointingHandCursor }
+                    TapHandler { onTapped: root.app = appChip.modelData.id }
+                    Row {
+                        id: appChipRow
+                        anchors.centerIn: parent
+                        spacing: 6
+                        MaterialSymbol {
+                            anchors.verticalCenter: parent.verticalCenter
+                            text: appChip.modelData.icon
+                            iconSize: 17
+                            fill: appChip.sel ? 1 : 0
+                            color: appChip.sel ? Appearance.colors.colOnPrimary : Appearance.colors.colOnLayer1
+                        }
+                        StyledText {
+                            anchors.verticalCenter: parent.verticalCenter
+                            text: appChip.modelData.name
+                            font.pixelSize: Appearance.font.pixelSize.small
+                            color: appChip.sel ? Appearance.colors.colOnPrimary : Appearance.colors.colOnLayer1
+                        }
+                    }
+                }
+            }
+            // re-collect now (normally automatic when an app's config changes)
+            Rectangle {
+                implicitWidth: 34
+                implicitHeight: 34
+                radius: 17
+                color: syncHover.hovered ? Appearance.colors.colLayer2 : "transparent"
+                HoverHandler { id: syncHover; cursorShape: Qt.PointingHandCursor }
+                TapHandler { onTapped: AppKeybinds.sync() }
+                MaterialSymbol { anchors.centerIn: parent; text: "sync"; iconSize: 17; color: Appearance.colors.colSubtext }
+                StyledToolTip {
+                    extraVisibleCondition: false
+                    alternativeVisibleCondition: syncHover.hovered
+                    text: Translation.tr("Read the apps' keybinds again (happens by itself when their config changes)")
+                }
+            }
+        }
+        }
+        // the app's own key words: "Prefix = Ctrl+Space", "Leader = Ctrl+Q"
+        StyledText {
+            x: Math.max(-contentCol.x, (root.viewWidth - width) / 2 - contentCol.x)
+            visible: root.app !== "desktop" && (root.appEntry?.note ?? "") !== "" && (root._q ?? "").trim() === ""
+            text: root.appEntry?.note ?? ""
+            font.pixelSize: Appearance.font.pixelSize.small
+            color: Appearance.colors.colSubtext
+        }
 
         // ── Keyboard-layout badge ─────────────────────────────────────
         // Click to cycle: Auto → each configured layout → Auto.
@@ -299,6 +568,7 @@ Item {
                                                 result.push({
                                                     "type": "comment",
                                                     "comment": keybind.comment,
+                                                    "hl": keybind._hl ?? "",
                                                 });
                                             }
                                             return result;
@@ -359,7 +629,9 @@ Item {
                                                         width: Math.min(implicitWidth, root.maxCommentWidth)
                                                         elide: Text.ElideRight
                                                         font.pixelSize: Config.options.cheatsheet.fontSize.comment || Appearance.font.pixelSize.smaller
-                                                        text: modelData.comment
+                                                        // the matched letters lit while searching
+                                                        textFormat: modelData.hl ? Text.StyledText : Text.PlainText
+                                                        text: modelData.hl || modelData.comment
 
                                                         StyledToolTip {
                                                             extraVisibleCondition: false

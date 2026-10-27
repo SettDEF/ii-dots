@@ -2,3 +2,12 @@ WallTune 1.0 WallTune.qml
 WallTuneContent 1.0 WallTuneContent.qml
 WallEffectPanel 1.0 WallEffectPanel.qml
 AppColors 1.0 AppColors.qml
+GlassSection 1.0 GlassSection.qml
+PaletteCard 1.0 PaletteCard.qml
+PaletteRow 1.0 PaletteRow.qml
+PaletteDivider 1.0 PaletteDivider.qml
+PaletteSwitch 1.0 PaletteSwitch.qml
+PaletteSlider 1.0 PaletteSlider.qml
+AppGlassGroup 1.0 AppGlassGroup.qml
+ExactThemeSheet 1.0 ExactThemeSheet.qml
+ColourEditorSheet 1.0 ColourEditorSheet.qml

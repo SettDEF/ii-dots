@@ -65,6 +65,18 @@ Singleton {
         repeat: true
         triggeredOnStart: true
 		onTriggered: {
+            // The shell's Vitals feed (one sampler for everything) when it is
+            // running; reading /proc here only as the fallback.
+            const v = Vitals.fresh ? Vitals.snap : null
+            if (v?.mem?.total_kb > 0 && v?.cpu) {
+                memoryTotal = v.mem.total_kb
+                memoryFree = v.mem.available_kb ?? 0
+                swapTotal = Math.max(1, v.mem.swap_total_kb ?? 1)
+                swapFree = (v.mem.swap_total_kb ?? 0) - (v.mem.swap_used_kb ?? 0)
+                cpuUsage = Math.max(0, Math.min(1, (v.cpu.busy_pct ?? 0) / 100))
+                root.updateHistories()
+                return
+            }
             // Reload files
             fileMeminfo.reload()
             fileStat.reload()

@@ -549,7 +549,10 @@ ScrollBar {
             opacity: root.policy === ScrollBar.AlwaysOn
                 || root.engaged || (root.active && root.size < 1.0)
                 ? (root.hasMap ? (root.pressed ? 0.42 : root.engaged ? 0.34 : 0.22)
-                               : (root.pressed ? 0.9 : root.engaged ? 0.75 : 0.5))
+                               : (root.pressed ? 0.9 : root.engaged ? 0.75
+                                  // Always-on at rest: a faint wash, not a 50% slab
+                                  // (beside a short list it read as a coloured stripe).
+                                  : root.policy === ScrollBar.AlwaysOn ? 0.22 : 0.5))
                 : 0
 
             Behavior on opacity {
