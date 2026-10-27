@@ -10,7 +10,18 @@ MaterialShape { // App icon
     id: root
     property var appIcon: ""
     /// "" when the theme has no such icon, instead of an image-missing URL.
-    readonly property string appIconPath: root.appIcon ? Quickshell.iconPath(root.appIcon, true) : ""
+    readonly property string themedIconPath: root.appIcon ? Quickshell.iconPath(root.appIcon, true) : ""
+    // apps installed for this user only (~/.local/share/icons/hicolor: Vitals, Dotos…): the theme lookup
+    // misses them, so the scalable then the 128px PNG there, checked by loading it
+    readonly property string localIconBase: Quickshell.env("HOME") + "/.local/share/icons/hicolor/"
+    Image { id: localSvg; visible: false; asynchronous: true; sourceSize: Qt.size(16, 16)
+        source: (root.themedIconPath === "" && root.appIcon && !String(root.appIcon).includes("/")) ? "file://" + root.localIconBase + "scalable/apps/" + root.appIcon + ".svg" : "" }
+    Image { id: localPng; visible: false; asynchronous: true; sourceSize: Qt.size(16, 16)
+        source: (root.themedIconPath === "" && localSvg.status === Image.Error) ? "file://" + root.localIconBase + "128x128/apps/" + root.appIcon + ".png" : "" }
+    /// "" when no icon of that name exists anywhere, instead of an image-missing URL.
+    readonly property string appIconPath: root.themedIconPath !== "" ? root.themedIconPath
+        : localSvg.status === Image.Ready ? localSvg.source.toString()
+        : localPng.status === Image.Ready ? localPng.source.toString() : ""
     property var summary: ""
     property var urgency: NotificationUrgency.Normal
     property bool isUrgent: urgency === NotificationUrgency.Critical
