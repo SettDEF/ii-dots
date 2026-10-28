@@ -421,6 +421,19 @@ Scope {
         onPressed: GlobalStates.nowPlayingOpen = !GlobalStates.nowPlayingOpen
     }
 
+    // ── Claude (claude-ui's panel) ──
+    IpcHandler {
+        target: "claude"
+        function toggle(): void { GlobalStates.claudeOpen = !GlobalStates.claudeOpen }
+        function open(): void { GlobalStates.claudeOpen = true }
+        function close(): void { GlobalStates.claudeOpen = false }
+    }
+    GlobalShortcut {
+        name: "claudeToggle"
+        description: "Claude at the right edge"
+        onPressed: GlobalStates.claudeOpen = !GlobalStates.claudeOpen
+    }
+
     // ── Share ─────────────────────────────────────────────────────────
     // `share FILE|URL|TEXT` writes $XDG_RUNTIME_DIR/share/item.json, then `qs -c ii ipc call share open`
     IpcHandler {

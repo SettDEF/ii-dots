@@ -21,6 +21,7 @@ import qs.modules.ii.walltune
 import qs.modules.ii.dotos
 import qs.modules.ii.share
 import qs.modules.ii.nowPlaying
+import qs.modules.ii.claude
 import qs.modules.ii.dock
 import qs.modules.ii.startMenu
 import qs.modules.ii.lock
@@ -162,6 +163,7 @@ Scope {
     LazyPanelLoader { isOpen: GlobalStates.dotosCaptureOpen;     idleMs: 5 * 60 * 1000; component: DotosCapture {} }
     LazyPanelLoader { isOpen: GlobalStates.shareOpen;            idleMs: 5 * 60 * 1000; component: SharePanel {} }
     LazyPanelLoader { isOpen: GlobalStates.nowPlayingOpen;       idleMs: 5 * 60 * 1000; component: NowPlayingDock {} }
+    LazyPanelLoader { isOpen: GlobalStates.claudeOpen;           idleMs: 10 * 60 * 1000; component: ClaudePanel {} }
     LazyPanelLoader { isOpen: GlobalStates.dotosMiniOpen;       idleMs: 5 * 60 * 1000; component: DotosMini {} }
     LazyPanelLoader { isOpen: GlobalStates.startMenuOpen;         idleMs: 30 * 1000; component: StartMenu {} }
     // Visibility-driven like the connectivity popup, not gated by a Loader:
