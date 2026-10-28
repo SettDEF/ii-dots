@@ -238,8 +238,9 @@ Scope {
     Process {
         id: capslockReadProc
         running: true
+        // the compositor's own state first (loom lights no LEDs, so they always read off); the LEDs only when it says nothing
         command: ["bash", "-c",
-            "s=0; for f in /sys/class/leds/*::capslock/brightness; do [ -r \"$f\" ] || continue; v=$(cat \"$f\" 2>/dev/null); [ -n \"$v\" ] && [ \"$v\" != \"0\" ] && s=1; done; echo $s"]
+            "c=$(hyprctl devices -j 2>/dev/null | jq -r '[.keyboards[].capsLock] | if length == 0 then empty elif any then 1 else 0 end' 2>/dev/null); if [ \"$c\" = 1 ] || [ \"$c\" = 0 ]; then echo $c; exit; fi; s=0; for f in /sys/class/leds/*::capslock/brightness; do [ -r \"$f\" ] || continue; v=$(cat \"$f\" 2>/dev/null); [ -n \"$v\" ] && [ \"$v\" != \"0\" ] && s=1; done; echo $s"]
         stdout: StdioCollector {
             onStreamFinished: {
                 const v = text.trim();
