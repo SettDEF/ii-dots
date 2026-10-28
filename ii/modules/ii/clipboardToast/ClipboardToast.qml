@@ -44,7 +44,9 @@ Scope {
         : fileIsPicture ? "file://" + ClipboardWatch.filePath
         : frame.length > 0 ? "file://" + frame : ""
 
-    function hide() { if (shown) linger.restart(); shown = false; editing = false; }
+    function hide() { if (shown) linger.restart(); shown = false; editing = false; keys = false; }
+    // a click on the toast gives it the keyboard: Esc closes, Enter runs the main button
+    property bool keys: false
     // Keeps the window alive while the card fades out.
     Timer { id: linger; interval: 260 }
 
@@ -63,7 +65,7 @@ Scope {
 
     Timer {
         id: hideTimer
-        interval: root.editing ? 30000 : 4000
+        interval: root.editing || root.keys ? 30000 : 4000
         onTriggered: root.hide()
     }
 
@@ -117,7 +119,7 @@ Scope {
 
             WlrLayershell.namespace: "quickshell:clipboardToast"
             WlrLayershell.layer: WlrLayer.Overlay
-            WlrLayershell.keyboardFocus: root.editing ? WlrKeyboardFocus.OnDemand : WlrKeyboardFocus.None
+            WlrLayershell.keyboardFocus: root.editing || root.keys ? WlrKeyboardFocus.OnDemand : WlrKeyboardFocus.None
             exclusionMode: ExclusionMode.Ignore
             color: "transparent"
 
@@ -159,6 +161,30 @@ Scope {
                     NumberAnimation { duration: root.shown ? 160 : 200; easing.type: Easing.OutCubic }
                 }
                 Component.onCompleted: { opacity = 0; slide.x = 24; Qt.callLater(() => { opacity = Qt.binding(() => root.shown ? 1 : 0); slide.x = Qt.binding(() => root.shown ? 0 : 24); }); }
+
+                // any press on the card (a chip too: a PointHandler only watches) takes the keyboard
+                PointHandler {
+                    acceptedButtons: Qt.AllButtons
+                    onActiveChanged: if (active && !root.editing) { root.keys = true; hideTimer.restart(); keyGrab.restart() }
+                }
+                // the layer gets focus a moment after asking; try until the card has it
+                Timer {
+                    id: keyGrab
+                    interval: 40; repeat: true
+                    property int tries: 0
+                    onRunningChanged: tries = 0
+                    onTriggered: { card.forceActiveFocus(); if (card.activeFocus || ++tries > 12) stop() }
+                }
+                Keys.onPressed: (e) => {
+                    if (root.editing) return
+                    if (e.key === Qt.Key_Escape) { root.hide(); e.accepted = true }
+                    else if (e.key === Qt.Key_Return || e.key === Qt.Key_Enter) {
+                        if (root.kind === "image") card.saveRequested()
+                        else if (root.kind === "link" || root.kind === "file") card.openRequested()
+                        else card.shareRequested()
+                        e.accepted = true
+                    }
+                }
 
                 HoverHandler {
                     id: hover
