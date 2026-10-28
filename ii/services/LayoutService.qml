@@ -56,7 +56,12 @@ Singleton {
     /// "ncol -1", "swapmaster", "reset". Goes through the Lua module's cmd(),
     /// which knows whether the workspace runs a native layout (tile = master,
     /// dwindle, max = monocle) or the Lua one, and speaks the matching dialect.
+    // loom (our compositor) runs the same layouts natively: it takes the message as a layoutmsg; its eval
+    // only knows hl.config, so the Lua call below did nothing there
+    property bool onLoom: false
+    Process { running: true; command: ["hyprctl", "version", "-j"]; stdout: StdioCollector { onStreamFinished: { try { root.onLoom = JSON.parse(text).branch === "loom" } catch (e) {} } } }
     function message(msg) {
+        if (root.onLoom) { cmdProc.exec(["hyprctl", "dispatch", "layoutmsg", String(msg)]); return }
         cmdProc.exec(["hyprctl", "eval",
             `package.loaded["lua.awesome_layouts"].cmd(${JSON.stringify(String(msg))})`]);
     }
@@ -65,6 +70,8 @@ Singleton {
     function setCurrent(name) { root.message(`suit ${name}`) }
     /// Layout for any workspace, focused or not (the bar's workspace menu).
     function setFor(wsName, suit) {
+        // loom: its layoutmsg acts on the focused workspace
+        if (root.onLoom) { if (wsName === root.focusedWs) root.message(`suit ${suit}`); return }
         cmdProc.exec(["hyprctl", "eval",
             `package.loaded["lua.awesome_layouts"].apply(${JSON.stringify(String(wsName))}, ${JSON.stringify(suit)})`]);
     }
@@ -73,7 +80,7 @@ Singleton {
     // ── State mirror ──────────────────────────────────────────────────
     FileView {
         id: stateFile
-        path: `${Quickshell.env("HOME")}/.cache/hypr-awesome.json`
+        path: `${Quickshell.env("HOME")}/.cache/${root.onLoom ? "loom" : "hypr"}-awesome.json`
         watchChanges: true
         onFileChanged: reload()
         onLoaded: {
