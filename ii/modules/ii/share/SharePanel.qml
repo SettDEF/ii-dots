@@ -43,6 +43,27 @@ Scope {
         .sort((a, b) => (groups.indexOf(a.group) - groups.indexOf(b.group)) || (used(b) - used(a)))
     readonly property var all: apps.concat(actions)
     property int sel: 0
+    // the "New target" form instead of the lists
+    property bool making: false
+    property var takes: []
+    property string newIcon: "bolt"
+    readonly property var kindsOffered: [["url", "Links"], ["files", "Files"], ["image", "Images"], ["video", "Video"], ["audio", "Audio"], ["text", "Text"]]
+    readonly property var iconsOffered: ["bolt", "play_circle", "send", "cloud_upload", "edit_note", "translate", "terminal", "image", "music_note", "download"]
+    // writes ~/.config/share/targets/60-<name> (the header the share script reads, the command once
+    // per item), then shares the same items again so the new target shows at once
+    function saveTarget(name, cmd) {
+        if (!name.trim() || !cmd.trim() || !takes.length) return false
+        const slug = name.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "")
+        const line = cmd.includes("{}") ? cmd.split("{}").join('"$x"') : cmd + ' "$x"'
+        const body = ["#!/usr/bin/env bash", `# share-name: ${name.trim()}`, `# share-icon: ${newIcon}`,
+            `# share-accepts: ${takes.join(" ")}`, "# share-group: open",
+            "# made in the share sheet; edit freely ($@ is what was shared)",
+            `for x in "$@"; do setsid -f ${line} >/dev/null 2>&1; done`, ""].join("\n")
+        Quickshell.execDetached(["sh", "-c", 'mkdir -p "$1" && printf %s "$3" > "$1/60-$2" && chmod +x "$1/60-$2" && shift 3 && exec "$@"',
+            "sh", Quickshell.env("HOME") + "/.config/share/targets", slug, body,
+            Quickshell.env("HOME") + "/.scripts/apps/share/share"].concat(root.share.items ?? []))
+        return true
+    }
 
     function run(t) {
         if (!t) return
@@ -103,6 +124,7 @@ Scope {
             border.width: 1; border.color: Appearance.colors.colLayer0Border
             focus: true
             Keys.onPressed: (e) => {
+                if (root.making) return   // the form has the keys
                 if (e.key === Qt.Key_Escape) { GlobalStates.shareOpen = false; e.accepted = true }
                 else if (e.key >= Qt.Key_1 && e.key <= Qt.Key_9) { root.run(root.all[e.key - Qt.Key_1]); e.accepted = true }
                 else if (e.key === Qt.Key_Right || e.key === Qt.Key_Down || e.key === Qt.Key_Tab) { root.sel = Math.min(root.all.length - 1, root.sel + (e.key === Qt.Key_Down && root.sel < root.apps.length ? Math.min(4, root.apps.length - root.sel) : 1)); e.accepted = true }
@@ -129,14 +151,15 @@ Scope {
                         spacing: 0
                         StyledText { Layout.fillWidth: true; text: "Share"; font.pixelSize: Appearance.font.pixelSize.smaller; color: Appearance.colors.colSubtext }
                         StyledText { Layout.fillWidth: true; text: root.title || "nothing"; elide: Text.ElideMiddle; font.pixelSize: Appearance.font.pixelSize.normal; font.weight: Font.DemiBold; color: Appearance.colors.colOnLayer0 }
+                        StyledText { visible: !!root.share.from; Layout.fillWidth: true; text: `found from the text “${root.share.from}”`; elide: Text.ElideMiddle; font.pixelSize: Appearance.font.pixelSize.smallest; color: Appearance.colors.colSubtext }
                     }
                     StyledText { text: `${(root.share.items ?? []).length} · ${root.share.kind}`; font.family: Appearance.font.family.monospace; font.pixelSize: Appearance.font.pixelSize.smallest; color: Appearance.colors.colSubtext }
                 }
 
                 // apps that open it
-                StyledText { visible: root.apps.length > 0; text: "OPEN WITH"; font.pixelSize: Appearance.font.pixelSize.smallest; font.weight: Font.DemiBold; font.letterSpacing: 0.8; color: Appearance.colors.colSubtext }
+                StyledText { visible: !root.making && root.apps.length > 0; text: "OPEN WITH"; font.pixelSize: Appearance.font.pixelSize.smallest; font.weight: Font.DemiBold; font.letterSpacing: 0.8; color: Appearance.colors.colSubtext }
                 GridLayout {
-                    visible: root.apps.length > 0
+                    visible: !root.making && root.apps.length > 0
                     Layout.fillWidth: true
                     columns: 4
                     columnSpacing: 6; rowSpacing: 6
@@ -167,9 +190,10 @@ Scope {
                 }
 
                 // the targets (scripts), by group
-                Rectangle { visible: root.apps.length > 0 && root.actions.length > 0; Layout.fillWidth: true; implicitHeight: 1; color: Appearance.colors.colLayer0Border }
+                Rectangle { visible: !root.making && root.apps.length > 0 && root.actions.length > 0; Layout.fillWidth: true; implicitHeight: 1; color: Appearance.colors.colLayer0Border }
                 ColumnLayout {
                     Layout.fillWidth: true
+                    visible: !root.making
                     spacing: 2
                     Repeater {
                         model: root.actions
@@ -199,11 +223,105 @@ Scope {
                         }
                     }
                 }
-                StyledText {
+                // ── New target: a form, so nobody has to know the script header ──
+                ColumnLayout {
+                    visible: root.making
                     Layout.fillWidth: true
-                    horizontalAlignment: Text.AlignHCenter
-                    text: "1–9 pick  ·  arrows + Enter  ·  Esc close  ·  add targets in ~/.config/share/targets"
-                    font.pixelSize: Appearance.font.pixelSize.smallest; color: Appearance.colors.colSubtext
+                    spacing: 8
+                    StyledText { text: "NEW TARGET"; font.pixelSize: Appearance.font.pixelSize.smallest; font.weight: Font.DemiBold; font.letterSpacing: 0.8; color: Appearance.colors.colSubtext }
+                    Rectangle {
+                        Layout.fillWidth: true
+                        implicitHeight: 38; radius: Appearance.rounding.small
+                        color: Appearance.colors.colLayer1
+                        border.width: nameField.activeFocus ? 1 : 0; border.color: Appearance.colors.colPrimary
+                        TextInput {
+                            id: nameField
+                            anchors { fill: parent; leftMargin: 12; rightMargin: 12 }
+                            verticalAlignment: TextInput.AlignVCenter
+                            clip: true
+                            color: Appearance.colors.colOnLayer1; font.pixelSize: Appearance.font.pixelSize.small
+                            StyledText { visible: !nameField.text; anchors.verticalCenter: parent.verticalCenter; text: "Name, e.g. Upload to my server"; color: Appearance.colors.colSubtext; font.pixelSize: Appearance.font.pixelSize.small }
+                            Keys.onEscapePressed: root.making = false
+                        }
+                    }
+                    Rectangle {
+                        Layout.fillWidth: true
+                        implicitHeight: 38; radius: Appearance.rounding.small
+                        color: Appearance.colors.colLayer1
+                        border.width: cmdField.activeFocus ? 1 : 0; border.color: Appearance.colors.colPrimary
+                        TextInput {
+                            id: cmdField
+                            anchors { fill: parent; leftMargin: 12; rightMargin: 12 }
+                            verticalAlignment: TextInput.AlignVCenter
+                            clip: true
+                            color: Appearance.colors.colOnLayer1; font.pixelSize: Appearance.font.pixelSize.small; font.family: Appearance.font.family.monospace
+                            StyledText { visible: !cmdField.text; anchors.verticalCenter: parent.verticalCenter; text: "Command, {} is the item: mpv --loop {}"; color: Appearance.colors.colSubtext; font.pixelSize: Appearance.font.pixelSize.small }
+                            Keys.onEscapePressed: root.making = false
+                        }
+                    }
+                    StyledText { text: "Takes"; font.pixelSize: Appearance.font.pixelSize.smaller; color: Appearance.colors.colSubtext }
+                    Flow {
+                        Layout.fillWidth: true
+                        spacing: 6
+                        Repeater {
+                            model: root.kindsOffered
+                            delegate: Rectangle {
+                                id: kc
+                                required property var modelData
+                                readonly property bool on: root.takes.includes(modelData[0])
+                                implicitWidth: kcT.implicitWidth + 24; implicitHeight: 30; radius: 15
+                                color: on ? Appearance.colors.colPrimary : Appearance.colors.colLayer1
+                                Behavior on color { ColorAnimation { duration: 140 } }
+                                StyledText { id: kcT; anchors.centerIn: parent; text: kc.modelData[1]; font.pixelSize: Appearance.font.pixelSize.smaller; color: kc.on ? Appearance.colors.colOnPrimary : Appearance.colors.colOnLayer1 }
+                                HoverHandler { cursorShape: Qt.PointingHandCursor }
+                                TapHandler { onTapped: root.takes = kc.on ? root.takes.filter(k => k !== kc.modelData[0]) : root.takes.concat([kc.modelData[0]]) }
+                            }
+                        }
+                    }
+                    StyledText { text: "Icon"; font.pixelSize: Appearance.font.pixelSize.smaller; color: Appearance.colors.colSubtext }
+                    Flow {
+                        Layout.fillWidth: true
+                        spacing: 4
+                        Repeater {
+                            model: root.iconsOffered
+                            delegate: Rectangle {
+                                id: ic
+                                required property string modelData
+                                implicitWidth: 34; implicitHeight: 34; radius: 17
+                                color: root.newIcon === modelData ? Appearance.colors.colPrimaryContainer : icHov.hovered ? Appearance.colors.colLayer1 : "transparent"
+                                MaterialSymbol { anchors.centerIn: parent; text: ic.modelData; iconSize: 19; color: root.newIcon === ic.modelData ? Appearance.colors.colOnPrimaryContainer : Appearance.colors.colOnLayer0 }
+                                HoverHandler { id: icHov; cursorShape: Qt.PointingHandCursor }
+                                TapHandler { onTapped: root.newIcon = ic.modelData }
+                            }
+                        }
+                    }
+                    RowLayout {
+                        Layout.fillWidth: true
+                        Layout.topMargin: 4
+                        Item { Layout.fillWidth: true }
+                        DialogButton { buttonText: "Cancel"; onClicked: root.making = false }
+                        DialogButton {
+                            buttonText: "Save target"
+                            enabled: nameField.text.trim().length > 0 && cmdField.text.trim().length > 0 && root.takes.length > 0
+                            onClicked: if (root.saveTarget(nameField.text, cmdField.text)) root.making = false
+                        }
+                    }
+                }
+
+                // footer: keys, and the way to add your own
+                RowLayout {
+                    Layout.fillWidth: true
+                    visible: !root.making
+                    StyledText { Layout.fillWidth: true; text: "1–9 pick  ·  arrows + Enter  ·  Esc close"; font.pixelSize: Appearance.font.pixelSize.smallest; color: Appearance.colors.colSubtext }
+                    RippleButtonWithIcon {
+                        materialIcon: "add"; mainText: "New target"
+                        onClicked: { root.takes = [root.share.kind === "text-file" || root.share.kind === "file" ? "files" : root.share.kind]; root.newIcon = "bolt"; nameField.text = ""; cmdField.text = ""; root.making = true; nameField.forceActiveFocus() }
+                    }
+                    RippleButtonWithIcon {
+                        materialIcon: "folder_open"; mainText: ""
+                        onClicked: { Quickshell.execDetached(["xdg-open", Quickshell.env("HOME") + "/.config/share/targets"]); GlobalStates.shareOpen = false }
+                        StyledToolTip { text: "The targets folder: one script per target" }
+                    }
                 }
             }
         }
