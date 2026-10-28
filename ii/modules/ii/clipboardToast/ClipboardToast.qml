@@ -175,6 +175,9 @@ Scope {
                     onRunningChanged: tries = 0
                     onTriggered: { card.forceActiveFocus(); if (card.activeFocus || ++tries > 12) stop() }
                 }
+                // it had the keyboard and lost it (a click elsewhere, another window): gone
+                readonly property bool winActive: Window.active
+                onWinActiveChanged: if (!winActive && root.keys && !root.editing) root.hide()
                 Keys.onPressed: (e) => {
                     if (root.editing) return
                     if (e.key === Qt.Key_Escape) { root.hide(); e.accepted = true }
