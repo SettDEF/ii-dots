@@ -50,6 +50,15 @@ Scope {
         x.onreadystatechange = () => { if (x.readyState === XMLHttpRequest.DONE) refetch.restart() }
         x.send(JSON.stringify({ cmd: c, arg: arg ?? null }))
     }
+    // seek: a browser tab through its own command; YT Music through the adapter (seek there may not exist yet)
+    function seekTo(v) {
+        if (st.tab !== undefined && st.tab !== null) {
+            const x = new XMLHttpRequest()
+            x.open("POST", root.bridge + "/tabs/" + st.tab + "/cmd"); x.setRequestHeader("Content-Type", "application/json")
+            x.onreadystatechange = () => { if (x.readyState === XMLHttpRequest.DONE) refetch.restart() }
+            x.send(JSON.stringify({ cmd: "seek", arg: v }))
+        } else cmd("seek", v)
+    }
     function clock(s) { s = Math.max(0, Math.floor(s || 0)); return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}` }
 
     Timer { interval: 1000; running: GlobalStates.nowPlayingOpen; repeat: true; triggeredOnStart: true; onTriggered: root.fetchState() }
@@ -146,8 +155,26 @@ Scope {
 
                 // the cover (Song) or the tab's live picture (Video), the title
                 Rectangle {
+                    id: cover
                     visible: root.st.connected
                     Layout.fillWidth: true
+                    // swipe it (drag, or two fingers on the touchpad) left: next, right: previous (as in Takt Play)
+                    property real swipeX: 0
+                    transform: Translate { x: cover.swipeX }
+                    Behavior on swipeX { enabled: !coverDrag.active; NumberAnimation { duration: 220; easing.type: Easing.OutCubic } }
+                    function swipeDone(dx) { if (dx <= -70) root.cmd("next"); else if (dx >= 70) root.cmd("prev"); swipeX = 0 }
+                    DragHandler {
+                        id: coverDrag
+                        target: null
+                        xAxis.enabled: true; yAxis.enabled: false
+                        onTranslationChanged: cover.swipeX = Math.max(-90, Math.min(90, translation.x))
+                        onActiveChanged: if (!active) cover.swipeDone(cover.swipeX)
+                    }
+                    WheelHandler {
+                        acceptedDevices: PointerDevice.TouchPad
+                        onWheel: (w) => { if (Math.abs(w.pixelDelta.x) > Math.abs(w.pixelDelta.y)) { cover.swipeX = Math.max(-90, Math.min(90, cover.swipeX + w.pixelDelta.x)); swipeEnd.restart() } }
+                    }
+                    Timer { id: swipeEnd; interval: 160; onTriggered: cover.swipeDone(cover.swipeX) }
                     // a video is wide, a cover square; the change of shape animates
                     implicitHeight: root.mode === "video" ? width * 9 / 16 : width
                     Behavior on implicitHeight { NumberAnimation { duration: 240; easing.type: Easing.OutCubic } }
@@ -184,48 +211,61 @@ Scope {
                     StyledText { Layout.fillWidth: true; text: [root.st.artist, root.st.album].filter(x => x).join("  ·  "); elide: Text.ElideRight; font.pixelSize: Appearance.font.pixelSize.small; color: Appearance.colors.colSubtext }
                 }
 
-                // progress: moves on every 100 ms between reports
+                // progress: the wavy seek bar (Takt Play's), moving on between reports; drag to seek
                 ColumnLayout {
                     visible: root.st.connected && (root.st.duration ?? 0) > 0
                     Layout.fillWidth: true
-                    spacing: 4
-                    Rectangle {
+                    spacing: 2
+                    SquiggleSeek {
+                        id: seek
                         Layout.fillWidth: true
-                        implicitHeight: 6; radius: 3
-                        color: Appearance.colors.colLayer1
-                        Rectangle {
-                            width: parent.width * Math.min(1, root.pos / Math.max(1, root.st.duration ?? 1))
-                            height: parent.height; radius: 3
-                            color: Appearance.colors.colPrimary
-                            Behavior on width { NumberAnimation { duration: 120 } }
-                        }
+                        value: root.pos
+                        max: root.st.duration ?? 1
+                        playing: root.st.playing === true
+                        onCommitted: (v) => root.seekTo(v)
                     }
                     RowLayout {
                         Layout.fillWidth: true
-                        StyledText { text: root.clock(root.pos); font.family: Appearance.font.family.monospace; font.pixelSize: Appearance.font.pixelSize.smallest; color: Appearance.colors.colSubtext }
+                        StyledText { text: root.clock(seek.dragValue >= 0 ? seek.dragValue : root.pos); font.family: Appearance.font.family.monospace; font.pixelSize: Appearance.font.pixelSize.smallest; color: Appearance.colors.colSubtext }
                         Item { Layout.fillWidth: true }
                         StyledText { text: root.clock(root.st.duration); font.family: Appearance.font.family.monospace; font.pixelSize: Appearance.font.pixelSize.smallest; color: Appearance.colors.colSubtext }
                     }
                 }
 
-                // controls
+                // controls: the play button changes shape (M3 expressive, morphing 350 ms): a cookie while
+                // playing, a circle when paused
                 RowLayout {
                     visible: root.st.connected
                     Layout.alignment: Qt.AlignHCenter
-                    spacing: 10
-                    Repeater {
-                        model: [["skip_previous", "prev", 40], [root.st.playing ? "pause" : "play_arrow", "toggle", 52], ["skip_next", "next", 40]]
-                        delegate: Rectangle {
-                            id: b
-                            required property var modelData
-                            readonly property bool main: modelData[1] === "toggle"
-                            implicitWidth: modelData[2]; implicitHeight: modelData[2]; radius: width / 2
-                            color: main ? Appearance.colors.colPrimary : bh.hovered ? Appearance.colors.colLayer1Hover : Appearance.colors.colLayer1
-                            Behavior on color { ColorAnimation { duration: 140 } }
-                            MaterialSymbol { anchors.centerIn: parent; text: b.modelData[0]; iconSize: b.main ? 28 : 22; color: b.main ? Appearance.colors.colOnPrimary : Appearance.colors.colOnLayer1 }
-                            HoverHandler { id: bh; cursorShape: Qt.PointingHandCursor }
-                            TapHandler { onTapped: root.cmd(b.modelData[1]) }
+                    spacing: 14
+                    Rectangle {
+                        implicitWidth: 44; implicitHeight: 44; radius: 22
+                        color: prevHov.hovered ? Appearance.colors.colLayer1Hover : Appearance.colors.colLayer1
+                        Behavior on color { ColorAnimation { duration: 140 } }
+                        MaterialSymbol { anchors.centerIn: parent; text: "skip_previous"; iconSize: 22; color: Appearance.colors.colOnLayer1 }
+                        HoverHandler { id: prevHov; cursorShape: Qt.PointingHandCursor }
+                        TapHandler { onTapped: root.cmd("prev") }
+                    }
+                    Item {
+                        implicitWidth: 60; implicitHeight: 60
+                        MaterialShape {
+                            anchors.centerIn: parent
+                            implicitSize: playHov.hovered ? 60 : 56
+                            Behavior on implicitSize { NumberAnimation { duration: 160; easing.type: Easing.OutCubic } }
+                            shape: root.st.playing ? MaterialShape.Shape.Cookie7Sided : MaterialShape.Shape.Circle
+                            color: Appearance.colors.colPrimary
                         }
+                        MaterialSymbol { anchors.centerIn: parent; text: root.st.playing ? "pause" : "play_arrow"; iconSize: 28; color: Appearance.colors.colOnPrimary }
+                        HoverHandler { id: playHov; cursorShape: Qt.PointingHandCursor }
+                        TapHandler { onTapped: root.cmd("toggle") }
+                    }
+                    Rectangle {
+                        implicitWidth: 44; implicitHeight: 44; radius: 22
+                        color: nextHov.hovered ? Appearance.colors.colLayer1Hover : Appearance.colors.colLayer1
+                        Behavior on color { ColorAnimation { duration: 140 } }
+                        MaterialSymbol { anchors.centerIn: parent; text: "skip_next"; iconSize: 22; color: Appearance.colors.colOnLayer1 }
+                        HoverHandler { id: nextHov; cursorShape: Qt.PointingHandCursor }
+                        TapHandler { onTapped: root.cmd("next") }
                     }
                 }
 
