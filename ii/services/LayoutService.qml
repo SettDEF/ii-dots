@@ -71,8 +71,8 @@ Singleton {
     function setCurrent(name) { root.message(`suit ${name}`) }
     /// Layout for any workspace, focused or not (the bar's workspace menu).
     function setFor(wsName, suit) {
-        // loom: its layoutmsg acts on the focused workspace
-        if (root.onLoom) { if (wsName === root.focusedWs) root.message(`suit ${suit}`); return }
+        // loom: "ws:NAME" names the workspace (the focused one is the default)
+        if (root.onLoom) { cmdProc.exec(["hyprctl", "dispatch", "layoutmsg", `ws:${wsName} suit ${suit}`]); return }
         cmdProc.exec(["hyprctl", "eval",
             `package.loaded["lua.awesome_layouts"].apply(${JSON.stringify(String(wsName))}, ${JSON.stringify(suit)})`]);
     }
