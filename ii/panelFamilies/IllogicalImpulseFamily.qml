@@ -16,6 +16,7 @@ import qs.modules.ii.statsHud
 import qs.modules.ii.audio
 import qs.modules.ii.mic
 import qs.modules.ii.clipboardToast
+import qs.modules.ii.progressCards
 import qs.modules.ii.iris
 import qs.modules.ii.walltune
 import qs.modules.ii.dotos
@@ -188,6 +189,7 @@ Scope {
     TorrentPanel {}
     PanelLoader { component: IrisSettings {} }
     ClipboardToast {}
+    ProgressCards {}
     PanelLoader { component: WallEffectPanel {} }
     // Window-scope per-app effects: click-through surfaces over app windows.
     PanelLoader { component: AppDisplayOverlays {} }

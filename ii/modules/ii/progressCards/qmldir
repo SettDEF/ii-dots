@@ -1,0 +1,3 @@
+module qs.modules.ii.progressCards
+ProgressCards 1.0 ProgressCards.qml
+ProgressCard 1.0 ProgressCard.qml
