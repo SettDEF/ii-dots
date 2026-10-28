@@ -23,7 +23,7 @@ Scope {
             // surface restacks above the relocated wallpaper on unlock.
             visible: Config.options.desktop.icons.enable
                 && (!GlobalStates.screenLocked || contentLoader.active)
-                && !(GameMode.active && GameMode.fullscreenOn(modelData))
+                && !GameMode.fullscreenOn(modelData)  // gone with the wallpaper (Background.qml hides on the same)
             color: "transparent"
             exclusionMode: ExclusionMode.Ignore
             exclusiveZone: 0
