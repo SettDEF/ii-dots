@@ -408,5 +408,18 @@ Scope {
         }
     }
 
+    // ── Share ─────────────────────────────────────────────────────────
+    // `share FILE|URL|TEXT` writes $XDG_RUNTIME_DIR/share/item.json, then `qs -c ii ipc call share open`
+    IpcHandler {
+        target: "share"
+        function open(): void { GlobalStates.shareOpen = true }
+        function close(): void { GlobalStates.shareOpen = false }
+    }
+    GlobalShortcut {
+        name: "shareClipboard"
+        description: "Share what is on the clipboard"
+        onPressed: Quickshell.execDetached([Quickshell.env("HOME") + "/.scripts/apps/share/share", "--clip"])
+    }
+
     // Lock + suspend (with the suspending popup) lives in modules/ii/lock/Lock.qml.
 }

@@ -10,6 +10,7 @@
 //       nameFilters: ["*.md", "*.txt"]
 //       onFileSelected: p => myFileViewer.path = p
 //   }
+import qs.services
 import qs.modules.common
 import qs.modules.common.widgets
 import QtQuick

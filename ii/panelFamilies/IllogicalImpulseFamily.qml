@@ -19,6 +19,7 @@ import qs.modules.ii.clipboardToast
 import qs.modules.ii.iris
 import qs.modules.ii.walltune
 import qs.modules.ii.dotos
+import qs.modules.ii.share
 import qs.modules.ii.dock
 import qs.modules.ii.startMenu
 import qs.modules.ii.lock
@@ -158,6 +159,7 @@ Scope {
     LazyPanelLoader { isOpen: GlobalStates.kbSettingsOpen;        idleMs: 30 * 1000; component: KeyboardSettings {} }
     LazyPanelLoader { isOpen: GlobalStates.wallTuneOpen;          idleMs: 30 * 1000; component: WallTune {} }
     LazyPanelLoader { isOpen: GlobalStates.dotosCaptureOpen;     idleMs: 5 * 60 * 1000; component: DotosCapture {} }
+    LazyPanelLoader { isOpen: GlobalStates.shareOpen;            idleMs: 5 * 60 * 1000; component: SharePanel {} }
     LazyPanelLoader { isOpen: GlobalStates.dotosMiniOpen;       idleMs: 5 * 60 * 1000; component: DotosMini {} }
     LazyPanelLoader { isOpen: GlobalStates.startMenuOpen;         idleMs: 30 * 1000; component: StartMenu {} }
     // Visibility-driven like the connectivity popup, not gated by a Loader:
