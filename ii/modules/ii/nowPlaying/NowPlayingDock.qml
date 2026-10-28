@@ -26,6 +26,10 @@ Scope {
         return Math.min(p, st.duration || p)
     }
     readonly property var lines: Array.isArray(st.lyrics) ? st.lyrics : []
+    // Song or Video: the page's own mode when it reports one (YT Music), else what was picked here
+    property string pickedMode: "song"
+    readonly property string mode: st.hasVideo !== true ? "song" : (st.mode === "song" || st.mode === "video") ? st.mode : pickedMode
+    function setMode(m) { pickedMode = m; if (st.site === "music.youtube.com" || st.mode !== undefined) cmd("mode", m) }
     readonly property int lineAt: {
         let i = -1
         for (let k = 0; k < lines.length; k++) { if (lines[k].t <= pos + 0.25) i = k; else break }
@@ -106,11 +110,47 @@ Scope {
                     StyledText { Layout.fillWidth: true; horizontalAlignment: Text.AlignHCenter; wrapMode: Text.Wrap; text: "Open music.youtube.com in tela; the tab can stay in the background."; font.pixelSize: Appearance.font.pixelSize.smaller; color: Appearance.colors.colSubtext }
                 }
 
-                // the cover, the title
+                // Song / Video, like YT Music's switch: only when the tab plays a video (state.hasVideo);
+                // on YT Music it also flips the page's own mode (cmd "mode")
+                Rectangle {
+                    visible: root.st.connected && root.st.hasVideo === true
+                    Layout.alignment: Qt.AlignHCenter
+                    implicitWidth: modeRow.implicitWidth + 8; implicitHeight: 36; radius: 18
+                    color: Appearance.colors.colLayer1
+                    Row {
+                        id: modeRow
+                        anchors.centerIn: parent
+                        spacing: 4
+                        Repeater {
+                            model: [["song", "Song", "music_note"], ["video", "Video", "videocam"]]
+                            delegate: Rectangle {
+                                id: mb
+                                required property var modelData
+                                readonly property bool on: root.mode === modelData[0]
+                                width: mbRow.implicitWidth + 24; height: 28; radius: 14
+                                color: on ? Appearance.colors.colPrimary : mbHov.hovered ? Appearance.colors.colLayer1Hover : "transparent"
+                                Behavior on color { ColorAnimation { duration: 140 } }
+                                Row {
+                                    id: mbRow
+                                    anchors.centerIn: parent
+                                    spacing: 6
+                                    MaterialSymbol { anchors.verticalCenter: parent.verticalCenter; text: mb.modelData[2]; iconSize: 16; color: mb.on ? Appearance.colors.colOnPrimary : Appearance.colors.colOnLayer1 }
+                                    StyledText { anchors.verticalCenter: parent.verticalCenter; text: mb.modelData[1]; font.pixelSize: Appearance.font.pixelSize.smaller; font.weight: mb.on ? Font.DemiBold : Font.Normal; color: mb.on ? Appearance.colors.colOnPrimary : Appearance.colors.colOnLayer1 }
+                                }
+                                HoverHandler { id: mbHov; cursorShape: Qt.PointingHandCursor }
+                                TapHandler { onTapped: root.setMode(mb.modelData[0]) }
+                            }
+                        }
+                    }
+                }
+
+                // the cover (Song) or the tab's live picture (Video), the title
                 Rectangle {
                     visible: root.st.connected
                     Layout.fillWidth: true
-                    implicitHeight: width
+                    // a video is wide, a cover square; the change of shape animates
+                    implicitHeight: root.mode === "video" ? width * 9 / 16 : width
+                    Behavior on implicitHeight { NumberAnimation { duration: 240; easing.type: Easing.OutCubic } }
                     radius: Appearance.rounding.normal
                     color: Appearance.colors.colLayer1
                     clip: true
@@ -123,6 +163,18 @@ Scope {
                         Behavior on opacity { NumberAnimation { duration: 300 } }
                     }
                     MaterialSymbol { visible: !root.st.artUrl; anchors.centerIn: parent; text: "album"; iconSize: 64; color: Appearance.colors.colSubtext }
+                    // Video until the bridge streams the tab's picture (GET /tabs/<id>/video): the cover, dimmed, says so
+                    Rectangle {
+                        anchors.fill: parent
+                        visible: root.mode === "video"
+                        color: Qt.rgba(0, 0, 0, 0.55)
+                        Column {
+                            anchors.centerIn: parent
+                            spacing: 6
+                            MaterialSymbol { anchors.horizontalCenter: parent.horizontalCenter; text: "videocam"; iconSize: 32; color: "white" }
+                            StyledText { anchors.horizontalCenter: parent.horizontalCenter; text: "The live picture comes with the next bridge"; font.pixelSize: Appearance.font.pixelSize.smallest; color: "white" }
+                        }
+                    }
                 }
                 ColumnLayout {
                     visible: root.st.connected
