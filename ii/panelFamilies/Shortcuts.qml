@@ -408,6 +408,19 @@ Scope {
         }
     }
 
+    // ── Now playing (YT Music through the ytm bridge) ──
+    IpcHandler {
+        target: "nowPlaying"
+        function toggle(): void { GlobalStates.nowPlayingOpen = !GlobalStates.nowPlayingOpen }
+        function open(): void { GlobalStates.nowPlayingOpen = true }
+        function close(): void { GlobalStates.nowPlayingOpen = false }
+    }
+    GlobalShortcut {
+        name: "nowPlayingToggle"
+        description: "Now playing (YouTube Music) at the right edge"
+        onPressed: GlobalStates.nowPlayingOpen = !GlobalStates.nowPlayingOpen
+    }
+
     // ── Share ─────────────────────────────────────────────────────────
     // `share FILE|URL|TEXT` writes $XDG_RUNTIME_DIR/share/item.json, then `qs -c ii ipc call share open`
     IpcHandler {

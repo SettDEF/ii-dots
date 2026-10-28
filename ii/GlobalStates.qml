@@ -136,6 +136,7 @@ Singleton {
     property bool wallpaperAdjusterOpen: false
     property bool mouseMenuOpen: false
     property bool shareOpen: false            // the share sheet (`share FILE|URL|TEXT`, ~/.scripts/apps/share)
+    property bool nowPlayingOpen: false       // YT Music now playing at the right edge (ytm bridge)
     property bool kinetixOpen: false
     property bool displayOpen: false
     property bool statsHudOpen: false
