@@ -199,6 +199,29 @@ Rectangle {
                 }
             }
 
+            // share: the share sheet with every app and target that takes it (an icon, so the chips stay one row)
+            Rectangle {
+                visible: !root.editing
+                Layout.alignment: Qt.AlignTop
+                implicitWidth: 28
+                implicitHeight: 28
+                radius: 14
+                color: shareMa.containsMouse ? Appearance.colors.colLayer2Hover : "transparent"
+                MaterialSymbol {
+                    anchors.centerIn: parent
+                    text: "ios_share"
+                    iconSize: 18
+                    color: shareMa.containsMouse ? Appearance.colors.colPrimary : Appearance.colors.colSubtext
+                }
+                MouseArea {
+                    id: shareMa
+                    anchors.fill: parent
+                    hoverEnabled: true
+                    cursorShape: Qt.PointingHandCursor
+                    onClicked: root.shareRequested()
+                }
+                StyledToolTip { text: Translation.tr("Share (Super+Shift+U)"); extraVisibleCondition: false; alternativeVisibleCondition: shareMa.containsMouse }
+            }
             // close
             Rectangle {
                 Layout.alignment: Qt.AlignTop
@@ -291,13 +314,6 @@ Rectangle {
                 icon: "folder_open"; label: Translation.tr("Folder")
                 tip: Translation.tr("Show in folder")
                 onActivated: root.folderRequested()
-            }
-            // the share sheet: every app and target that takes it
-            ToastChip {
-                visible: !root.editing
-                icon: "ios_share"; label: Translation.tr("Share")
-                tip: Translation.tr("Apps, phone, Telegram, zett… (Super+Shift+U)")
-                onActivated: root.shareRequested()
             }
             ToastChip {
                 visible: !root.editing && root.kind === "image"
