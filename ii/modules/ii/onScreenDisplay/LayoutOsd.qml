@@ -107,10 +107,11 @@ Scope {
                     anchors.centerIn: parent
                     spacing: 12
 
-                    MaterialSymbol {
+                    CustomIcon {
                         anchors.verticalCenter: parent.verticalCenter
-                        text: root.meta.icon
-                        iconSize: 22
+                        width: 22; height: 22
+                        source: `layout-${root.layoutId}-symbolic.svg`
+                        colorize: true
                         color: Appearance.m3colors.m3primary
                     }
 

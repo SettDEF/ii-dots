@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor">
+  <g transform="matrix(-1 0 0 1 24 0)">
+  <rect x="3" y="3" width="12" height="12" rx="1.6"/>
+  <rect x="17" y="3" width="4" height="5" rx="1.6" opacity=".4"/>
+  <rect x="17" y="10" width="4" height="5" rx="1.6" opacity=".4"/>
+  <rect x="3" y="17" width="5" height="4" rx="1.6" opacity=".4"/>
+  <rect x="10" y="17" width="5" height="4" rx="1.6" opacity=".4"/>
+  <rect x="17" y="17" width="4" height="4" rx="1.6" opacity=".4"/>
+  </g>
+</svg>

@@ -24,6 +24,7 @@ Singleton {
     // Same names as awful.layout.suit. Order = Super+Y cycle order.
     readonly property var availableLayouts: [
         { id: "tile",       icon: "splitscreen_left",    label: "Tile" },
+        { id: "center",     icon: "picture_in_picture_center", label: "Center (floating master)" },
         { id: "tileleft",   icon: "splitscreen_right",   label: "Tile (master right)" },
         { id: "tilebottom", icon: "splitscreen_top",     label: "Tile (master top)" },
         { id: "tiletop",    icon: "splitscreen_bottom",  label: "Tile (master bottom)" },

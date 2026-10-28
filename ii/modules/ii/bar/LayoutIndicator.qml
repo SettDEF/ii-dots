@@ -43,10 +43,11 @@ Item {
             }
         }
 
-        MaterialSymbol {
+        CustomIcon {
             anchors.centerIn: parent
-            text: root.currentMeta.icon
-            iconSize: 18
+            width: 18; height: 18
+            source: `layout-${root.currentId}-symbolic.svg`
+            colorize: true
             color: root.color
         }
     }
