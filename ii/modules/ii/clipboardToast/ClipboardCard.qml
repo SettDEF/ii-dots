@@ -46,6 +46,7 @@ Rectangle {
     signal editCommitted(string text)
     signal editCancelled()
     signal closeRequested()
+    signal shareRequested()
 
     function setEditText(t) { editor.text = t; editor.forceActiveFocus(); editor.selectAll(); }
 
@@ -290,6 +291,13 @@ Rectangle {
                 icon: "folder_open"; label: Translation.tr("Folder")
                 tip: Translation.tr("Show in folder")
                 onActivated: root.folderRequested()
+            }
+            // the share sheet: every app and target that takes it
+            ToastChip {
+                visible: !root.editing
+                icon: "ios_share"; label: Translation.tr("Share")
+                tip: Translation.tr("Apps, phone, Telegram, zett… (Super+Shift+U)")
+                onActivated: root.shareRequested()
             }
             ToastChip {
                 visible: !root.editing && root.kind === "image"

@@ -169,6 +169,14 @@ Scope {
                 }
 
                 onCloseRequested: root.hide()
+                // an image is copied out first: the clipboard's file is replaced by the next copy
+                onShareRequested: {
+                    const share = Quickshell.env("HOME") + "/.scripts/apps/share/share";
+                    if (root.kind === "image")
+                        Quickshell.execDetached(["bash", "-c", 'd="${XDG_RUNTIME_DIR:-/tmp}/share"; mkdir -p "$d"; f="$d/clip-$(date +%s%N).png"; cp "$1" "$f" && exec "$2" "$f"', "_", ClipboardWatch.imagePath.split("?")[0], share]);
+                    else Quickshell.execDetached([share, root.kind === "file" ? ClipboardWatch.filePath : root.kind === "link" ? ClipboardWatch.url : ClipboardWatch.preview]);
+                    root.hide();
+                }
                 onOpenRequested: {
                     Quickshell.execDetached(["xdg-open", root.kind === "link" ? ClipboardWatch.url : ClipboardWatch.filePath]);
                     root.hide();
