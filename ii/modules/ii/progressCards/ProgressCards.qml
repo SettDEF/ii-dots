@@ -28,7 +28,8 @@ Scope {
             exclusionMode: ExclusionMode.Ignore
             color: "transparent"
             anchors { right: true; bottom: true }
-            margins { right: 14; bottom: 14 }
+            // the cards' bottom on the dock's bottom: the same gaps it keeps
+            margins { right: Appearance.sizes.hyprlandGapsOut; bottom: Appearance.sizes.hyprlandGapsOut + ((Config.options?.dock.floating ?? false) ? (Config.options?.dock.floatingMargin ?? 8) : 0) }
             // fixed size (a layer resized per frame stutters); only the cards take clicks
             implicitWidth: 380
             implicitHeight: 560
@@ -36,7 +37,7 @@ Scope {
 
             ListView {
                 id: list
-                anchors { fill: parent; margins: 10 }
+                anchors { fill: parent; leftMargin: 10; topMargin: 10 }
                 verticalLayoutDirection: ListView.BottomToTop
                 spacing: 10
                 interactive: false
