@@ -455,6 +455,11 @@ Rectangle {
         { id: "vapor",                label: "Vapor",                color: "#ff77ff" },
         { id: "outrun",               label: "Outrun",               color: "#ff007c" },
         { id: "biscuit",              label: "Biscuit",              color: "#d2a679" },
+        { id: "material_palenight",   label: "Material Palenight",   color: "#c792ea" },
+        { id: "night_owl",            label: "Night Owl",            color: "#82aaff" },
+        { id: "sonokai",              label: "Sonokai",              color: "#fc5d7c" },
+        { id: "flexoki_dark",         label: "Flexoki Dark",         color: "#4385be" },
+        { id: "flexoki_light",        label: "Flexoki Light",        color: "#205ea6" },
     ]
     readonly property var ditherModes: [ "none", "FloydSteinberg2x2", "FloydSteinberg", "8x8", "16x16" ]
     readonly property var colorOptions: [ 8, 16, 32, 64, 128 ]
