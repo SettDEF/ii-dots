@@ -23,6 +23,15 @@ Singleton {
         root.open = false;
         picker.running = true;
     }
+    /// a pixel for someone else (the colour editor): the hex goes to cb, no picker window
+    property var _into: null
+    function pickInto(cb): void {
+        root._into = cb;
+        picker.running = true;
+    }
+    function remember(c: string): void {
+        Persistent.states.colorPick.recent = [c].concat(Array.from(root.recent).filter(x => x !== c)).slice(0, 14);
+    }
     function show(h: string): void {
         const c = root.normal(h);
         if (!c) return;
@@ -38,7 +47,13 @@ Singleton {
     Process {
         id: picker
         command: ["bash", "-c", "sleep 0.15; hyprpicker -f hex -l"]
-        stdout: StdioCollector { onStreamFinished: { const h = text.trim(); if (h.length) root.show(h); } }
+        stdout: StdioCollector { onStreamFinished: {
+                const h = text.trim(), cb = root._into;
+                root._into = null;
+                if (!h.length) return;
+                if (cb) { const c = root.normal(h); if (c) { root.remember(c); cb(c); } }
+                else root.show(h);
+            } }
     }
     Process {
         id: tinctProc

@@ -2,6 +2,7 @@ import qs
 import qs.services
 import qs.modules.common
 import qs.modules.common.widgets
+import Quickshell
 import QtQuick
 import QtQuick.Layouts
 
@@ -225,6 +226,52 @@ PanelSheet {
                                                 TapHandler { onTapped: ExactTheme.setColor(varRow.modelData.name, own.modelData.name) }
                                                 HoverHandler { id: ownHover }
                                                 StyledToolTip { extraVisibleCondition: false; alternativeVisibleCondition: ownHover.hovered; text: own.modelData.name }
+                                            }
+                                        }
+                                    }
+                                    // tools: a pixel from the screen, the clipboard's hex, a step lighter or darker, recent picks
+                                    RowLayout {
+                                        id: tools
+                                        Layout.fillWidth: true
+                                        spacing: 5
+                                        readonly property string cur: varRow.modelData.value
+                                        function put(v) { if (v) ExactTheme.setColor(varRow.modelData.name, v); }
+                                        function step(d) {
+                                            const [L, C, H] = ColorPick.lch(tools.cur);
+                                            tools.put(ColorPick.fromOklch(Math.max(0, Math.min(1, L + d)), C, H));
+                                        }
+                                        Repeater {
+                                            model: [
+                                                { icon: "colorize", tip: qsTr("Pick from the screen"), act: () => ColorPick.pickInto(c => tools.put(c)) },
+                                                { icon: "content_paste", tip: qsTr("Paste a hex"), act: () => tools.put(ColorPick.normal(Quickshell.clipboardText ?? "")) },
+                                                { icon: "brightness_low", tip: qsTr("Darker"), act: () => tools.step(-0.04) },
+                                                { icon: "brightness_high", tip: qsTr("Lighter"), act: () => tools.step(0.04) },
+                                                { icon: "content_copy", tip: qsTr("Copy the hex"), act: () => { Quickshell.clipboardText = tools.cur; } }
+                                            ]
+                                            delegate: RippleButton {
+                                                id: tool
+                                                required property var modelData
+                                                implicitWidth: 30; implicitHeight: 30
+                                                buttonRadius: Appearance.rounding.small
+                                                colBackground: Appearance.colors.colLayer2
+                                                onClicked: tool.modelData.act()
+                                                contentItem: MaterialSymbol { anchors.centerIn: parent; text: tool.modelData.icon; iconSize: 16; color: Appearance.colors.colOnLayer2 }
+                                                StyledToolTip { text: tool.modelData.tip }
+                                            }
+                                        }
+                                        Item { Layout.fillWidth: true }
+                                        Repeater {
+                                            model: Array.from(ColorPick.recent).slice(0, 5)
+                                            delegate: Rectangle {
+                                                id: rec
+                                                required property string modelData
+                                                width: 20; height: 20; radius: 10
+                                                color: modelData
+                                                border.width: 1
+                                                border.color: Appearance.colors.colLayer0Border
+                                                TapHandler { onTapped: tools.put(rec.modelData) }
+                                                HoverHandler { id: recHover }
+                                                StyledToolTip { extraVisibleCondition: false; alternativeVisibleCondition: recHover.hovered; text: rec.modelData }
                                             }
                                         }
                                     }
