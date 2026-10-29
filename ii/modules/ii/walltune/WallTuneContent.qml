@@ -2975,6 +2975,7 @@ Rectangle {
 
     ExactThemeSheet {
         host: root
+        headerItem: headerBar
         open: root.exactThemeOpen
         onClosed: root.exactThemeOpen = false
     }

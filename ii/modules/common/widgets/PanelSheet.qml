@@ -38,6 +38,8 @@ Item {
     property real wantHeight: sheetContent.implicitHeight
 
     signal closed()
+    // a PanelPage leaves it where it is when it slides the card's content aside
+    readonly property bool isPanelOverlay: true
 
     // Esc closes the sheet (not the panel under it): it takes the keys while open
     // Esc closes the sheet wherever the keyboard focus is (a text field in it, the panel under it); the

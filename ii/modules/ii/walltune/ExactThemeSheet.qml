@@ -6,13 +6,65 @@ import QtQuick
 import QtQuick.Layouts
 
 /// Palette > Exact theme: the wallpaper's colours, or a named theme's own (tinct theme list).
-PanelSheet {
+PanelPage {
     id: sheet
     title: qsTr("Exact theme")
-    subtitle: qsTr("A theme's own colours in every app and the terminal")
-    // 196 rows: a ListView builds only those in view (all of them at once made opening it lag)
-    scrolls: false
-    wantHeight: fillRow.implicitHeight + themeList.contentHeight + 8 + note.implicitHeight + 20
+    subtitle: shown.length === ExactTheme.themes.length ? qsTr("%1 themes").arg(ExactTheme.themes.length)
+                                                       : qsTr("%1 of %2 themes").arg(shown.length).arg(ExactTheme.themes.length)
+
+    // search and filter: by name, dark or light, a real theme or one derived from a Look preset
+    property string query: ""
+    property string kind: "all"
+    readonly property var shown: ExactTheme.themes.filter(t =>
+        (query === "" || t.name.toLowerCase().includes(query.toLowerCase()) || t.id.includes(query.toLowerCase()))
+        && (kind === "all" || (kind === "dark" && t.dark) || (kind === "light" && !t.dark)
+            || (kind === "real" && !t.derived) || (kind === "derived" && t.derived)))
+
+    // a random one of those shown, to try
+    actions: [
+        RippleButton {
+            implicitWidth: 34; implicitHeight: 34; buttonRadius: 17
+            enabled: sheet.shown.length > 0
+            onClicked: ExactTheme.select(sheet.shown[Math.floor(Math.random() * sheet.shown.length)].id)
+            contentItem: MaterialSymbol { anchors.centerIn: parent; text: "shuffle"; iconSize: 20; color: Appearance.colors.colOnLayer0 }
+            StyledToolTip { text: qsTr("A random theme") }
+        }
+    ]
+    toolbar: [
+        PillTextField {
+            id: search
+            Layout.fillWidth: true
+            placeholderText: qsTr("Search themes")
+            onTextChanged: sheet.query = text.trim()
+        },
+        Flow {
+            Layout.fillWidth: true
+            spacing: 5
+            Repeater {
+                model: [{ id: "all", label: qsTr("All") }, { id: "dark", label: qsTr("Dark") }, { id: "light", label: qsTr("Light") },
+                        { id: "real", label: qsTr("Their own") }, { id: "derived", label: qsTr("From Look") }]
+                delegate: RippleButton {
+                    id: kindChip
+                    required property var modelData
+                    readonly property bool sel: sheet.kind === modelData.id
+                    implicitHeight: 28
+                    implicitWidth: kindText.implicitWidth + 24
+                    buttonRadius: Appearance.rounding.full
+                    colBackground: sel ? Appearance.colors.colPrimary : Appearance.colors.colLayer2
+                    colBackgroundHover: sel ? Appearance.colors.colPrimary : Appearance.colors.colLayer2Hover
+                    onClicked: sheet.kind = modelData.id
+                    contentItem: StyledText {
+                        id: kindText
+                        anchors.centerIn: parent
+                        text: kindChip.modelData.label
+                        font.pixelSize: Appearance.font.pixelSize.smaller
+                        color: kindChip.sel ? Appearance.colors.colOnPrimary : Appearance.colors.colOnLayer2
+                    }
+                }
+            }
+        }
+    ]
+    onOpenChanged: if (open) search.forceActiveFocus()
 
     // what a theme leaves out (shades, the 128): in its own manner, or the wallpaper's
     RowLayout {
@@ -64,7 +116,7 @@ PanelSheet {
             popin: false
             animateAppearance: false
             // the wallpaper first: picking it turns exact themes off
-            model: [{ id: "", name: qsTr("Wallpaper colours"), dark: true, swatches: [] }].concat(ExactTheme.themes)
+            model: [{ id: "", name: qsTr("Wallpaper colours"), dark: true, swatches: [] }].concat(sheet.shown)
             delegate: ColumnLayout {
                 id: entry
                 width: ListView.view.width
