@@ -1,0 +1,35 @@
+#!/usr/bin/env bash
+# Look's theme presets as Exact themes: each preset tinct has no real theme for becomes a derived one
+# (tinct theme from-colors: the roles chosen, the rest filled), in ~/.config/tinct/themes.
+# Run again after palettes.json changes; --dry-run lists what it would do.
+set -euo pipefail
+here=$(cd "$(dirname "$0")" && pwd)
+palettes="$here/palettes.json"
+look="$here/../../modules/ii/walltune/WallTuneContent.qml"
+tinct=${TINCT:-$HOME/.local/bin/tinct}
+dry=0
+[[ "${1:-}" == "--dry-run" ]] && dry=1
+[[ "${1:-}" == "-h" || "${1:-}" == "--help" ]] && { sed -n 2,4p "$0" | sed 's/^# //'; exit 0; }
+
+# the real themes, by id and by name (derived ones from an earlier run do not count)
+real=$("$tinct" theme list --json | jq -r '.[] | select(.derived | not) | .id, (.name | ascii_downcase)')
+
+made=0 skipped=0
+# the presets after "Popular themes" in Look's list: id and label
+while IFS=$'\t' read -r id label; do
+    tid=${id//_/-}
+    if grep -qxF -e "$tid" -e "${label,,}" <<<"$real"; then
+        skipped=$((skipped + 1))
+        continue
+    fi
+    mapfile -t colors < <(jq -r --arg k "$id" '.[$k] // [] | .[]' "$palettes")
+    ((${#colors[@]} >= 3)) || continue
+    if ((dry)); then
+        echo "$tid  $label  (${#colors[@]} colours)"
+    else
+        "$tinct" theme from-colors "$tid" --name "$label" "${colors[@]}" >/dev/null
+    fi
+    made=$((made + 1))
+done < <(sed -n '/Popular themes/,/^    \]/p' "$look" | sed -nE 's/.*\{ *id: *"([a-z0-9_]+)", *label: *"([^"]+)".*/\1\t\2/p')
+
+echo "derived: $made, already real themes: $skipped"

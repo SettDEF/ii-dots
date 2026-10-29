@@ -113,7 +113,7 @@ PanelSheet {
                             StyledText {
                                 Layout.fillWidth: true
                                 text: entry.modelData.id === "" ? qsTr("Extracted from the image")
-                                    : (entry.modelData.dark ? qsTr("Dark") : qsTr("Light")) + " · " + qsTr("%1 colours").arg(entry.modelData.colors)
+                                    : (entry.modelData.dark ? qsTr("Dark") : qsTr("Light")) + " · " + qsTr("%1 colours").arg(entry.modelData.colors) + (entry.modelData.derived ? " · " + qsTr("derived from Look") : "")
                                 font.pixelSize: Appearance.font.pixelSize.smallest
                                 color: Appearance.colors.colSubtext
                             }

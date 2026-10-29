@@ -87,6 +87,8 @@ Singleton {
 
     /// The editor's groups, in the order a theme is read.
     function groupOf(name) {
+        // the 128 shades (red_0 … grey_15): filled by tinct, not edited one by one, so in no group shown
+        if (/_\d+$/.test(name)) return "shades";
         if (name.startsWith("term")) return "terminal";
         if (/^(on_)?(primary|secondary|tertiary|error|success)/.test(name) || name === "inverse_primary" || name === "surface_tint") return "accents";
         if (/^on_|outline|^inverse_on/.test(name)) return "text";
