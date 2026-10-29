@@ -1201,8 +1201,8 @@ Rectangle {
     border.width: 1
     border.color: Appearance.colors.colLayer0Border
 
-    // Open and close: the card eases in from the right and grows from its top-right corner, on the
-    // shell's own curves. The loader keeps a closed panel 30 s, so a re-open animates from closed.
+    // Open and close: the card slides in from the right edge, on the shell's own curves. Only a move:
+    // no fade and no scale (both made the whole card redraw every frame of the animation). The loader keeps a closed panel 30 s, so a re-open animates from closed.
     property real openT: 0
     Connections {
         target: GlobalStates
@@ -1215,11 +1215,8 @@ Rectangle {
             easing.bezierCurve: root.openT > 0.5 ? Appearance.animation.elementMoveEnter.bezierCurve : Appearance.animation.elementMoveExit.bezierCurve
         }
     }
-    opacity: openT
-    transform: [
-        Translate { x: (1 - root.openT) * 16 },
-        Scale { origin.x: root.width; origin.y: 0; xScale: 0.94 + 0.06 * root.openT; yScale: xScale }
-    ]
+    visible: openT > 0
+    transform: Translate { x: (1 - root.openT) * (root.width + 32) }
 
     // Sticky Header
     PanelHeader {

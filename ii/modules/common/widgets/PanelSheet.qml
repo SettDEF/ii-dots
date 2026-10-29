@@ -69,22 +69,26 @@ Item {
     // anchors.fill: set in Component.onCompleted, after the reparent.
     z: 8000
 
+    // Open and close as a move only: the card slides up from below the panel, the scrim's colour
+    // fades. No item opacity or scale (they redrew the whole panel every frame of the animation).
     // Not `visible: open`: it has to outlive the dismissal to animate out of it.
-    visible: opacity > 0
-    opacity: root.open ? 1 : 0
-    Behavior on opacity {
+    property real openT: open ? 1 : 0
+    Behavior on openT {
         NumberAnimation {
             duration: Appearance.animation.elementMoveFast.duration
             easing.type: Easing.BezierSpline
-            easing.bezierCurve: Appearance.animationCurves.standard
+            easing.bezierCurve: root.open ? Appearance.animationCurves.emphasizedDecel
+                                          : Appearance.animationCurves.emphasizedAccel
         }
     }
+    visible: openT > 0
+    clip: true
 
     Rectangle {
         anchors.fill: parent
         // Same corners as the card it dims.
         radius: root.hostRadius
-        color: Appearance.colors.colScrim
+        color: Qt.rgba(Appearance.colors.colScrim.r, Appearance.colors.colScrim.g, Appearance.colors.colScrim.b, Appearance.colors.colScrim.a * root.openT)
         MouseArea {
             anchors.fill: parent
             enabled: root.open
@@ -104,25 +108,8 @@ Item {
         width: Math.min(parent.width - 24, root.maxWidth)
         height: Math.min(parent.height - 24, header.implicitHeight + 10 + sheetContent.implicitHeight + 28)
 
-        // Rises into place; accelerates out so dismissing feels immediate.
-        scale: root.open ? 1 : 0.95
-        anchors.verticalCenterOffset: root.open ? 0 : 14
-        Behavior on scale {
-            NumberAnimation {
-                duration: Appearance.animation.elementMoveFast.duration
-                easing.type: Easing.BezierSpline
-                easing.bezierCurve: root.open ? Appearance.animationCurves.emphasizedDecel
-                                              : Appearance.animationCurves.emphasizedAccel
-            }
-        }
-        Behavior on anchors.verticalCenterOffset {
-            NumberAnimation {
-                duration: Appearance.animation.elementMoveFast.duration
-                easing.type: Easing.BezierSpline
-                easing.bezierCurve: root.open ? Appearance.animationCurves.emphasizedDecel
-                                              : Appearance.animationCurves.emphasizedAccel
-            }
-        }
+        // from below the panel's bottom edge into the middle (decelerates in, accelerates out)
+        anchors.verticalCenterOffset: (1 - root.openT) * (parent.height + height) / 2
 
         StyledRectangularShadow { target: sheetCard }
 
