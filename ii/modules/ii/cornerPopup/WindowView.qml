@@ -67,7 +67,7 @@ Item {
             Layout.topMargin: 4
             buttonRadius: Appearance.rounding.small
             materialIcon: "palette"
-            mainText: qsTr("More in Theme › Glass")
+            mainText: qsTr("More in Look › Glass")
             onClicked: {
                 GlobalStates.wallTuneTab = "glass";
                 GlobalStates.wallTuneOpen = true;

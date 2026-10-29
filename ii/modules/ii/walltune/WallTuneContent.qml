@@ -460,6 +460,29 @@ Rectangle {
         { id: "sonokai",              label: "Sonokai",              color: "#fc5d7c" },
         { id: "flexoki_dark",         label: "Flexoki Dark",         color: "#4385be" },
         { id: "flexoki_light",        label: "Flexoki Light",        color: "#205ea6" },
+        { id: "ayu_light",             label: "Ayu Light",             color: "#ff7733" },
+        { id: "material_oceanic",     label: "Material Oceanic",     color: "#82aaff" },
+        { id: "duskfox",              label: "Duskfox",              color: "#c4a7e7" },
+        { id: "poimandres",           label: "Poimandres",           color: "#5de4c7" },
+        { id: "vesper",               label: "Vesper",               color: "#ffc799" },
+        { id: "cobalt2",              label: "Cobalt2",              color: "#ffc600" },
+        { id: "gruvbox_material_light", label: "Gruvbox Material Light", color: "#b47109" },
+        { id: "kanagawa_lotus",       label: "Kanagawa Lotus",       color: "#c84053" },
+        { id: "tomorrow_night",       label: "Tomorrow Night",       color: "#81a2be" },
+        { id: "base16_ocean",         label: "Base16 Ocean",         color: "#8fa1b3" },
+        { id: "zenburn",              label: "Zenburn",              color: "#dfaf8f" },
+        { id: "iceberg_light",        label: "Iceberg Light",        color: "#2d539e" },
+        { id: "dracula_alucard",      label: "Alucard",              color: "#644ac9" },
+        { id: "mellow_dark",          label: "Mellow",               color: "#aca1cf" },
+        { id: "mellow_light",         label: "Mellow Light",         color: "#c65c00" },
+        { id: "moonlight",            label: "Moonlight",            color: "#ffc777" },
+        { id: "oceanic_next",         label: "Oceanic Next",         color: "#6699cc" },
+        { id: "andromeda",            label: "Andromeda",            color: "#00e8c6" },
+        { id: "sonokai_andromeda",    label: "Sonokai Andromeda",    color: "#fb617e" },
+        { id: "sonokai_atlantis",     label: "Sonokai Atlantis",     color: "#ff6578" },
+        { id: "sonokai_maia",         label: "Sonokai Maia",         color: "#f76c7c" },
+        { id: "sonokai_shusia",       label: "Sonokai Shusia",       color: "#f85e84" },
+        { id: "sonokai_espresso",     label: "Sonokai Espresso",     color: "#f86882" },
     ]
     readonly property var ditherModes: [ "none", "FloydSteinberg2x2", "FloydSteinberg", "8x8", "16x16" ]
     readonly property var colorOptions: [ 8, 16, 32, 64, 128 ]
@@ -1105,7 +1128,7 @@ Rectangle {
             bottomMargin: 0
         }
         icon: "tune"
-        title: qsTr("Theme")
+        title: qsTr("Look")
         onClose: GlobalStates.wallTuneOpen = false
         middle: [
         // Phase text shown in the header while processing — discreet, but
