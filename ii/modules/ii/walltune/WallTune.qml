@@ -24,7 +24,12 @@ Scope {
             Item {
                 anchors.fill: parent
                 focus: true
-                Keys.onEscapePressed: GlobalStates.wallTuneOpen = false
+            }
+            // wherever the focus is (a field, a chip); an open sheet takes Esc first
+            Shortcut {
+                sequence: "Escape"
+                enabled: GlobalStates.openSheets === 0
+                onActivated: GlobalStates.wallTuneOpen = false
             }
             exclusionMode: ExclusionMode.Ignore
             exclusiveZone: 0

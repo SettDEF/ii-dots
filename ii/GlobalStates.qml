@@ -128,6 +128,8 @@ Singleton {
     property bool kbPickerOpen: false        // XKB layout picker (opened from the OSK chips)
     property bool kbSettingsOpen: false      // Keyboard settings popup (repeat rate, etc — opened from the OSK)
     property bool wallTuneOpen: false
+    /// PanelSheets open now (Esc closes one of them before the panel under it)
+    property int openSheets: 0
     property bool dotosCaptureOpen: false     // Dotos quick capture (Super+R)
     property bool dotosMiniOpen: false        // Dotos mini floating window
     /// Tab to show when Palette opens via IPC; WallTuneContent follows it.

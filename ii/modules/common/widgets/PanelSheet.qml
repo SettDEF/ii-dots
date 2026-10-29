@@ -1,3 +1,4 @@
+import qs
 import qs.modules.common
 import qs.modules.common.widgets
 import QtQuick
@@ -39,9 +40,20 @@ Item {
     signal closed()
 
     // Esc closes the sheet (not the panel under it): it takes the keys while open
-    focus: open
-    onOpenChanged: if (open) root.forceActiveFocus()
-    Keys.onEscapePressed: event => { event.accepted = true; root.closed(); }
+    // Esc closes the sheet wherever the keyboard focus is (a text field in it, the panel under it); the
+    // panel's own Esc waits while a sheet is open (GlobalStates.openSheets). The focus it had comes back.
+    property Item focusBefore: null
+    onOpenChanged: {
+        GlobalStates.openSheets += open ? 1 : -1;
+        if (open) { focusBefore = root.Window.activeFocusItem; root.forceActiveFocus(); }
+        else if (focusBefore) focusBefore.forceActiveFocus();
+    }
+    Component.onDestruction: if (open) GlobalStates.openSheets -= 1
+    Shortcut {
+        sequence: "Escape"
+        enabled: root.open
+        onActivated: root.closed()
+    }
 
     // Resolved ONCE, imperatively. As a binding on `parent` it would re-run
     // after the reparent, walk up from the new parent, find no Flickable and
