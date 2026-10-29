@@ -97,6 +97,7 @@ Singleton {
             property JsonObject snip: JsonObject {
                 property int delay: 3 // the timer button's seconds (right-click cycles)
                 property bool sound: false // recordings take the system sound
+                property bool gif: false // recordings are converted to a GIF when they stop
             }
 
             property JsonObject colorPick: JsonObject {

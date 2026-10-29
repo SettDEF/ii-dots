@@ -1,0 +1,43 @@
+#!/usr/bin/env bash
+# Video to GIF with ffmpeg: a palette made from the clip first, then the GIF dithered with it.
+#
+#   to-gif [--fps N] [--width N] FILE   writes FILE's name with .gif next to it, prints that path
+#   --fps N    frames per second (default 15)
+#   --width N  pixels wide (default 960); the height keeps the aspect, and a smaller clip is not enlarged
+
+usage() { echo "usage: to-gif [--fps N] [--width N] FILE" >&2; exit "${1:-1}"; }
+
+FPS=15 WIDTH=960 IN=""
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --fps) [[ "$2" =~ ^[1-9][0-9]*$ ]] || { echo "to-gif: --fps needs a whole number" >&2; exit 1; }; FPS="$2"; shift ;;
+        --width) [[ "$2" =~ ^[1-9][0-9]*$ ]] || { echo "to-gif: --width needs a whole number" >&2; exit 1; }; WIDTH="$2"; shift ;;
+        -h|--help) usage 0 ;;
+        -*) echo "to-gif: unknown option $1" >&2; usage ;;
+        *) [[ -z "$IN" ]] || { echo "to-gif: one video at a time" >&2; exit 1; }; IN="$1" ;;
+    esac
+    shift
+done
+[[ -n "$IN" ]] || usage
+[[ -f "$IN" ]] || { echo "to-gif: no such file: $IN" >&2; exit 1; }
+command -v ffmpeg >/dev/null || { echo "to-gif: ffmpeg is not installed (it is needed to make the GIF)" >&2; exit 1; }
+
+# the output: the input's name with .gif, in the same folder
+DIR=$(dirname -- "$IN")
+STEM=$(basename -- "$IN")
+[[ "$STEM" == *.* ]] && STEM="${STEM%.*}"
+OUT="$DIR/$STEM.gif"
+[[ "$OUT" -ef "$IN" ]] && { echo "to-gif: the input is already a GIF named $OUT" >&2; exit 1; }
+
+# the scale never enlarges: min(WIDTH, input width), height from the aspect (even)
+FILTER="fps=$FPS,scale='min($WIDTH,iw)':-2:flags=lanczos"
+PALETTE=$(mktemp --suffix=.png) || exit 1
+trap 'rm -f "$PALETTE"' EXIT
+
+ffmpeg -v error -y -i "$IN" -vf "$FILTER,palettegen=stats_mode=diff" "$PALETTE" || { echo "to-gif: could not make the palette" >&2; exit 1; }
+if ! ffmpeg -v error -y -i "$IN" -i "$PALETTE" -lavfi "$FILTER [x]; [x][1:v] paletteuse=dither=bayer:bayer_scale=5" "$OUT"; then
+    rm -f "$OUT"
+    echo "to-gif: could not make the GIF" >&2
+    exit 1
+fi
+echo "$OUT"

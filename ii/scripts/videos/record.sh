@@ -8,6 +8,7 @@
 #   record.sh --fullscreen            the focused monitor
 #   record.sh --sound                 add desktop audio
 #   record.sh --mic                   add the microphone (with or without --sound)
+#   record.sh --gif                   also convert the finished file to a GIF (to-gif, beside the .mp4)
 #
 # The shell finds a running recording with: pgrep -f '^gpu-screen-recorder .* -o .*\.mp4$'
 # (replay.sh's -o is a folder, not an .mp4, so the replay buffer does not count).
@@ -30,7 +31,7 @@ if pgrep -x wf-recorder >/dev/null; then   # a recording started by the old scri
     exit 0
 fi
 
-REGION="" SOUND=0 MIC=0 FULLSCREEN=0
+REGION="" SOUND=0 MIC=0 FULLSCREEN=0 GIF=0
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --region)
@@ -39,6 +40,7 @@ while [[ $# -gt 0 ]]; do
         --sound) SOUND=1 ;;
         --mic) MIC=1 ;;
         --fullscreen) FULLSCREEN=1 ;;
+        --gif) GIF=1 ;;
     esac
     shift
 done
@@ -66,3 +68,12 @@ fi
 
 notify "Recording started" "$(basename "$FILE")"
 gpu-screen-recorder "${TARGET[@]}" -f 60 -k h264 -q very_high -fm cfr -cursor yes "${AUDIO[@]}" -o "$FILE"
+
+# the GIF is made once the recording is finished; the .mp4 stays beside it
+if [[ $GIF -eq 1 ]]; then
+    if GIF_FILE="$("$(dirname "$0")/to-gif" "$FILE")"; then
+        notify "GIF saved" "$(basename "$GIF_FILE")"
+    else
+        notify "GIF failed" "The recording is kept: $(basename "$FILE")"
+    fi
+fi

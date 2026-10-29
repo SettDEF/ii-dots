@@ -149,6 +149,14 @@ Toolbar {
             StyledToolTip { text: Translation.tr("System sound in the recording") }
         }
         HueToolbarButton {
+            visible: root.recording
+            hue: Appearance.colors.colHueCyan
+            symbol: "gif_box"
+            toggled: Persistent.states.snip.gif
+            onClicked: Persistent.states.snip.gif = !Persistent.states.snip.gif
+            StyledToolTip { text: Translation.tr("GIF: convert the recording to a GIF when it stops") }
+        }
+        HueToolbarButton {
             hue: Appearance.colors.colHueMagenta
             symbol: "colorize"
             onClicked: {

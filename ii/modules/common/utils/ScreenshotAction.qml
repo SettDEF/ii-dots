@@ -36,6 +36,7 @@ Singleton {
         const cropBase = `"$HOME/.local/bin/tinct" image crop '${StringUtils.shellSingleQuoteEscape(screenshotPath)}' `
             + `${rw}x${rh}+${Math.max(0, rx)}+${Math.max(0, ry)}`
         const cropToStdout = `${cropBase} -`
+        const gifFlag = Persistent.states.snip.gif ? " --gif" : "";
         const cropInPlace = `${cropBase} '${StringUtils.shellSingleQuoteEscape(screenshotPath)}'`
         const cleanup = `rm '${StringUtils.shellSingleQuoteEscape(screenshotPath)}'`
         const slurpRegion = `${rx},${ry} ${rw}x${rh}`
@@ -86,10 +87,10 @@ Singleton {
                 return ["bash", "-c", `${cropInPlace} && tesseract '${StringUtils.shellSingleQuoteEscape(screenshotPath)}' stdout -l $(tesseract --list-langs | awk 'NR>1{print $1}' | tr '\\n' '+' | sed 's/\\+$/\\n/') | wl-copy && ${cleanup}`]
                 break;
             case ScreenshotAction.Action.Record:
-                return ["bash", "-c", `${Directories.recordScriptPath} --region '${slurpRegion}'`]
+                return ["bash", "-c", `${Directories.recordScriptPath} --region '${slurpRegion}'${gifFlag}`]
                 break;
             case ScreenshotAction.Action.RecordWithSound:
-                return ["bash", "-c", `${Directories.recordScriptPath} --region '${slurpRegion}' --sound`]
+                return ["bash", "-c", `${Directories.recordScriptPath} --region '${slurpRegion}' --sound${gifFlag}`]
                 break;
             case ScreenshotAction.Action.AttachToAi:
                 const attachPath = `/tmp/quickshell-ai-snip-${Date.now()}.png`
