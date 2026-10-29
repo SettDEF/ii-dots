@@ -133,10 +133,9 @@ PanelPage {
                     buttonRadius: Appearance.rounding.small
                     colBackground: "transparent"
                     colBackgroundHover: Appearance.colors.colLayer1Hover
-                    onClicked: {
-                        ExactTheme.select(entry.modelData.id);
-                        sheet.closed();
-                    }
+                    // the page stays: try one after another, back when done (closing while the
+                    // whole shell recolours made the slide stutter)
+                    onClicked: ExactTheme.select(entry.modelData.id)
 
                     contentItem: RowLayout {
                         anchors.fill: parent
