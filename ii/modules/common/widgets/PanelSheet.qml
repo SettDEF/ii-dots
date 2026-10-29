@@ -31,6 +31,10 @@ Item {
     /// Cap on the card's width; it shrinks to fit a narrow panel.
     property real maxWidth: 360
     default property alias content: sheetContent.data
+    /// false: the content scrolls itself (a ListView that builds only the rows in view) and gets
+    /// the room under the title as its height; `wantHeight` then says how tall it would like to be
+    property bool scrolls: true
+    property real wantHeight: sheetContent.implicitHeight
 
     signal closed()
 
@@ -106,7 +110,7 @@ Item {
         id: cardWrap
         anchors.centerIn: parent
         width: Math.min(parent.width - 24, root.maxWidth)
-        height: Math.min(parent.height - 24, header.implicitHeight + 10 + sheetContent.implicitHeight + 28)
+        height: Math.min(parent.height - 24, header.implicitHeight + 10 + root.wantHeight + 28)
 
         // from below the panel's bottom edge into the middle (decelerates in, accelerates out)
         anchors.verticalCenterOffset: (1 - root.openT) * (parent.height + height) / 2
@@ -172,12 +176,14 @@ Item {
                     id: sheetFlick
                     Layout.fillWidth: true
                     Layout.preferredHeight: Math.max(0, cardWrap.height - 28 - header.height - 10)
-                    contentHeight: sheetContent.implicitHeight
+                    interactive: root.scrolls
+                    contentHeight: root.scrolls ? sheetContent.implicitHeight : height
                     clip: true
                     boundsBehavior: Flickable.StopAtBounds
                     ColumnLayout {
                         id: sheetContent
                         width: sheetFlick.width
+                        height: root.scrolls ? implicitHeight : sheetFlick.height
                         spacing: 10
                     }
                 }

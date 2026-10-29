@@ -10,9 +10,13 @@ PanelSheet {
     id: sheet
     title: qsTr("Exact theme")
     subtitle: qsTr("A theme's own colours in every app and the terminal")
+    // 196 rows: a ListView builds only those in view (all of them at once made opening it lag)
+    scrolls: false
+    wantHeight: fillRow.implicitHeight + themeList.contentHeight + 8 + note.implicitHeight + 20
 
     // what a theme leaves out (shades, the 128): in its own manner, or the wallpaper's
     RowLayout {
+        id: fillRow
         Layout.fillWidth: true
         spacing: 6
         StyledText {
@@ -44,12 +48,26 @@ PanelSheet {
         }
     }
 
-    PaletteCard {
-        Repeater {
+    Rectangle {
+        Layout.fillWidth: true
+        Layout.fillHeight: true
+        radius: Appearance.rounding.normal
+        color: Appearance.colors.colLayer1
+        StyledListView {
+            id: themeList
+            anchors.fill: parent
+            anchors.margins: 4
+            clip: true
+            boundsBehavior: Flickable.StopAtBounds
+            reuseItems: true
+            // no pop-in fades: rows just scroll
+            popin: false
+            animateAppearance: false
             // the wallpaper first: picking it turns exact themes off
             model: [{ id: "", name: qsTr("Wallpaper colours"), dark: true, swatches: [] }].concat(ExactTheme.themes)
             delegate: ColumnLayout {
                 id: entry
+                width: ListView.view.width
                 required property var modelData
                 required property int index
                 readonly property bool chosen: ExactTheme.current === modelData.id
@@ -131,6 +149,7 @@ PanelSheet {
     }
 
     StyledText {
+        id: note
         Layout.fillWidth: true
         wrapMode: Text.WordWrap
         text: qsTr("Grading (theory, style, remap) is left out with a theme: it would move its colours. Edit colours changes single ones.")
