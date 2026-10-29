@@ -1049,6 +1049,7 @@ Rectangle {
 
     Component.onCompleted: {
         darkMode = Appearance.m3colors.darkmode
+        openT = GlobalStates.wallTuneOpen ? 1 : 0
         loadProc.command = ["bash", "-c", `cat '${stateFile}' 2>/dev/null || echo '{}'`]
         loadProc.running = true
         blueScanProc.command = ["bash", "-c", `find '${blueprintsDir}' -name '*.json' 2>/dev/null | sort`]
@@ -1068,8 +1069,25 @@ Rectangle {
     border.width: 1
     border.color: Appearance.colors.colLayer0Border
 
-    opacity: GlobalStates.wallTuneOpen ? 1 : 0
-    Behavior on opacity { NumberAnimation { duration: 150; easing.type: Easing.OutCubic } }
+    // Open and close: the card eases in from the right and grows from its top-right corner, on the
+    // shell's own curves. The loader keeps a closed panel 30 s, so a re-open animates from closed.
+    property real openT: 0
+    Connections {
+        target: GlobalStates
+        function onWallTuneOpenChanged(): void { root.openT = GlobalStates.wallTuneOpen ? 1 : 0 }
+    }
+    Behavior on openT {
+        NumberAnimation {
+            duration: root.openT > 0.5 ? Appearance.animation.elementMoveEnter.duration : Appearance.animation.elementMoveExit.duration
+            easing.type: Easing.BezierSpline
+            easing.bezierCurve: root.openT > 0.5 ? Appearance.animation.elementMoveEnter.bezierCurve : Appearance.animation.elementMoveExit.bezierCurve
+        }
+    }
+    opacity: openT
+    transform: [
+        Translate { x: (1 - root.openT) * 16 },
+        Scale { origin.x: root.width; origin.y: 0; xScale: 0.94 + 0.06 * root.openT; yScale: xScale }
+    ]
 
     // Sticky Header
     PanelHeader {
@@ -1082,7 +1100,7 @@ Rectangle {
             bottomMargin: 0
         }
         icon: "tune"
-        title: qsTr("Palette")
+        title: qsTr("Theme")
         onClose: GlobalStates.wallTuneOpen = false
         middle: [
         // Phase text shown in the header while processing — discreet, but
@@ -2442,7 +2460,7 @@ Rectangle {
             RowLayout {
                 anchors.fill: parent; anchors.leftMargin: root.foldPad; anchors.rightMargin: root.foldPad; spacing: 6
                 StyledText {
-                    text: qsTr("Palette Remap")
+                    text: qsTr("Colour remap")
                     font.pixelSize: Appearance.font.pixelSize.smaller
                     font.weight: Font.Medium
                     color: Appearance.colors.colOnLayer1

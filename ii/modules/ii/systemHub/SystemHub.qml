@@ -49,7 +49,7 @@ Scope {
 
         { icon: "wallpaper",            label: Translation.tr("Wallpaper"),     act: () => GlobalStates.wallpaperSelectorOpen = true },
         { icon: "travel_explore",       label: Translation.tr("Wallpaper web"), act: () => GlobalStates.skwdWallOpen = true },
-        { icon: "tune",                 label: Translation.tr("Wallpaper tune"),act: () => GlobalStates.wallTuneOpen = true },
+        { icon: "tune",                 label: Translation.tr("Theme"),act: () => GlobalStates.wallTuneOpen = true },
         { icon: "auto_awesome",         label: Translation.tr("Wall effects"),  act: () => GlobalStates.wallEffectVarsOpen = true },
         { icon: "crop",                 label: Translation.tr("Wall position"), act: () => GlobalStates.wallpaperAdjusterOpen = true },
 

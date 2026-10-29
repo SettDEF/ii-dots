@@ -5,7 +5,7 @@ import QtQuick
 import QtQuick.Layouts
 
 // The corner popup's Window tab: the title bars' (ii-decor) switches at hand, live. The rest of
-// their settings (sizes, colours, button styles) are in Palette › Glass.
+// their settings (sizes, colours, button styles) are in Theme › Glass.
 Item {
     id: root
     readonly property var decor: Config.options.appearance.glass.decor
@@ -67,7 +67,7 @@ Item {
             Layout.topMargin: 4
             buttonRadius: Appearance.rounding.small
             materialIcon: "palette"
-            mainText: qsTr("More in Palette › Glass")
+            mainText: qsTr("More in Theme › Glass")
             onClicked: {
                 GlobalStates.wallTuneTab = "glass";
                 GlobalStates.wallTuneOpen = true;

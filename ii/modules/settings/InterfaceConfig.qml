@@ -557,11 +557,11 @@ ContentPage {
 
         ContentSubsection {
             title: Translation.tr("Window Decorations")
-            // the title bars' and the menus' own settings live in Palette 's Glass section
+            // the title bars' and the menus' own settings live in Theme's Glass section
             RippleButtonWithIcon {
                 buttonRadius: Appearance.rounding.small
                 materialIcon: "palette"
-                mainText: Translation.tr("Title bars, menu buttons and styles (Palette › Glass)")
+                mainText: Translation.tr("Title bars, menu buttons and styles (Theme › Glass)")
                 onClicked: Quickshell.execDetached(["qs", "-c", "ii", "ipc", "call", "walltune", "open", "glass"])
             }
             ConfigSwitch {
