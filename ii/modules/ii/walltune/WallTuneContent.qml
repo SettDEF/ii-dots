@@ -2977,10 +2977,12 @@ Rectangle {
     }
 
     ExactThemeSheet {
+        host: root
         open: root.exactThemeOpen
         onClosed: root.exactThemeOpen = false
     }
     ColourEditorSheet {
+        host: root
         open: root.colourEditorOpen
         onClosed: root.colourEditorOpen = false
     }
@@ -2988,6 +2990,7 @@ Rectangle {
     // A grid, not a list: six stages down the column was most of a screenful.
     // Transition and "Applies to": one tap picks and closes.
     PanelSheet {
+        host: root
         open: root.transitionOpen
         title: qsTr("Transition")
         subtitle: qsTr("How the next wallpaper comes in")
@@ -3014,6 +3017,7 @@ Rectangle {
         }
     }
     PanelSheet {
+        host: root
         open: root.appliesOpen
         title: qsTr("Applies to")
         subtitle: qsTr("What changes when you pick a wallpaper")
@@ -3041,6 +3045,7 @@ Rectangle {
     }
 
     PanelSheet {
+        host: root
         id: mixSheet
         open: root.mixOpen
         title: qsTr("Active mix")
@@ -3204,6 +3209,7 @@ Rectangle {
 
     // Parallax, on demand: two settings that get set once and left alone.
     PanelSheet {
+        host: root
         id: parallaxPopup
         open: root.parallaxOpen
         title: qsTr("Workspace parallax")
@@ -3335,6 +3341,7 @@ Rectangle {
     }
 
     PanelSheet {
+        host: root
         id: effectSheet
         open: root.effectOpen
         title: qsTr("Wallpaper effect")
@@ -3422,6 +3429,7 @@ Rectangle {
     }
 
     PanelSheet {
+        host: root
         open: root.extractOpen
         title: qsTr("Extraction mode")
         onClosed: root.extractOpen = false

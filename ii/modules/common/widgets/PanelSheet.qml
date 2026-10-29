@@ -34,11 +34,18 @@ Item {
 
     signal closed()
 
+    // Esc closes the sheet (not the panel under it): it takes the keys while open
+    focus: open
+    onOpenChanged: if (open) root.forceActiveFocus()
+    Keys.onEscapePressed: event => { event.accepted = true; root.closed(); }
+
     // Resolved ONCE, imperatively. As a binding on `parent` it would re-run
     // after the reparent, walk up from the new parent, find no Flickable and
     // move the sheet again.
     property Item host: null
+    // a host set by the user of the sheet wins (a panel whose Flickable sits in a taller item than its card)
     Component.onCompleted: {
+        if (root.host) { root.parent = root.host; root.anchors.fill = root.host; return; }
         let it = root.parent;
         let top = root;
         while (it) {
@@ -95,7 +102,7 @@ Item {
         id: cardWrap
         anchors.centerIn: parent
         width: Math.min(parent.width - 24, root.maxWidth)
-        height: Math.min(parent.height - 24, sheetCol.implicitHeight + 28)
+        height: Math.min(parent.height - 24, header.implicitHeight + 10 + sheetContent.implicitHeight + 28)
 
         // Rises into place; accelerates out so dismissing feels immediate.
         scale: root.open ? 1 : 0.95
@@ -136,6 +143,7 @@ Item {
                 spacing: 10
 
                 RowLayout {
+                    id: header
                     Layout.fillWidth: true
                     spacing: 8
                     ColumnLayout {
@@ -172,10 +180,19 @@ Item {
                     }
                 }
 
-                ColumnLayout {
-                    id: sheetContent
+                // a long list (the exact themes) scrolls under the fixed title row
+                StyledFlickable {
+                    id: sheetFlick
                     Layout.fillWidth: true
-                    spacing: 10
+                    Layout.preferredHeight: Math.max(0, cardWrap.height - 28 - header.height - 10)
+                    contentHeight: sheetContent.implicitHeight
+                    clip: true
+                    boundsBehavior: Flickable.StopAtBounds
+                    ColumnLayout {
+                        id: sheetContent
+                        width: sheetFlick.width
+                        spacing: 10
+                    }
                 }
             }
         }
