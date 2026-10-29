@@ -43,6 +43,14 @@ Singleton {
         loadVariables();
     }
 
+    /// what the theme leaves out: "theme" (its own manner) or "wallpaper" (switchwall passes --fill-from)
+    readonly property string fill: Config.options.appearance.wallpaperTheming.exactFill ?? "theme"
+    function setFill(f) {
+        if (f === fill) return;
+        Config.options.appearance.wallpaperTheming.exactFill = f;
+        if (current !== "") apply();
+    }
+
     function select(id) {
         if (id === current) return;
         Config.options.appearance.wallpaperTheming.exactTheme = id;

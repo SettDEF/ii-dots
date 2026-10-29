@@ -230,6 +230,8 @@ Singleton {
                 property JsonObject wallpaperTheming: JsonObject {
                     // a named theme (tinct theme list) instead of the wallpaper's colours: its own, exactly
                     property string exactTheme: ""
+                    // what the theme leaves out: "theme" (its own manner) or "wallpaper"
+                    property string exactFill: "theme"
                     property bool enableAppsAndShell: true
                     property bool enableQtApps: true
                     property bool enableTerminal: true

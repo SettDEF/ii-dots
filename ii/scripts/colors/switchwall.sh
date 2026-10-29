@@ -1015,7 +1015,12 @@ switch() {
     local exact_theme
     exact_theme=$(jq -r '.appearance.wallpaperTheming.exactTheme // ""' "$SHELL_CONFIG_FILE" 2>/dev/null)
     if [[ -n "$exact_theme" && "$exact_theme" != "null" ]]; then
+        local fill_img="${tinct_args[1]:-}"
         tinct_args=(--theme "$exact_theme")
+        # the colours it leaves out in the wallpaper's manner (Exact theme > Missing colours)
+        if [[ "$(jq -r '.appearance.wallpaperTheming.exactFill // "theme"' "$SHELL_CONFIG_FILE" 2>/dev/null)" == wallpaper && -f "$fill_img" ]]; then
+            tinct_args+=(--fill-from "$fill_img")
+        fi
         # the theme decides light or dark (Latte is light), for the apps that follow the hint
         if tinct theme show "$exact_theme" --json 2>/dev/null | jq -e .dark >/dev/null; then
             gsettings set org.gnome.desktop.interface color-scheme prefer-dark

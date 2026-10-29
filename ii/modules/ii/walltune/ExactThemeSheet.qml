@@ -11,6 +11,39 @@ PanelSheet {
     title: qsTr("Exact theme")
     subtitle: qsTr("A theme's own colours in every app and the terminal")
 
+    // what a theme leaves out (shades, the 128): in its own manner, or the wallpaper's
+    RowLayout {
+        Layout.fillWidth: true
+        spacing: 6
+        StyledText {
+            text: qsTr("Missing colours")
+            font.pixelSize: Appearance.font.pixelSize.smaller
+            color: Appearance.colors.colSubtext
+        }
+        Item { Layout.fillWidth: true }
+        Repeater {
+            model: [{ id: "theme", label: qsTr("Like the theme") }, { id: "wallpaper", label: qsTr("From the wallpaper") }]
+            delegate: RippleButton {
+                id: fillChip
+                required property var modelData
+                readonly property bool sel: ExactTheme.fill === modelData.id
+                implicitHeight: 28
+                implicitWidth: fillText.implicitWidth + 24
+                buttonRadius: Appearance.rounding.full
+                colBackground: sel ? Appearance.colors.colPrimary : Appearance.colors.colLayer2
+                colBackgroundHover: sel ? Appearance.colors.colPrimary : Appearance.colors.colLayer2Hover
+                onClicked: ExactTheme.setFill(modelData.id)
+                contentItem: StyledText {
+                    id: fillText
+                    anchors.centerIn: parent
+                    text: fillChip.modelData.label
+                    font.pixelSize: Appearance.font.pixelSize.smaller
+                    color: fillChip.sel ? Appearance.colors.colOnPrimary : Appearance.colors.colOnLayer2
+                }
+            }
+        }
+    }
+
     PaletteCard {
         Repeater {
             // the wallpaper first: picking it turns exact themes off
