@@ -389,6 +389,7 @@ SESSION_PKGS=(
     pipewire pipewire-pulse wireplumber      # audio, before first login
     networkmanager
     foot                                     # a terminal that always works
+    zsh zsh-autosuggestions zsh-syntax-highlighting   # the shell
 )
 missing=()
 for p in "${SESSION_PKGS[@]}"; do pacman -Qq "$p" >/dev/null 2>&1 || missing+=("$p"); done
@@ -447,6 +448,12 @@ fi
 if command -v sddm >/dev/null 2>&1 && ! systemctl is-enabled display-manager >/dev/null 2>&1; then
     info "enabling sddm"
     run sudo systemctl enable sddm
+fi
+
+# zsh as the login shell
+if [ "$(getent passwd "$USER" | cut -d: -f7)" != /usr/bin/zsh ] && [ -x /usr/bin/zsh ]; then
+    info "zsh as your login shell"
+    run sudo chsh -s /usr/bin/zsh "$USER" || warn "could not switch to zsh (chsh -s /usr/bin/zsh)"
 fi
 
 # ── 5. This config ──────────────────────────────────────────────────────────
