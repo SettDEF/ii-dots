@@ -456,6 +456,34 @@ if command -v sddm >/dev/null 2>&1 && ! systemctl is-enabled display-manager >/d
     run sudo systemctl enable sddm
 fi
 
+# ── Drivers ──
+# the headers for every installed kernel (DKMS modules build against them), and Broadcom
+# Wi-Fi's wl driver when the machine has such a chip (Lenovo G510 and many laptops of its age)
+step "Drivers"
+headers=()
+for k in linux linux-lts linux-zen linux-hardened linux-rt; do
+    pacman -Q "$k" >/dev/null 2>&1 && headers+=("$k-headers")
+done
+if [ ${#headers[@]} -gt 0 ]; then
+    run sudo pacman -S --needed --noconfirm "${headers[@]}" || warn "kernel headers did not install"
+else
+    warn "no kernel from the repos found; headers for a custom kernel are yours to install"
+fi
+command -v lspci >/dev/null || run sudo pacman -S --needed --noconfirm pciutils   # lspci, to see the Wi-Fi chip
+if lspci -n 2>/dev/null | grep -qiE ' 0280: 14e4:'; then
+    info "Broadcom Wi-Fi: $(lspci 2>/dev/null | grep -i 'network controller' | grep -i broadcom | sed 's/.*: //' | head -1)"
+    run sudo pacman -S --needed --noconfirm dkms broadcom-wl-dkms || warn "broadcom-wl-dkms did not install"
+    # the open drivers claim the chip first and leave no Wi-Fi; wl's package blacklists them, this makes sure
+    if [ "$DRY" != 1 ] && [ ! -f /etc/modprobe.d/broadcom-wl-blacklist.conf ]; then
+        printf 'blacklist b43\nblacklist bcma\nblacklist ssb\nblacklist brcmsmac\nblacklist brcmfmac\n' | sudo tee /etc/modprobe.d/broadcom-wl-blacklist.conf >/dev/null
+    fi
+    if [ "$DRY" != 1 ]; then
+        sudo modprobe -r b43 bcma ssb brcmsmac 2>/dev/null; sudo modprobe wl 2>/dev/null \
+            && ok "wl loaded: Wi-Fi should appear now (nmtui to connect)" \
+            || info "wl loads at the next boot"
+    fi
+fi
+
 # zsh as the login shell
 if [ "$(getent passwd "$USER" | cut -d: -f7)" != /usr/bin/zsh ] && [ -x /usr/bin/zsh ]; then
     info "zsh as your login shell"
