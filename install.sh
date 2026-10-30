@@ -320,7 +320,8 @@ install_tinct() {
     local url tmp
     url="https://github.com/$TINCT_REPO/releases/latest/download/tinct-$arch.tar.gz"
     tmp="$(mktemp -d)"
-    if curl -fsSL "$url" -o "$tmp/tinct.tar.gz" && tar xzf "$tmp/tinct.tar.gz" -C "$tmp"; then
+    info "downloading tinct (1.3 MB)"
+    if curl -fL --progress-bar --connect-timeout 20 --max-time 180 "$url" -o "$tmp/tinct.tar.gz" && tar xzf "$tmp/tinct.tar.gz" -C "$tmp"; then
         mkdir -p "$HOME/.local/bin"
         # The archive layout is not guaranteed, so find the binary rather than
         # assuming it sits at the top.
