@@ -1071,13 +1071,13 @@ switch() {
         return 1
     fi
 
-    # Run applycolor.sh using the temporary files.
-    # This will generate terminal sequences, broadcast gsettings theme mode,
-    # and run rebuild_templates.py to rewrite all other config files (GTK, Hyprland, etc.)
-    # BEFORE colors.json is placed in its final location.
-    "$SCRIPT_DIR"/applycolor.sh /tmp/tinct-temp-material_colors.scss /tmp/tinct-temp-colors.json
-
-    # Atomically move the files to their final positions to trigger the Quickshell UI reload
+    # The shell first: colors.json in place and the shell told at once (tinct took ~10 ms), so the
+    # shell and zett recolour almost instantly. The apps (terminal, GTK/KDE, Neovim, VS Code …:
+    # applycolor.sh, ~0.7 s) follow in the background, from this run's own copies (a quick next
+    # switch cannot overwrite them mid-way).
+    local apply_dir
+    apply_dir=$(mktemp -d /tmp/tinct-apply.XXXXXX)
+    /usr/bin/cp -f /tmp/tinct-temp-colors.json /tmp/tinct-temp-material_colors.scss "$apply_dir"/ 2>/dev/null
     [[ -f /tmp/tinct-temp-colors.json ]] && mv /tmp/tinct-temp-colors.json "$STATE_DIR/user/generated/colors.json"
     [[ -f /tmp/tinct-temp-material_colors.scss ]] && mv /tmp/tinct-temp-material_colors.scss "$STATE_DIR/user/generated/material_colors.scss"
 
@@ -1085,6 +1085,10 @@ switch() {
 
     # Tell Quickshell to re-read colors.json (handles atomic-write inotify miss)
     qs -c ii msg materialTheme reload 2>/dev/null || true
+
+    # then the apps: terminal sequences, gsettings mode, every app's template
+    # (its output away from ours: whoever runs this script, the shell too, is not kept waiting on it)
+    ( "$SCRIPT_DIR"/applycolor.sh "$apply_dir/tinct-temp-material_colors.scss" "$apply_dir/tinct-temp-colors.json"; rm -rf "$apply_dir" ) >/dev/null 2>&1 &
 
     local max_width_desired max_height_desired
     max_width_desired="$(hyprctl monitors -j | jq '([.[].width] | min)' | xargs)"

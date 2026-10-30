@@ -204,7 +204,7 @@ Singleton {
 
     Timer {
         id: applyTimer
-        interval: 500
+        interval: 120   // a drag or quick clicks are still one run; a pick feels at once
         onTriggered: {
             if (applyProc.running) { applyTimer.restart(); return; }
             root.applying = true;
