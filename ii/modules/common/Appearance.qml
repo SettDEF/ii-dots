@@ -11,6 +11,10 @@ Singleton {
     property QtObject animation
     property QtObject animationCurves
     property QtObject colors
+    // The GPU cannot draw see-through windows (QS_NO_ALPHA, from start-quickshell.sh; Intel
+    // Haswell and older): every transparent pixel came out black. No shadow margins, square
+    // screen and window edges, no screen corners then.
+    readonly property bool noAlpha: Quickshell.env("QS_NO_ALPHA") === "1"
     property QtObject rounding
     property QtObject font
     // The single switch every touch adaptation reads: hit slop, flick press
@@ -232,8 +236,8 @@ Singleton {
         property int large: 23
         property int verylarge: 30
         property int full: 9999
-        property int screenRounding: large
-        property int windowRounding: 18
+        property int screenRounding: root.noAlpha ? 0 : large
+        property int windowRounding: root.noAlpha ? 0 : 18
     }
 
     font: QtObject {
@@ -440,7 +444,7 @@ Singleton {
         property real barCenterSideModuleWidthHellaShortened: 190
         property real barShortenScreenWidthThreshold: 1200 // Shorten if screen width is at most this value
         property real barHellaShortenScreenWidthThreshold: 1000 // Shorten even more...
-        property real elevationMargin: 10
+        property real elevationMargin: root.noAlpha ? 0 : 10
         property real fabShadowRadius: 5
         property real fabHoveredShadowRadius: 7
         property real hyprlandGapsOut: 5

@@ -18,6 +18,10 @@ Singleton {
     property bool dark: Appearance.m3colors.darkmode
 
     readonly property bool transparencyEnabled: Config.options.appearance.transparency.enable
+    // The GPU cannot draw see-through windows (start-quickshell.sh asks EGL; Intel Haswell and
+    // older): every transparent pixel came out black. Popups then have no see-through margin,
+    // square outer corners and no slide (it moved through that margin).
+    readonly property bool noAlpha: Appearance.noAlpha
     property real backgroundTransparency: transparencyEnabled ? 0.16 : 0
     property real panelBackgroundTransparency: transparencyEnabled ? 0.14 : 0
     property real panelLayerTransparency: root.dark ? 0.9 : 0.7

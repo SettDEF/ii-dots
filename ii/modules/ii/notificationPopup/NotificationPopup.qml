@@ -29,11 +29,14 @@ Scope {
         }
         exclusionMode: root.overFullscreen ? ExclusionMode.Ignore : ExclusionMode.Normal
 
+        // Full height is see-through: without a GPU that draws that (Appearance.noAlpha) it was
+        // black below the notifications. Then only the notifications (all of it while the menu is open).
         anchors {
             top: true
             right: true
-            bottom: true
+            bottom: !Appearance.noAlpha || popupMenu.opened || popupMenu.closing
         }
+        implicitHeight: Math.max(1, Math.min(listview.contentHeight + 8, screen?.height ?? 720))
 
         // Clicks only land on the notifications themselves - except while the
         // bell's menu is open, when the whole strip takes them so the menu can

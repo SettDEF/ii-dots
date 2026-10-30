@@ -25,10 +25,14 @@ WBarAttachedPanelContent {
             margins: root.visualMargin
             bottomMargin: 0
         }
-        spacing: 12
+        spacing: Looks.noAlpha ? 0 : 12
 
         WPane {
-            opacity: (MprisController.activePlayer != null && MprisController.isRealPlayer(MprisController.activePlayer)) ? 1 : 0
+            readonly property bool playing: MprisController.activePlayer != null && MprisController.isRealPlayer(MprisController.activePlayer)
+            opacity: playing ? 1 : 0
+            // only see-through while nothing plays: without a GPU that draws that (Looks.noAlpha)
+            // its 176 px were a black block above the quick settings, so it is gone then
+            visible: playing || !Looks.noAlpha
             Layout.fillWidth: true
             contentItem: MediaPaneContent {}
         }

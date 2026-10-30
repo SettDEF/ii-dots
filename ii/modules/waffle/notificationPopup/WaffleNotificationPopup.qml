@@ -22,11 +22,14 @@ Scope {
         WlrLayershell.layer: WlrLayer.Overlay
         exclusiveZone: 0
 
+        // Full height is see-through: without a GPU that draws that (Looks.noAlpha) it was black
+        // above the notifications. Then the window is only the notifications.
         anchors {
-            top: true
+            top: !Looks.noAlpha
             right: true
             bottom: true
         }
+        implicitHeight: Math.max(1, Math.min(listview.contentHeight + listview.topMargin + listview.bottomMargin, screen?.height ?? 720))
 
         mask: Region {
             item: listview.contentItem
@@ -42,16 +45,16 @@ Scope {
                 right: parent.right
                 left: parent.left
             }
-            leftMargin: 16
-            rightMargin: 16
-            topMargin: 16
-            bottomMargin: 16
+            leftMargin: Looks.noAlpha ? 0 : 16
+            rightMargin: Looks.noAlpha ? 0 : 16
+            topMargin: Looks.noAlpha ? 0 : 16
+            bottomMargin: Looks.noAlpha ? 0 : 16
 
             height: Math.min(contentItem.height + topMargin + bottomMargin, parent.height)
             width: parent.width - Appearance.sizes.elevationMargin * 2
             
             implicitWidth: 396
-            spacing:12
+            spacing: Looks.noAlpha ? 0 : 12
 
             model: ScriptModel {
                 values: Notifications.popupList
