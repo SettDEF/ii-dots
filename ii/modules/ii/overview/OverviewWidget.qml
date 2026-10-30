@@ -489,6 +489,9 @@ Item {
                         (windowData?.size[0] ?? 0) * (windowData?.size[1] ?? 0)
                     z: Drag.active ? root.windowDraggingZ
                         : root.windowZ
+                          // fullscreen covers the screen, so it covers its workspace here too (the
+                          // smaller-on-top order below put the biggest window, it, at the bottom)
+                          + ((windowData?.fullscreen ?? 0) !== 0 ? 2000 : 0)
                           + (windowData?.floating ? 1000 : 0)
                           + Math.max(0, 900 - Math.round(windowArea / 10000))
                     Drag.hotSpot.x: width / 2
