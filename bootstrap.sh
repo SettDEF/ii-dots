@@ -69,7 +69,18 @@ die()  { printf '%serror%s: %s\n' "$RED" "$R" "$*" >&2; exit 1; }
 info() { printf '%s::%s %s\n' "$CYN" "$R" "$*"; }
 warn() { printf '%swarn%s: %s\n' "$YEL" "$R" "$*" >&2; }
 ok()   { printf '%s  ok%s %s\n' "$GRN" "$R" "$*"; }
-step() { printf '\n%s── %s%s\n' "$B" "$*" "$R"; }
+CURRENT_STEP="start"
+step() { CURRENT_STEP="$*"; printf '\n%s── %s%s\n' "$B" "$*" "$R"; }
+
+# Everything also goes to a log (to send when something goes wrong), and a failure says
+# which step it was in. Not as root: the run as your user keeps the log in your home.
+LOG="${QS_LOG:-$HOME/ii-bootstrap.log}"
+if [ "$(id -u)" -ne 0 ] && [ -z "${QS_LOGGING:-}" ]; then
+    export QS_LOGGING=1
+    { printf '\n==== %s  bootstrap %s\n' "$(date '+%F %T')" "$*"; } >> "$LOG" 2>/dev/null || true
+    exec > >(tee -a "$LOG") 2>&1
+fi
+trap 'rc=$?; [ $rc -ne 0 ] && printf "\n%serror%s: stopped in step \"%s\" (exit %s). The log: %s\n" "$RED" "$R" "$CURRENT_STEP" "$rc" "$LOG" >&2' EXIT
 run()  { if [ "$DRY" = 1 ]; then printf '   would: %s\n' "$*"; else "$@"; fi; }
 
 usage() {

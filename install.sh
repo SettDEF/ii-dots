@@ -402,46 +402,89 @@ install_companion() {
 # installed by each app's own install.sh. Off unless --with-own-apps.
 OWN_APPS="${QS_OWN_APPS:-reel zash zash-prompt zeit zett dotos sinew kalends arcade prog}"
 OWN_SRC="${QS_OWN_SRC:-$HOME/.local/src}"
+
+# A long silent build looks like a hang: a line a minute while one runs, its output in a log.
+own_build() {   # own_build NAME DIR JOBS  -> the app's install.sh, with a heartbeat
+    local name="$1" at="$2" jobs="$3" log="$OWN_SRC/.logs/$1.log" start=$SECONDS
+    mkdir -p "$OWN_SRC/.logs"
+    ( cd "$at" && CARGO_BUILD_JOBS="${jobs:-}" JOBS="$jobs" bash ./install.sh ) > "$log" 2>&1 &
+    local pid=$!
+    local last=$SECONDS
+    while kill -0 "$pid" 2>/dev/null; do
+        sleep 2
+        if (( SECONDS - last >= 60 )) && kill -0 "$pid" 2>/dev/null; then
+            info "   still building $name ($(( (SECONDS - start) / 60 )) min)"; last=$SECONDS
+        fi
+    done
+    wait "$pid"
+}
+
 install_own_apps() {
     [ "$DO_OWN" = 1 ] || { info "skipping your own apps (--with-own-apps builds $OWN_APPS)"; return; }
     command -v pacman >/dev/null 2>&1 || { warn "own apps: Arch only; skipped"; return; }
+
+    # what this machine can build with: the builds want room, and memory per job
+    local mem_gb free_gb swap_gb jobs=""
+    mem_gb=$(awk '/MemTotal/ {printf "%d", $2/1048576}' /proc/meminfo)
+    swap_gb=$(awk '/SwapTotal/ {printf "%d", $2/1048576}' /proc/meminfo)
+    free_gb=$(df -Pk "$HOME" | awk 'NR==2 {printf "%d", $4/1048576}')
+    info "this machine: ${mem_gb} GB memory, ${swap_gb} GB swap, ${free_gb} GB free in your home"
+    [ "$free_gb" -ge 12 ] || warn "the builds need about 12 GB free; with ${free_gb} GB some may fail (each one that fails is skipped)"
+    # about 2 GB per build job; an old laptop with no swap gets one job, or zett runs it out of memory
+    if [ "$DO_LOWEND" = 1 ] || [ "$mem_gb" -lt 8 ]; then
+        jobs=$(( (mem_gb + swap_gb) / 2 )); [ "$jobs" -ge 1 ] || jobs=1; [ "$jobs" -le 4 ] || jobs=4
+        info "building with $jobs job(s) at a time, to stay inside the memory"
+    fi
+    if [ "$mem_gb" -lt 6 ] && [ "$swap_gb" -lt 2 ]; then
+        warn "little memory and no swap: if a build dies, make a swap file once and run this again:"
+        warn "  sudo mkswap -U clear --size 4G --file /swapfile && sudo swapon /swapfile"
+    fi
+
     run sudo pacman -S --needed --noconfirm rust cmake clang pkgconf mpv qt6-base qt6-declarative qt6-svg qt6-shadertools \
         || warn "some build packages were not found"
     # Tela, the Zen browser build: a Firefox build takes hours, so the package itself comes
     # from its release (generic x86-64; runs on old laptops too)
+    local done_list=() failed=()
     if ! pacman -Q tela-zen >/dev/null 2>&1; then
         local pk; pk="$(mktemp -d)"
-        info "installing the Zen browser (Tela) from its release"
-        local url; url="$(curl -fsSL https://api.github.com/repos/SettDEF/tela-zen-browser/releases/latest | jq -r '.assets[] | select(.name | endswith(".pkg.tar.zst")) | .browser_download_url' | head -1)"
-        if [ -n "$url" ] && run curl -fL --progress-bar -o "$pk/tela-zen.pkg.tar.zst" "$url"; then
-            run sudo pacman -U --needed --noconfirm "$pk"/*.pkg.tar.zst || warn "the browser package did not install"
+        info "installing the Zen browser (Tela) from its release (115 MB)"
+        local url; url="$(curl -fsSL --connect-timeout 20 --max-time 60 https://api.github.com/repos/SettDEF/tela-zen-browser/releases/latest | jq -r '.assets[] | select(.name | endswith(".pkg.tar.zst")) | .browser_download_url' | head -1)"
+        if [ -n "$url" ] && run curl -fL --progress-bar --connect-timeout 20 --speed-time 60 --speed-limit 1000 -o "$pk/tela-zen.pkg.tar.zst" "$url"; then
+            run sudo pacman -U --needed --noconfirm "$pk"/*.pkg.tar.zst && done_list+=("browser") || { warn "the browser package did not install"; failed+=("browser"); }
         else
-            warn "could not download the browser package; skipped"
+            warn "could not download the browser package; skipped"; failed+=("browser")
         fi
         rm -rf "$pk"
     else
         info "the Zen browser (Tela) is already installed"
     fi
     run mkdir -p "$OWN_SRC"
-    # an old laptop: fewer build jobs, so the build does not run out of memory
-    local jobs=""; [ "$DO_LOWEND" = 1 ] && jobs=2
+    local n=0 total; total=$(wc -w <<<"$OWN_APPS")
     for app in $OWN_APPS; do
+        n=$((n + 1))
         local dir="$OWN_SRC/$app"
         if [ -d "$dir/.git" ]; then
             run git -C "$dir" pull --ff-only -q || warn "$app: could not update; building what is there"
         else
-            run git clone -q "https://github.com/SettDEF/$app.git" "$dir" || { warn "$app: could not clone; skipped"; continue; }
+            run git clone -q --depth 1 "https://github.com/SettDEF/$app.git" "$dir" || { warn "$app: could not clone; skipped"; failed+=("$app"); continue; }
         fi
-        info "building $app (this can take a while)"
+        info "[$n/$total] building $app"
         # the installer at the top, or in a folder named after the app (dotos/install.sh)
         local at="$dir"; [ -f "$dir/install.sh" ] || at="$dir/$app"
         if [ "$DRY" = 1 ]; then printf '   would: (cd %s && ./install.sh)\n' "$at"; continue; fi
-        ( cd "$at" && JOBS="$jobs" bash ./install.sh ) && info "$app installed" || warn "$app did not install; the shell works without it"
+        if own_build "$app" "$at" "$jobs"; then
+            done_list+=("$app"); info "$app installed"
+        else
+            failed+=("$app"); warn "$app did not install (its log: $OWN_SRC/.logs/$app.log); the shell works without it"
+        fi
         # a window of its own besides (arcade's chess: gui/install.sh)
         if [ -f "$at/gui/install.sh" ]; then
-            ( cd "$at/gui" && JOBS="$jobs" bash ./install.sh ) || warn "$app: its window did not install"
+            own_build "$app-window" "$at/gui" "$jobs" || { failed+=("$app-window"); warn "$app: its window did not install"; }
         fi
     done
+    [ "$DRY" = 1 ] && return
+    if [ ${#done_list[@]} -gt 0 ]; then info "your apps installed: ${done_list[*]}"; fi
+    [ ${#failed[@]} -eq 0 ] || warn "not installed: ${failed[*]} (run this again to retry just those; logs in $OWN_SRC/.logs)"
 }
 
 install_tela() {
