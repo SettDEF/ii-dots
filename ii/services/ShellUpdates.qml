@@ -33,6 +33,11 @@ Singleton {
     property string latest: ""
     property string error: ""
     property double lastChecked: 0
+    /// Upstream's head, and the one last announced (kept on disk: the in-memory "changed since the
+    /// last check" was lost on every restart, and each one stacked another notification)
+    property string upstream: ""
+    property string announced: ""
+    readonly property string stateDir: (Quickshell.env("XDG_STATE_HOME") || Quickshell.env("HOME") + "/.local/state") + "/quickshell/user"
     /// "142 · 7b929f8 · 2026-09-27", or "" outside a checkout.
     property string version: ""
 
@@ -107,18 +112,20 @@ Singleton {
              behind=$(git rev-list --count HEAD..@{u} 2>/dev/null || echo 0)
              dirty=$(git status --porcelain --untracked-files=no | head -c1)
              subject=$(git log -1 --pretty=%s @{u} 2>/dev/null)
-             printf '%s\\n%s\\n%s\\n' "$behind" "\${dirty:+1}" "$subject"`]
+             upstream=$(git rev-parse @{u} 2>/dev/null)
+             announced=$(cat '${root.stateDir}/shell-update.announced' 2>/dev/null)
+             printf '%s\\n%s\\n%s\\n%s\\n%s\\n' "$behind" "\${dirty:+1}" "$subject" "$upstream" "$announced"`]
         stdout: StdioCollector {
             onStreamFinished: {
                 const lines = text.split("\n");
-                const was = root.behind;
                 root.behind = parseInt(lines[0]) || 0;
                 root.dirty = lines[1]?.trim() === "1";
                 root.latest = (lines[2] ?? "").trim();
+                root.upstream = (lines[3] ?? "").trim();
+                root.announced = (lines[4] ?? "").trim();
                 root.lastChecked = Date.now();
-                // Only on a change, so a six-hourly check does not re-announce
-                // the same commit all day.
-                if (root.behind > 0 && root.behind !== was)
+                // Only for an upstream head not announced before, across restarts too
+                if (root.behind > 0 && root.upstream !== "" && root.upstream !== root.announced)
                     root.updateFound(root.behind, root.latest);
             }
         }
@@ -146,33 +153,60 @@ Singleton {
                 // pull is the reload.
                 notifyProc.summary = qsTr("Shell updated");
                 notifyProc.body = root.latest;
+                notifyProc.offerUpdate = false;
+                notifyProc.record = "";
             } else {
                 root.error = qsTr("Update failed — pull by hand to see why");
                 notifyProc.summary = qsTr("Shell update failed");
                 notifyProc.body = root.error;
+                notifyProc.offerUpdate = false;
+                notifyProc.record = "";
             }
             if (root.opts?.notify ?? true) notifyProc.running = true;
         }
     }
 
+    // One notification for the whole story: each one replaces the last (its id is kept on disk),
+    // so new commits, "updated" and "failed" do not pile up. "Update" on it applies. Its icon is a
+    // file of the shell's: system-software-update is not in every icon theme (Reversal: a
+    // missing-icon checkerboard).
     Process {
         id: notifyProc
         property string summary: ""
         property string body: ""
-        command: ["notify-send", "-a", "Shell", "-i", "system-software-update",
-                  notifyProc.summary, notifyProc.body]
+        property bool offerUpdate: false
+        /// the upstream head this one announces, recorded so it is not announced again
+        property string record: ""
+        command: ["bash", "-c",
+            `d="$1"; mkdir -p "$d"; id=$(cat "$d/shell-update.notify-id" 2>/dev/null)
+             [ -n "$4" ] && printf '%s' "$4" > "$d/shell-update.announced"
+             args=(-a Shell -i '${Directories.assetsPath}/icons/shell-update.svg' -p)
+             [ -n "$id" ] && args+=(-r "$id")
+             [ "$5" = 1 ] && args+=(-A update="Update")
+             notify-send "\${args[@]}" "$2" "$3" | { read -r nid && printf '%s' "$nid" > "$d/shell-update.notify-id"; cat; }`,
+            "_", root.stateDir, notifyProc.summary, notifyProc.body,
+            notifyProc.record, notifyProc.offerUpdate ? "1" : "0"]
+        stdout: StdioCollector {
+            onStreamFinished: {
+                if (text.trim() === "update") root.apply();
+            }
+        }
     }
 
     onUpdateFound: (count, subject) => {
+        notifyProc.record = root.upstream;
         if (root.opts?.autoApply ?? false) {
             if (root.canApply) { root.apply(); return; }
             // Dirty tree: say so rather than silently doing nothing.
             notifyProc.summary = qsTr("Shell update waiting");
             notifyProc.body = qsTr("%1 new commit(s), but you have uncommitted changes.").arg(count);
+            notifyProc.offerUpdate = false;
         } else {
-            notifyProc.summary = qsTr("Shell update available");
-            notifyProc.body = count === 1 ? subject
-                : qsTr("%1 new commits — latest: %2").arg(count).arg(subject);
+            // the count in the title, the latest change in the body: the body was cut off at "lates…"
+            notifyProc.summary = count === 1 ? qsTr("Shell update available")
+                : qsTr("Shell update: %1 new commits").arg(count);
+            notifyProc.body = subject;
+            notifyProc.offerUpdate = root.canApply;
         }
         if (root.opts?.notify ?? true) notifyProc.running = true;
     }
