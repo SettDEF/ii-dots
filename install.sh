@@ -47,7 +47,9 @@ RECOMMENDED_PKGS=(libnotify wl-clipboard networkmanager pipewire pipewire-pulse
                   wireplumber brightnessctl grim slurp cliphist hyprpicker
                   polkit-gnome xdg-utils jq curl
                   ddcutil
-                  syntax-highlighting       # code blocks in the AI chat
+                  # called by the shell's own commands (audio, visualiser, night light, wallpaper colours)
+                  alsa-utils libpulse cava hyprsunset imagemagick pacman-contrib procps-ng
+                  syntax-highlighting      # code blocks in the AI chat
                   # Applications the shell launches BY NAME. Without them the
                   # button is there and does nothing, which is worse than a
                   # feature that hides itself.
