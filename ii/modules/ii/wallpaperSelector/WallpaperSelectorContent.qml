@@ -913,7 +913,9 @@ notify-send -a "WallTune" -i "color-management" "WallTune" "Applied custom confi
 
                         function activateCurrent() {
                             const filePath = grid.model.get(currentIndex, "filePath")
-                            root.activatePath(filePath);
+                            // a folder opens here, in the picker (xdg-open sent it to the file manager)
+                            if (grid.model.get(currentIndex, "fileIsDir")) Wallpapers.setDirectory(FileUtils.trimFileProtocol(filePath));
+                            else root.activatePath(filePath);
                         }
 
                         model: Wallpapers.folderModel
@@ -937,7 +939,8 @@ notify-send -a "WallTune" -i "color-management" "WallTune" "Applied custom confi
                             }
                             
                             onActivated: {
-                                root.activatePath(fileModelData.filePath);
+                                if (fileModelData.fileIsDir) Wallpapers.setDirectory(FileUtils.trimFileProtocol(fileModelData.filePath));
+                                else root.activatePath(fileModelData.filePath);
                             }
                             onContextRequested: (mx, my) => {
                                 const p = mapToItem(root, mx, my);
