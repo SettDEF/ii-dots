@@ -530,7 +530,7 @@ if [ "$DO_HYPR" != 1 ]; then
     info "skipping (--no-hypr). Add this to your own config:"
     info "  exec-once = qs -c $NAME"
 elif [ -e "$HYPR_DIR/hyprland.lua" ]; then
-    warn "$HYPR_DIR already has this config (hyprland.lua) — left untouched."
+    ok "$HYPR_DIR has your config (from the dotfiles)"
     warn "To update it: bash $SRC/hypr/apply.sh $NAME"
 elif [ -d "$SRC/hypr" ]; then
     # a hyprland.conf here is Hyprland's own default (made on its first start) or archinstall's: kept aside
