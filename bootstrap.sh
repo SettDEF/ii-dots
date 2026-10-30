@@ -441,6 +441,11 @@ fi
 # ── 5. This config ──────────────────────────────────────────────────────────
 step "The config"
 SRC=""
+# A downloaded bootstrap.sh on its own (no clone around it, no --repo): this config's own repo,
+# not a question (it waited for an answer a chroot or su session did not show)
+if [ -z "$REPO_URL" ] && [ ! -d "$(dirname "${BASH_SOURCE[0]}")/ii" ]; then
+    REPO_URL="$DEFAULT_REPO"
+fi
 # Running from inside a clone is the common case: use it, and learn the URL
 # from it so --repo is not needed.
 if [ -d "$(dirname "${BASH_SOURCE[0]}")/ii" ]; then
