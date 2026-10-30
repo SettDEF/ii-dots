@@ -62,6 +62,7 @@ import qs.modules.ii.touchEdges
 // import qs.modules.ii.touchGestures
 
 Scope {
+    id: family
     // Always-loaded GlobalShortcuts for popup panels — registers with Hypr at
     // startup so the keybinds work even when the panels themselves are unloaded.
     Shortcuts {}
@@ -160,7 +161,10 @@ Scope {
     PanelLoader { component: WallpaperSelector {} }
     LazyPanelLoader { isOpen: GlobalStates.kbPickerOpen;          idleMs: 30 * 1000; component: KeyboardLayoutPicker {} }
     LazyPanelLoader { isOpen: GlobalStates.kbSettingsOpen;        idleMs: 30 * 1000; component: KeyboardSettings {} }
-    LazyPanelLoader { isOpen: GlobalStates.wallTuneOpen;          idleMs: 30 * 1000; component: WallTune {} }
+    // Look: built a few seconds after the shell starts and kept 10 min after a close, so it opens at once
+    property bool lookWarm: false
+    Timer { interval: 4000; running: true; onTriggered: { family.lookWarm = true; family.lookWarm = false } }
+    LazyPanelLoader { isOpen: GlobalStates.wallTuneOpen || family.lookWarm; idleMs: 10 * 60 * 1000; component: WallTune {} }
     LazyPanelLoader { isOpen: GlobalStates.dotosCaptureOpen;     idleMs: 5 * 60 * 1000; component: DotosCapture {} }
     LazyPanelLoader { isOpen: GlobalStates.shareOpen;            idleMs: 5 * 60 * 1000; component: SharePanel {} }
     LazyPanelLoader { isOpen: GlobalStates.nowPlayingOpen;       idleMs: 5 * 60 * 1000; component: NowPlayingDock {} }

@@ -14,10 +14,13 @@ import Quickshell.Io
 Scope {
     id: root
 
+    // built once and kept (the family's loader decides how long): opening only shows it, closing
+    // hides it once the slide out is done (it was built anew on every open and cut off on close)
     Loader {
-        active: GlobalStates.wallTuneOpen
+        active: true
         sourceComponent: PanelWindow {
             id: win
+            visible: GlobalStates.wallTuneOpen || panel.openT > 0
 
             // Esc closes. This used to come free with the focus grab; without it
             // the panel would only be closable from its own buttons.
@@ -51,11 +54,18 @@ Scope {
                 NumberAnimation { duration: 220; easing.type: Easing.OutCubic }
             }
 
-            onImplicitWidthChanged: PanelStack.register("walltune", implicitWidth)
-            Component.onCompleted: {
+            // in the stack only while open (it is kept built while hidden; hidden it must not push the others aside)
+            function stackIn() {
+                if (!GlobalStates.wallTuneOpen) return;
                 PanelStack.register("walltune", implicitWidth);
                 PanelStack.setHeight("walltune", panel.wantHeight);
             }
+            onImplicitWidthChanged: stackIn()
+            Connections {
+                target: GlobalStates
+                function onWallTuneOpenChanged() { if (GlobalStates.wallTuneOpen) win.stackIn(); else PanelStack.unregister("walltune") }
+            }
+            Component.onCompleted: stackIn()
             Component.onDestruction: PanelStack.unregister("walltune")
 
             // Shared width AND height. Sizing to content left this panel 640px
@@ -71,7 +81,7 @@ Scope {
             implicitHeight: ScreenFit.maxHeight(win)
             Connections {
                 target: panel
-                function onWantHeightChanged() { PanelStack.setHeight("walltune", panel.wantHeight); }
+                function onWantHeightChanged() { if (GlobalStates.wallTuneOpen) PanelStack.setHeight("walltune", panel.wantHeight); }
             }
 
             mask: Region { item: panel }
