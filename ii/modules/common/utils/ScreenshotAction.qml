@@ -30,16 +30,27 @@ Singleton {
     property string imageSearchEngineBaseUrl: Config.options.search.imageSearch.imageSearchEngineBaseUrl
     property string fileUploadApiEndpoint: "https://uguu.se/upload"
 
+    readonly property string cropFunction: 'crop() { t="$HOME/.local/bin/tinct"; [ -x "$t" ] || t=tinct; '
+        + '"$t" image crop "$@" 2>/dev/null || magick "$1" -crop "$2" +repage "png:$3"; }; '
+
     function getCommand(x, y, width, height, screenshotPath, action, saveDir = "") {
+        const c = root.command(x, y, width, height, screenshotPath, action, saveDir);
+        if (c && c[0] === "bash" && c[1] === "-c")
+            c[2] = root.cropFunction + c[2];
+        return c;
+    }
+
+    function command(x, y, width, height, screenshotPath, action, saveDir) {
         // Set command for action
         const rx = Math.round(x);
         const ry = Math.round(y);
         const rw = Math.round(width);
         const rh = Math.round(height);
-        // tinct image crop SRC GEOMETRY DST; DST "-" is PNG on stdout.
-        const cropBase = `"$HOME/.local/bin/tinct" image crop '${StringUtils.shellSingleQuoteEscape(screenshotPath)}' `
+        // crop SRC GEOMETRY DST (DST "-" is PNG on stdout): tinct image crop, else ImageMagick. The
+        // released tinct has no `image` command: the crop printed nothing and the clipboard got an
+        // empty picture.
+        const cropBase = `crop '${StringUtils.shellSingleQuoteEscape(screenshotPath)}' `
             + `${rw}x${rh}+${Math.max(0, rx)}+${Math.max(0, ry)}`
-        const cropToStdout = `${cropBase} -`
         const gifFlag = Persistent.states.snip.gif ? " --gif" : "";
         const cropInPlace = `${cropBase} '${StringUtils.shellSingleQuoteEscape(screenshotPath)}'`
         const cleanup = `rm '${StringUtils.shellSingleQuoteEscape(screenshotPath)}'`
@@ -54,9 +65,11 @@ Singleton {
                     // Not saving — just copy to clipboard. `--type image/png`
                     // so wl-copy never has to guess the MIME type. A trace is
                     // left at /tmp/quickshell-snip-copy.log for debugging.
+                    // through a file, so a crop that fails copies nothing rather than an empty picture
                     return ["bash", "-c",
                         `exec 2>/tmp/quickshell-snip-copy.log; set -x; `
-                        + `${cropToStdout} | wl-copy --type image/png && ${cleanup}`]
+                        + `out=$(mktemp --suffix=.png) && ${cropBase} "$out" && wl-copy --type image/png < "$out"; `
+                        + `rm -f "$out"; ${cleanup}`]
                     break;
                 }
                 // Save + copy. Write the crop to the file first, then copy

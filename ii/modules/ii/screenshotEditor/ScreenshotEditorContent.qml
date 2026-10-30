@@ -87,7 +87,8 @@ Item {
             [ -f "$src" ] || { notify-send -a Screenshot -u critical "Screenshot not saved" "The picture is gone: $src"; exit 1; }
             mkdir -p "$(dirname "$out")"
             size=$(magick identify -format "%wx%h" "$src")
-            "$HOME/.local/bin/tinct" image composite "$src" "$overlay" "$size" "$out" || { notify-send -a Screenshot -u critical "Screenshot not saved" "tinct could not merge the marks"; exit 1; }
+            # the released tinct has no image command: ImageMagick merges the marks then
+            "$HOME/.local/bin/tinct" image composite "$src" "$overlay" "$size" "$out" 2>/dev/null || magick "$overlay" -resize "$size!" "$src" +swap -composite "$out" || { notify-send -a Screenshot -u critical "Screenshot not saved" "could not merge the marks"; exit 1; }
             [ -n "$crop" ] && magick "$out" -crop "$crop" +repage "$out"
             wl-copy < "$out"
             rm -f "$overlay"

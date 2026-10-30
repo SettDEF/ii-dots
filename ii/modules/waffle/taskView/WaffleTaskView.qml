@@ -76,8 +76,10 @@ Scope {
         }
     }
 
+    // its own target: as "search" it took that name from the start menu (`qs ipc call search open`
+    // showed the task view, and the start menu's handler was unused)
     IpcHandler {
-        target: "search"
+        target: "taskView"
 
         function toggle() {
             GlobalStates.overviewOpen = !GlobalStates.overviewOpen;

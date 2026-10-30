@@ -984,6 +984,8 @@ switch() {
     fi
     [[ -n "$type_flag" ]] && tinct_args+=(--scheme "$type_flag")
     tinct_args+=(--termscheme "$terminalscheme" --blend_bg_fg)
+    # the cache and the colors land here: on a fresh home it did not exist and tinct failed
+    mkdir -p "$STATE_DIR/user/generated"
     tinct_args+=(--cache "$STATE_DIR/user/generated/color.txt")
 
     pre_process "$mode_flag"

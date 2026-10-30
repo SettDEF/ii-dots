@@ -298,8 +298,30 @@ install_config() {
     # and every one of them fails quietly without it. It is a static musl
     # binary from its own releases, so no Rust toolchain is needed here.
     install_tinct
+    install_venv
 
     info "installed"
+}
+
+# ── Python for the shell's scripts ──────────────────────────────────────────
+# The snip's window regions (find_regions.py, OpenCV with its contrib modules),
+# thumbnails and the keybind list run in ILLOGICAL_IMPULSE_VIRTUAL_ENV. Nothing
+# created it, so the snip logged a JSON.parse error on every use.
+install_venv() {
+    local venv="$HOME/.local/state/quickshell/.venv"
+    if [ -x "$venv/bin/python" ] && "$venv/bin/python" -c 'import cv2; cv2.ximgproc' 2>/dev/null; then
+        info "python environment already there"; return
+    fi
+    command -v python3 >/dev/null 2>&1 || { warn "no python3: the snip's window regions will not work"; return; }
+    if [ "$DRY" = 1 ]; then
+        printf '   would: create %s with OpenCV, numpy, click, loguru, tqdm\n' "$venv"
+        return
+    fi
+    info "python environment for the shell's scripts (about 60 MB)"
+    # system site packages: PyGObject (gi) comes from the distribution
+    python3 -m venv --system-site-packages "$venv" \
+        && "$venv/bin/pip" install -q opencv-contrib-python-headless numpy click loguru tqdm \
+        || warn "python environment incomplete: the snip's window regions will not work"
 }
 
 

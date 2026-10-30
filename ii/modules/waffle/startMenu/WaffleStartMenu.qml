@@ -58,6 +58,9 @@ Scope {
 
             StartMenuContent {
                 id: content
+                // the screen less the taskbar and a gap above and below
+                maxWidth: (panelWindow.screen?.width ?? 1920) - 32
+                maxHeight: (panelWindow.screen?.height ?? 1080) - 96
                 anchors.fill: parent
                 focus: true
 
@@ -84,6 +87,7 @@ Scope {
     }
 
     IpcHandler {
+        id: searchIpc
         target: "search"
 
         function toggle() {
@@ -98,6 +102,29 @@ Scope {
         function toggleReleaseInterrupt() {
             GlobalStates.superReleaseMightTrigger = false;
         }
+        /// Bound to the Super RELEASE: toggles only for a bare tap (no key or click since Super
+        /// went down, not held long), as ii's overview does
+        function releaseToggle() {
+            const interrupted = GlobalStates.superInterruptTime >= GlobalStates.superPressTime - 30;
+            if (interrupted || Date.now() - GlobalStates.superPressTime > 800) return;
+            GlobalStates.searchOpen = !GlobalStates.searchOpen;
+        }
+    }
+
+    // What the Super key's release bind sends (hypr keybinds: quickshell:searchReleaseTap). Only
+    // ii's overview had it, so in this family tapping Super did nothing.
+    GlobalShortcut {
+        name: "searchReleaseTap"
+        description: "Super tap released: toggle the start menu unless it was a combo"
+        // Whichever event arrives, once per Super press.
+        property real handledPress: -1
+        function handle() {
+            if (GlobalStates.superPressTime === handledPress) return;
+            handledPress = GlobalStates.superPressTime;
+            searchIpc.releaseToggle();
+        }
+        onPressed: handle()
+        onReleased: handle()
     }
 
     GlobalShortcut {
