@@ -32,8 +32,9 @@ PROFILE="recommended"
 CHOSE_PROFILE=0
 # auto: let install.sh decide from the profile (on for full and rog).
 TELA=auto
-# your own apps from their private repos (reel, zash, zeit, zett), through a GitHub login
-OWN=0
+# your own apps from their private repos (reel, zash, zeit, zett), through a GitHub login: on, the
+# menu's `a` or --no-own-apps turns it off (without a login they are skipped, the rest installs)
+OWN=1
 # Not published yet, so opt-in; install.sh says so too.
 QUARRY=auto
 NAME="ii"
@@ -85,8 +86,9 @@ Options
   -p, --profile P    minimal | core | recommended | full | rog | low-end
                      Passed through to install.sh.     (default: recommended)
       --low-end      Tune for weak hardware. Passed through to install.sh.
-      --with-own-apps  Also build your own apps (reel, zash, zeit, zett) from their
-                     private repos; asks you to log in to GitHub once.
+      --with-own-apps  Build your own apps (reel, zash, zeit, zett) from their private
+                     repos; asks you to log in to GitHub once. On by default.
+      --no-own-apps    Skip them.
       --with-tela    Also install Tela, the browser. On by default for the
                      full and rog profiles; this forces it on for any.
       --no-tela      Never install Tela, whatever the profile.
@@ -121,6 +123,7 @@ while [ $# -gt 0 ]; do
         --low-end)    LOWEND=1; shift ;;
         --no-hypr)    DO_HYPR=0; shift ;;
         --with-own-apps) OWN=1; shift ;;
+        --no-own-apps) OWN=0; shift ;;
         --with-tela)  TELA=1; shift ;;
         --no-tela)    TELA=0; shift ;;
         --with-quarry) QUARRY=1; shift ;;
@@ -204,6 +207,7 @@ menu() {
         printf '   h  Hyprland      %s%s%s\n' "$DIM" "$([ "$DO_HYPR" = 1 ] && echo "write a starter config" || echo "leave mine alone")" "$R"
         printf '   b  Browser       %s%s%s\n' "$DIM" "$(case "$TELA" in 1) echo "install Tela";; 0) echo "do not install Tela";; *) echo "install Tela on the full and ROG profiles";; esac)" "$R"
         printf '   w  Wall search   %s%s%s\n' "$DIM" "$([ "$QUARRY" = 1 ] && echo "install quarry" || echo "scan ~/Pictures/Wallpapers only")" "$R"
+        printf '   a  Own apps      %s%s%s\n' "$DIM" "$([ "$OWN" = 1 ] && echo "build reel, zash, zeit, zett (GitHub login)" || echo "skip them")" "$R"
         printf '   d  Dry run       %sshow what would happen, change nothing%s\n' "$DIM" "$R"
         printf '   q  Quit\n\n'
         choice=$(ask "  Choice, or Enter to install" "")
@@ -217,6 +221,7 @@ menu() {
             h) DO_HYPR=$([ "$DO_HYPR" = 1 ] && echo 0 || echo 1) ;;
             b) case "$TELA" in 1) TELA=0 ;; 0) TELA=auto ;; *) TELA=1 ;; esac ;;
             w) case "$QUARRY" in 1) QUARRY=0 ;; *) QUARRY=1 ;; esac ;;
+            a) OWN=$([ "$OWN" = 1 ] && echo 0 || echo 1) ;;
             d) DRY=1; return ;;
             q) warn "nothing done"; exit 0 ;;
             "") return ;;
