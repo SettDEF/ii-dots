@@ -32,6 +32,8 @@ PROFILE="recommended"
 CHOSE_PROFILE=0
 # auto: let install.sh decide from the profile (on for full and rog).
 TELA=auto
+# your own apps from their private repos (reel, zash, zeit, zett), through a GitHub login
+OWN=0
 # Not published yet, so opt-in; install.sh says so too.
 QUARRY=auto
 NAME="ii"
@@ -83,6 +85,8 @@ Options
   -p, --profile P    minimal | core | recommended | full | rog | low-end
                      Passed through to install.sh.     (default: recommended)
       --low-end      Tune for weak hardware. Passed through to install.sh.
+      --with-own-apps  Also build your own apps (reel, zash, zeit, zett) from their
+                     private repos; asks you to log in to GitHub once.
       --with-tela    Also install Tela, the browser. On by default for the
                      full and rog profiles; this forces it on for any.
       --no-tela      Never install Tela, whatever the profile.
@@ -116,6 +120,7 @@ while [ $# -gt 0 ]; do
         -p|--profile) PROFILE="${2:?--profile needs a value}"; CHOSE_PROFILE=1; shift 2 ;;
         --low-end)    LOWEND=1; shift ;;
         --no-hypr)    DO_HYPR=0; shift ;;
+        --with-own-apps) OWN=1; shift ;;
         --with-tela)  TELA=1; shift ;;
         --no-tela)    TELA=0; shift ;;
         --with-quarry) QUARRY=1; shift ;;
@@ -404,6 +409,7 @@ fi
 INSTALL_ARGS=(-n "$NAME" -p "$PROFILE" -y)
 [ "$LOWEND" = 1 ] && INSTALL_ARGS+=(--low-end)
 case "$TELA" in 1) INSTALL_ARGS+=(--with-tela) ;; 0) INSTALL_ARGS+=(--no-tela) ;; esac
+[ "$OWN" = 1 ] && INSTALL_ARGS+=(--with-own-apps)
 case "$QUARRY" in 1) INSTALL_ARGS+=(--with-quarry) ;; 0) INSTALL_ARGS+=(--no-quarry) ;; esac
 [ "$DRY" = 1 ] && INSTALL_ARGS+=(--dry-run)
 info "handing over to install.sh ${INSTALL_ARGS[*]}"

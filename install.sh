@@ -25,6 +25,8 @@ ASSUME_YES=0
 DO_LOWEND=0
 # auto: on for the `full` and `rog` profiles, off otherwise. --with-tela/--no-tela pin it.
 DO_TELA=auto
+# your own apps from their private repos (--with-own-apps)
+DO_OWN=0
 # quarry is a real shell dependency (the wallpaper picker) but is not published
 # yet, so it stays opt-in until it is.
 DO_QUARRY=auto
@@ -89,6 +91,8 @@ Options
       --polkit          Install the polkit rules for the net and ROG tools.
                         Needs root and grants the installing user passwordless
                         access to those specific actions. Off by default.
+      --with-own-apps   Also build your own apps from their private repos
+                        (reel, zash, zeit, zett): logs in to GitHub with gh once.
       --with-tela       Also install Tela, the browser (github.com/SettDEF/tela-zen).
                         On by default for the 'full' and 'rog' profiles. It is
                         the slow part: qt6-webengine plus a Rust build.
@@ -124,6 +128,7 @@ while [ $# -gt 0 ]; do
         --no-deps)    DO_DEPS=0; shift ;;
         --with-tela)  DO_TELA=1; shift ;;
         --no-tela)    DO_TELA=off; shift ;;
+        --with-own-apps) DO_OWN=1; shift ;;
         --with-quarry) DO_QUARRY=1; shift ;;
         --no-quarry)  DO_QUARRY=off; shift ;;
         -y|--yes)     ASSUME_YES=1; shift ;;
@@ -386,6 +391,38 @@ install_companion() {
     fi
 }
 
+# ── your own apps (private repos) ─────────────────────────────────────────────
+# reel (media player: copied links and media files open in it), zash (the terminal the
+# keybinds open), zeit (its multiplexer), zett (the editor). Private on GitHub, so they
+# come through a logged-in `gh`, are built here (Rust; slow on an old laptop) and
+# installed by each app's own install.sh. Off unless --with-own-apps.
+OWN_APPS="${QS_OWN_APPS:-reel zash zeit zett}"
+OWN_SRC="${QS_OWN_SRC:-$HOME/.local/src}"
+install_own_apps() {
+    [ "$DO_OWN" = 1 ] || { info "skipping your own apps (--with-own-apps builds $OWN_APPS)"; return; }
+    command -v pacman >/dev/null 2>&1 || { warn "own apps: Arch only; skipped"; return; }
+    run sudo pacman -S --needed --noconfirm github-cli rust cmake clang pkgconf mpv qt6-base qt6-declarative qt6-svg qt6-shadertools \
+        || warn "some build packages were not found"
+    if [ "$DRY" != 1 ] && ! gh auth status >/dev/null 2>&1; then
+        info "the apps are private: log in to GitHub once"
+        gh auth login </dev/tty || { warn "not logged in to GitHub; your own apps skipped"; return; }
+    fi
+    run mkdir -p "$OWN_SRC"
+    # an old laptop: fewer build jobs, so the build does not run out of memory
+    local jobs=""; [ "$DO_LOWEND" = 1 ] && jobs=2
+    for app in $OWN_APPS; do
+        local dir="$OWN_SRC/$app"
+        if [ -d "$dir/.git" ]; then
+            run git -C "$dir" pull --ff-only -q || warn "$app: could not update; building what is there"
+        else
+            run gh repo clone "SettDEF/$app" "$dir" -- -q || { warn "$app: could not clone; skipped"; continue; }
+        fi
+        info "building $app (this can take a while)"
+        if [ "$DRY" = 1 ]; then printf '   would: (cd %s && ./install.sh)\n' "$dir"; continue; fi
+        ( cd "$dir" && JOBS="$jobs" ./install.sh ) && info "$app installed" || warn "$app did not install; the shell works without it"
+    done
+}
+
 install_tela() {
     case "$DO_TELA" in
         1)   ;;
@@ -558,6 +595,7 @@ install_packages
 install_config
 install_tela
 install_quarry
+install_own_apps
 install_polkit
 low_end_tuning
 report_gaps
