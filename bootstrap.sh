@@ -556,6 +556,10 @@ else
 fi
 
 # ── 7. What to do now ───────────────────────────────────────────────────────
+step "Health check"
+# Hyprland --verify-config, the shell, zsh, apps, sound, fonts; again any time with: bash doctor.sh
+[ "$DRY" = 1 ] || bash "$SRC/doctor.sh" || warn "some checks failed: the → lines say what to do (again: bash $SRC/doctor.sh)"
+
 step "Done"
 cat <<EOF
 
