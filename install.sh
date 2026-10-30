@@ -91,8 +91,8 @@ Options
       --polkit          Install the polkit rules for the net and ROG tools.
                         Needs root and grants the installing user passwordless
                         access to those specific actions. Off by default.
-      --with-own-apps   Also build your own apps from their private repos
-                        (reel, zash, zeit, zett): logs in to GitHub with gh once.
+      --with-own-apps   Also your own apps from their private repos: the Zen browser
+                        package, and reel, zash, zeit, zett built; logs in to GitHub once.
       --with-tela       Also install Tela, the browser (github.com/SettDEF/tela-zen).
                         On by default for the 'full' and 'rog' profiles. It is
                         the slow part: qt6-webengine plus a Rust build.
@@ -406,6 +406,20 @@ install_own_apps() {
     if [ "$DRY" != 1 ] && ! gh auth status >/dev/null 2>&1; then
         info "the apps are private: log in to GitHub once"
         gh auth login </dev/tty || { warn "not logged in to GitHub; your own apps skipped"; return; }
+    fi
+    # Tela, the Zen browser build: a Firefox build takes hours, so the package itself comes
+    # from its private release (generic x86-64; runs on old laptops too)
+    if ! pacman -Q tela-zen >/dev/null 2>&1; then
+        local pk; pk="$(mktemp -d)"
+        info "installing the Zen browser (Tela) from its release"
+        if run gh release download --repo SettDEF/tela-zen-browser --pattern '*.pkg.tar.zst' -D "$pk"; then
+            run sudo pacman -U --needed --noconfirm "$pk"/*.pkg.tar.zst || warn "the browser package did not install"
+        else
+            warn "could not download the browser package; skipped"
+        fi
+        rm -rf "$pk"
+    else
+        info "the Zen browser (Tela) is already installed"
     fi
     run mkdir -p "$OWN_SRC"
     # an old laptop: fewer build jobs, so the build does not run out of memory
