@@ -54,8 +54,23 @@ Singleton {
     function select(id) {
         if (id === current) return;
         Config.options.appearance.wallpaperTheming.exactTheme = id;
+        quickApply(id);
         apply();
     }
+
+    /// A pick shows at once: tinct writes the shell's colours file itself (~20 ms; the file watcher
+    /// recolours the shell). switchwall, run after, does the apps; its own colours file is the same.
+    function quickApply(id) {
+        if (id === "") return;
+        const out = Directories.generatedMaterialThemePath;
+        const wall = Config.options.background.wallpaperPath ?? "";
+        const fill = root.fill === "wallpaper" && /\.(png|jpe?g|webp|bmp|gif)$/i.test(wall) ? ["--fill-from", FileUtils.trimFileProtocol(wall)] : [];
+        quickProc.command = ["sh", "-c", '"$0" generate "$@" --out-json "$OUT.tmp" > /dev/null && mv -f "$OUT.tmp" "$OUT"',
+                             root.tinct, "--theme", id].concat(fill);
+        quickProc.environment = { OUT: out };
+        quickProc.running = true;
+    }
+
 
     function setColor(name, value) {
         const o = Object.assign({}, overrides);
@@ -211,6 +226,8 @@ Singleton {
             applyProc.running = true;
         }
     }
+
+    Process { id: quickProc }
 
     Process {
         id: applyProc

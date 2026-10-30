@@ -76,12 +76,9 @@ Singleton {
         onFileChanged: {
             this.reload()
         }
-        onLoadedChanged: {
-            if (loaded) {
-                const fileContent = themeFileView.text()
-                root.applyColors(fileContent)
-            }
-        }
+        // every finished read (a reload of a file already loaded leaves `loaded` true, so onLoadedChanged
+        // missed every switch after the first)
+        onLoaded: root.applyColors(themeFileView.text())
         onLoadFailed: root.resetFilePathNextTime();
     }
 
