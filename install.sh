@@ -403,7 +403,7 @@ install_companion() {
 # dotos (tasks), sinew (workouts), kalends (calendar), arcade (games, chess), prog (progress cards): they
 # are cloned from GitHub (public, no login), built here (Rust; slow on an old laptop) and
 # installed by each app's own install.sh. Off unless --with-own-apps.
-OWN_APPS="${QS_OWN_APPS:-reel zash zash-prompt zeit zett dotos sinew kalends arcade prog loom}"
+OWN_APPS="${QS_OWN_APPS:-reel zash zash-prompt zeit zett dotos sinew kalends arcade prog loom tinct-cast}"
 OWN_SRC="${QS_OWN_SRC:-$HOME/.local/src}"
 
 # A long silent build looks like a hang: a line a minute while one runs, its output in a log.
