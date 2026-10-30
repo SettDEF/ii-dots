@@ -203,10 +203,14 @@ PanelSheet {
                                 }
 
                                 // the picker: the theme's own colours, then a hex
-                                ColumnLayout {
-                                    visible: varRow.open
+                                // built only while its row is open (closed, every row kept its swatches and re-ran
+                                // them all on each theme switch: ~4000 bindings)
+                                Loader {
+                                    active: varRow.open
+                                    visible: active
                                     Layout.fillWidth: true
                                     Layout.margins: 8
+                                    sourceComponent: ColumnLayout {
                                     spacing: 8
 
                                     Flow {
@@ -306,6 +310,7 @@ PanelSheet {
                                             visible: hex.activeFocus
                                         }
                                     }
+                                }
                                 }
                             }
                         }
