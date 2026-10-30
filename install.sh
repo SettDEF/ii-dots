@@ -477,6 +477,17 @@ install_own_apps() {
         else
             run git clone -q --depth 1 "https://github.com/SettDEF/$app.git" "$dir" || { warn "$app: could not clone; skipped"; failed+=("$app"); continue; }
         fi
+        # a ready-built release (APP-VER-x86_64.tar.zst of what it installs under ~): no compiling on a small laptop
+        local asset
+        asset=$(curl -fsS --max-time 20 "https://api.github.com/repos/SettDEF/$app/releases/latest" 2>/dev/null \
+            | grep -oE '"browser_download_url": *"[^"]*-x86_64\.tar\.zst"' | head -1 | sed -E 's/.*"(https[^"]+)"/\1/') || true
+        if [ -n "$asset" ] && [ "$DRY" != 1 ] && [ "${QS_BUILD_OWN:-0}" != 1 ]; then
+            info "[$n/$total] $app: the ready-built release"
+            if curl -fsSL --max-time 300 "$asset" | tar --zstd --no-overwrite-dir -xf - -C "$HOME"; then
+                done_list+=("$app"); info "$app installed (${asset##*/})"; continue
+            fi
+            warn "$app: the release did not download; building it instead"
+        fi
         info "[$n/$total] building $app"
         # the installer at the top, or in a folder named after the app (dotos/install.sh)
         local at="$dir"; [ -f "$dir/install.sh" ] || [ -f "$dir/scripts/install.sh" ] || at="$dir/$app"
@@ -512,8 +523,18 @@ install_quarry() {
         off) info "skipping quarry (--no-quarry)"; return ;;
         *)   info "skipping quarry (--with-quarry installs it)"; return ;;
     esac
-    install_companion "quarry" "$QUARRY_REPO" "quarryd" \
-        "the wallpaper picker's search backend"
+    # the release's ready-built Arch package first (no compiling); else built from source
+    local pkg
+    pkg=$(curl -fsS --max-time 20 "https://api.github.com/repos/$QUARRY_REPO/releases/latest" 2>/dev/null \
+        | grep -oE '"browser_download_url": *"[^"]*\.pkg\.tar\.zst"' | head -1 | sed -E 's/.*"(https[^"]+)"/\1/') || true
+    if [ -n "$pkg" ] && [ "$DRY" != 1 ] && [ "${QS_BUILD_OWN:-0}" != 1 ] \
+       && curl -fsSL --max-time 300 -o "/tmp/${pkg##*/}" "$pkg" \
+       && sudo pacman -U --needed --noconfirm "/tmp/${pkg##*/}"; then
+        info "quarry installed (${pkg##*/})"; rm -f "/tmp/${pkg##*/}"
+    else
+        install_companion "quarry" "$QUARRY_REPO" "quarryd" \
+            "the wallpaper picker's search backend"
+    fi
 
     # The shell reaches quarryd over a unix socket, so the daemon has to be
     # running -- an installed binary that nothing starts leaves the picker on
