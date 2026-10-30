@@ -17,7 +17,7 @@ CONFIG_FILE="$HOME/.config/illogical-impulse/config.json"
 RECORDING_DIR=$(jq -r '.screenRecord.savePath // empty' "$CONFIG_FILE" 2>/dev/null)
 # The root disk is nearly full; never default to it.
 if [[ -z "$RECORDING_DIR" || "$RECORDING_DIR" == "$HOME" ]]; then
-    [[ -d /mnt/storage/Videos ]] && RECORDING_DIR=/mnt/storage/Videos/Recordings || RECORDING_DIR="$HOME/Videos/Recordings"
+    . "$HOME/.config/paths.env" 2>/dev/null; RECORDING_DIR="${VIDEOS_DIR:-$HOME/Videos}/Recordings"
 fi
 
 notify() { notify-send "$1" "$2" -a 'Recorder' & disown; }

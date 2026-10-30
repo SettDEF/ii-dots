@@ -125,6 +125,6 @@ ColumnLayout {
 
     WidgetLaunchRow {
         appName: "Timos"
-        appPath: "/mnt/storage/dev/projects/desktop/timos/timos.qml"
+        appPath: Paths.projects + "/desktop/timos/timos.qml"
     }
 }

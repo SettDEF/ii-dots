@@ -195,7 +195,7 @@ outside, not by reading the diff.
 
 - `[impact: high | effort: M | risk: low]` Noise suppression has no plugin. Either
   `noise-suppression-for-voice` from the AUR (needs your call — it is a package
-  install), or the Rust denoiser in `/mnt/storage/dev/projects/denoise` as a
+  install), or the Rust denoiser in `$PROJECTS_DIR/denoise` as a
   LADSPA/LV2 plugin, which is Phase 2 of that project.
 - `[impact: med | effort: S | risk: low]` High-pass is wired but **never switched
   on and listened to**. It builds a filter-chain that creates a virtual source;
