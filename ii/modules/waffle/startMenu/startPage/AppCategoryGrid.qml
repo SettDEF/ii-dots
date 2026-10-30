@@ -13,10 +13,13 @@ import qs.modules.waffle.looks
 Rectangle {
     id: root
     property AggregatedAppCategoryModel aggregatedCategory
+    // the categories every named group takes; "Other" (rest) gets what none of them does
+    readonly property list<string> namedCategories: ["Development", "Education", "Network", "Office", "Utility", "Science", "AudioVideo", "Graphics", "Settings", "System"]
     property list<DesktopEntry> desktopEntries: [...DesktopEntries.applications.values.filter(app => {
         const appCategories = app.categories;
         const gridCategories = root.aggregatedCategory.categories;
-        return appCategories.some(cat => gridCategories.indexOf(cat) !== -1);
+        if (appCategories.some(cat => gridCategories.indexOf(cat) !== -1)) return true;
+        return root.aggregatedCategory.rest && !appCategories.some(cat => root.namedCategories.indexOf(cat) !== -1);
     })].sort((a, b) => a.name.localeCompare(b.name));
 
     property Item windowRootItem: {
