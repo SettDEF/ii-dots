@@ -5,7 +5,7 @@
 #   replay.sh           start the buffer, or stop it if it is running
 #   replay.sh save      save the last 60 s (starts the buffer if it is off)
 
-DIR=/mnt/storage/Videos/Replays
+DIR=/mnt/storage/Videos/Replays; [[ -d /mnt/storage/Videos ]] || DIR="$HOME/Videos/Replays"   # that disk only where mounted
 SECONDS_KEPT=60
 PATTERN='^gpu-screen-recorder .* -r '
 
