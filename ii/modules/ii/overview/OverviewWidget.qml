@@ -434,6 +434,14 @@ Item {
                     scale: root.scale
                     widgetMonitor: HyprlandData.monitors.find(m => m.id == root.monitor.id)
                     windowData: windowByAddress[address]
+                    // the windows of this workspace on this same spot and size: drawn as layers,
+                    // the most recently used in front (a lower focusHistoryID)
+                    readonly property var stackPeers: (root.visibleWindows ?? []).map(t => windowByAddress[`0x${t.HyprlandToplevel.address}`])
+                        .filter(w => w && windowData && w.workspace.id === windowData.workspace.id
+                            && Math.abs(w.at[0] - windowData.at[0]) < 12 && Math.abs(w.at[1] - windowData.at[1]) < 12
+                            && Math.abs(w.size[0] - windowData.size[0]) < 12 && Math.abs(w.size[1] - windowData.size[1]) < 12)
+                    layerCount: Math.max(1, stackPeers.length)
+                    layerDepth: stackPeers.filter(w => (w.focusHistoryID ?? 0) > (windowData?.focusHistoryID ?? 0)).length
 
                     property bool atInitPosition: (initX == x && initY == y)
 
@@ -474,8 +482,8 @@ Item {
                         repeat: false
                         running: false
                         onTriggered: {
-                            window.x = Math.round(xWithinWorkspaceWidget + xOffset)
-                            window.y = Math.round(yWithinWorkspaceWidget + yOffset)
+                            window.x = Math.round(xWithinWorkspaceWidget + xOffset + window.layerDepth * window.layerStep)
+                            window.y = Math.round(yWithinWorkspaceWidget + yOffset + window.layerDepth * window.layerStep)
                         }
                     }
 
@@ -493,6 +501,7 @@ Item {
                           // smaller-on-top order below put the biggest window, it, at the bottom)
                           + ((windowData?.fullscreen ?? 0) !== 0 ? 2000 : 0)
                           + (windowData?.floating ? 1000 : 0)
+                          + window.layerDepth   // the layer in front above the ones behind
                           + Math.max(0, 900 - Math.round(windowArea / 10000))
                     Drag.hotSpot.x: width / 2
                     Drag.hotSpot.y: height / 2

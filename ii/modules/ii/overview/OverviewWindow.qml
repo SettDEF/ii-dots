@@ -26,20 +26,25 @@ Item { // Window
         const monitorHeight = monitorData.transform & 1 ? monitorData.width : monitorData.height;
         return (widgetHeight * monitorData.scale) / (monitorHeight * widgetMonitor.scale);
     }
+    // windows stacked on one spot (a max or monocle layout) fan out as layers: each one further
+    // forward sits layerStep further right and down, and the stack keeps inside its rect
+    property int layerDepth: 0
+    property int layerCount: 1
+    property real layerStep: 10
     property real initX: {
-        return Math.max((windowData?.at[0] - (monitorData?.x ?? 0) - monitorData?.reserved[0]) * widthRatio * root.scale, 0) + xOffset;
+        return Math.max((windowData?.at[0] - (monitorData?.x ?? 0) - monitorData?.reserved[0]) * widthRatio * root.scale, 0) + xOffset + layerDepth * layerStep;
     }
 
     property real initY: {
-        return Math.max((windowData?.at[1] - (monitorData?.y ?? 0) - monitorData?.reserved[1]) * heightRatio * root.scale, 0) + yOffset;
+        return Math.max((windowData?.at[1] - (monitorData?.y ?? 0) - monitorData?.reserved[1]) * heightRatio * root.scale, 0) + yOffset + layerDepth * layerStep;
     }
     property real xOffset: 0
     property real yOffset: 0
     property var widgetMonitor
     property int widgetMonitorId: widgetMonitor.id
 
-    property var targetWindowWidth: windowData?.size[0] * scale * widthRatio
-    property var targetWindowHeight: windowData?.size[1] * scale * heightRatio
+    property var targetWindowWidth: windowData?.size[0] * scale * widthRatio - (layerCount - 1) * layerStep
+    property var targetWindowHeight: windowData?.size[1] * scale * heightRatio - (layerCount - 1) * layerStep
     property bool hovered: false
     property bool pressed: false
     property bool keyboardSelected: false
