@@ -33,7 +33,8 @@ GridLayout {
             categories: ["Settings", "System"]
         }), aggAppCatComp.createObject(null, {
             name: Translation.tr("Other"),
-            categories: ["Game"]
+            categories: ["Game"],
+            rest: true
         }), 
     ]
 
@@ -42,6 +43,8 @@ GridLayout {
         delegate: AppCategory {
             required property var modelData
             aggregatedCategory: modelData
+            // an empty category is not shown (Windows does not show one)
+            visible: hasApps
         }
     }
 
@@ -50,6 +53,7 @@ GridLayout {
     component AppCategory: Item {
         id: categoryItem
         property AggregatedAppCategoryModel aggregatedCategory
+        readonly property bool hasApps: categoryGrid.desktopEntries.length > 0
         implicitWidth: categoryLayout.implicitWidth
         implicitHeight: categoryLayout.implicitHeight
         ColumnLayout {

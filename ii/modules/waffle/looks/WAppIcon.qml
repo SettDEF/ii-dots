@@ -15,8 +15,10 @@ Kirigami.Icon {
 
     animated: true
     roundToIconSize: false
-    fallback: root.iconName
-    source: tryCustomIcon ? `${Looks.iconsPath}/${root.iconName}${!root.separateLightDark ? "" : Looks.dark ? "-dark" : "-light"}.svg` : fallback
+    // an app whose icon is in no installed theme gets the generic one, as Windows does (its own
+    // name as the fallback left the slot blank)
+    fallback: tryCustomIcon ? root.iconName : "application-x-executable"
+    source: tryCustomIcon ? `${Looks.iconsPath}/${root.iconName}${!root.separateLightDark ? "" : Looks.dark ? "-dark" : "-light"}.svg` : root.iconName
 
     color: Looks.colors.fg
 }
