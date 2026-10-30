@@ -32,7 +32,7 @@ PROFILE="recommended"
 CHOSE_PROFILE=0
 # auto: let install.sh decide from the profile (on for full and rog).
 TELA=auto
-# your own apps from GitHub (reel, zash, zeit, zett, dotos, the Zen browser), no login: on, the
+# your own apps from GitHub (reel, zash, zeit, zett, dotos, sinew, kalends, arcade and more, the Zen browser), no login: on, the
 # menu's `a` or --no-own-apps turns it off (one that fails is skipped, the rest installs)
 OWN=1
 # Not published yet, so opt-in; install.sh says so too.
@@ -86,7 +86,7 @@ Options
   -p, --profile P    minimal | core | recommended | full | rog | low-end
                      Passed through to install.sh.     (default: recommended)
       --low-end      Tune for weak hardware. Passed through to install.sh.
-      --with-own-apps  Your own apps (reel, zash, zeit, zett, dotos, the Zen browser) from their
+      --with-own-apps  Your own apps (reel, zash, zeit, zett, dotos, sinew, kalends, arcade and more, the Zen browser) from their
                      GitHub repos (public, no login). On by default.
       --no-own-apps    Skip them.
       --with-tela    Also install Tela, the browser. On by default for the
@@ -207,7 +207,7 @@ menu() {
         printf '   h  Hyprland      %s%s%s\n' "$DIM" "$([ "$DO_HYPR" = 1 ] && echo "write a starter config" || echo "leave mine alone")" "$R"
         printf '   b  Browser       %s%s%s\n' "$DIM" "$(case "$TELA" in 1) echo "install Tela";; 0) echo "do not install Tela";; *) echo "install Tela on the full and ROG profiles";; esac)" "$R"
         printf '   w  Wall search   %s%s%s\n' "$DIM" "$([ "$QUARRY" = 1 ] && echo "install quarry" || echo "scan ~/Pictures/Wallpapers only")" "$R"
-        printf '   a  Own apps      %s%s%s\n' "$DIM" "$([ "$OWN" = 1 ] && echo "reel, zash, zeit, zett, dotos, the Zen browser" || echo "skip them")" "$R"
+        printf '   a  Own apps      %s%s%s\n' "$DIM" "$([ "$OWN" = 1 ] && echo "reel, zash, zeit, zett, dotos, sinew, kalends, arcade and more, the Zen browser" || echo "skip them")" "$R"
         printf '   d  Dry run       %sshow what would happen, change nothing%s\n' "$DIM" "$R"
         printf '   q  Quit\n\n'
         choice=$(ask "  Choice, or Enter to install" "")

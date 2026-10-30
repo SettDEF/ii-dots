@@ -92,7 +92,7 @@ Options
                         Needs root and grants the installing user passwordless
                         access to those specific actions. Off by default.
       --with-own-apps   Also your own apps from GitHub (no login): the Zen browser
-                        package, and reel, zash, zeit, zett, dotos built.
+                        package, and reel, zash, zeit, zett, dotos, sinew, kalends, arcade, prog built.
       --with-tela       Also install Tela, the browser (github.com/SettDEF/tela-zen).
                         On by default for the 'full' and 'rog' profiles. It is
                         the slow part: qt6-webengine plus a Rust build.
@@ -393,10 +393,11 @@ install_companion() {
 
 # ── your own apps (public on GitHub, no login) ──────────────────────────────────
 # reel (media player: copied links and media files open in it), zash (the terminal the
-# keybinds open), zeit (its multiplexer), zett (the editor), dotos (tasks): they
+# keybinds open) and its prompt (zash-prompt), zeit (its multiplexer), zett (the editor),
+# dotos (tasks), sinew (workouts), kalends (calendar), arcade (games, chess), prog (progress cards): they
 # are cloned from GitHub (public, no login), built here (Rust; slow on an old laptop) and
 # installed by each app's own install.sh. Off unless --with-own-apps.
-OWN_APPS="${QS_OWN_APPS:-reel zash zeit zett dotos}"
+OWN_APPS="${QS_OWN_APPS:-reel zash zash-prompt zeit zett dotos sinew kalends arcade prog}"
 OWN_SRC="${QS_OWN_SRC:-$HOME/.local/src}"
 install_own_apps() {
     [ "$DO_OWN" = 1 ] || { info "skipping your own apps (--with-own-apps builds $OWN_APPS)"; return; }
@@ -433,6 +434,10 @@ install_own_apps() {
         local at="$dir"; [ -f "$dir/install.sh" ] || at="$dir/$app"
         if [ "$DRY" = 1 ]; then printf '   would: (cd %s && ./install.sh)\n' "$at"; continue; fi
         ( cd "$at" && JOBS="$jobs" bash ./install.sh ) && info "$app installed" || warn "$app did not install; the shell works without it"
+        # a window of its own besides (arcade's chess: gui/install.sh)
+        if [ -f "$at/gui/install.sh" ]; then
+            ( cd "$at/gui" && JOBS="$jobs" bash ./install.sh ) || warn "$app: its window did not install"
+        fi
     done
 }
 
