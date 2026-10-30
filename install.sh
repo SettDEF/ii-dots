@@ -486,6 +486,9 @@ install_own_apps() {
         if [ -n "$asset" ] && [ "$DRY" != 1 ] && [ "${QS_BUILD_OWN:-0}" != 1 ]; then
             info "[$n/$total] $app: the ready-built release"
             if curl -fsSL --max-time 300 "$asset" | tar --zstd --no-overwrite-dir -xf - -C "$HOME"; then
+                # its scripts and launcher entries say @HOME@ where your home goes
+                local hf="$HOME/.local/share/ii-release/$app.home-files"
+                [ -f "$hf" ] && while IFS= read -r f; do [ -f "$HOME/$f" ] && sed -i "s|@HOME@|$HOME|g" "$HOME/$f"; done < "$hf"
                 done_list+=("$app"); info "$app installed (${asset##*/})"; continue
             fi
             warn "$app: the release did not download; building it instead"
