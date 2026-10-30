@@ -27,9 +27,8 @@ DO_LOWEND=0
 DO_TELA=auto
 # your own apps from their GitHub repos (--with-own-apps)
 DO_OWN=0
-# quarry is a real shell dependency (the wallpaper picker) but is not published
-# yet, so it stays opt-in until it is.
-DO_QUARRY=auto
+# quarry, the wallpaper picker's search backend (public: SettDEF/quarry); --no-quarry skips it
+DO_QUARRY=1
 
 # ── Dependencies, by profile ────────────────────────────────────────────────
 # Arch package names. Split by what actually stops working without them, not

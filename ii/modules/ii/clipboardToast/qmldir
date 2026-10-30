@@ -2,3 +2,4 @@ module qs.modules.ii.clipboardToast
 ClipboardToast 1.0 ClipboardToast.qml
 ClipboardCard 1.0 ClipboardCard.qml
 ToastChip 1.0 ToastChip.qml
+HdrBtn 1.0 HdrBtn.qml

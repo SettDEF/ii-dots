@@ -26,21 +26,21 @@ Toolbar {
     /// a dropdown from an element at (x, y: its bottom, h: its height) in the window
     signal menu(var items, real x, real y, real h)
 
-    readonly property bool recording: root.action === RegionSelection.SnipAction.Record || root.action === RegionSelection.SnipAction.RecordWithSound
+    readonly property bool recording: root.action === 4 /* SnipAction.Record */ || root.action === 5 /* SnipAction.RecordWithSound */
     function setRecording(on) {
         if (on === root.recording) return;
-        root.action = on ? (Persistent.states.snip.sound ? RegionSelection.SnipAction.RecordWithSound : RegionSelection.SnipAction.Record)
-                         : RegionSelection.SnipAction.Copy;
+        root.action = on ? (Persistent.states.snip.sound ? 5 /* SnipAction.RecordWithSound */ : 4 /* SnipAction.Record */)
+                         : 0 /* SnipAction.Copy */;
     }
     /// a snip's own action, or plain copy again when it is on already
-    function toggleAction(a) { root.action = root.action === a ? RegionSelection.SnipAction.Copy : a; }
+    function toggleAction(a) { root.action = root.action === a ? 0 /* SnipAction.Copy */ : a; }
 
     readonly property var delays: [3, 5, 10]
     readonly property var shapes: [
-        { mode: RegionSelection.SelectionMode.RectCorners, icon: "crop_free", label: Translation.tr("Rectangle"), key: "R" },
-        { mode: RegionSelection.SelectionMode.Window, icon: "select_window", label: Translation.tr("Window"), key: "W" },
+        { mode: 0 /* SelectionMode.RectCorners */, icon: "crop_free", label: Translation.tr("Rectangle"), key: "R" },
+        { mode: 2 /* SelectionMode.Window */, icon: "select_window", label: Translation.tr("Window"), key: "W" },
         { mode: -1, icon: "fullscreen", label: Translation.tr("Full screen"), key: "F" },
-        { mode: RegionSelection.SelectionMode.Circle, icon: "gesture", label: Translation.tr("Freeform"), key: "D" },
+        { mode: 1 /* SelectionMode.Circle */, icon: "gesture", label: Translation.tr("Freeform"), key: "D" },
     ]
     readonly property var shape: root.shapes.find(s => s.mode === root.selectionMode) ?? root.shapes[0]
     function pickShape(s) {
@@ -124,27 +124,27 @@ Toolbar {
             visible: !root.recording
             hue: Appearance.colors.colHueGreen
             symbol: "document_scanner"
-            toggled: root.action === RegionSelection.SnipAction.CharRecognition
-            onClicked: root.toggleAction(RegionSelection.SnipAction.CharRecognition)
+            toggled: root.action === 3 /* SnipAction.CharRecognition */
+            onClicked: root.toggleAction(3 /* SnipAction.CharRecognition */)
             StyledToolTip { text: Translation.tr("Text extractor: copy the text in it") }
         }
         HueToolbarButton {
             visible: !root.recording
             hue: Appearance.colors.colHueYellow
             symbol: "image_search"
-            toggled: root.action === RegionSelection.SnipAction.Search
-            onClicked: root.toggleAction(RegionSelection.SnipAction.Search)
+            toggled: root.action === 2 /* SnipAction.Search */
+            onClicked: root.toggleAction(2 /* SnipAction.Search */)
             StyledToolTip { text: Translation.tr("Search it (Lens)") }
         }
         HueToolbarButton {
             visible: root.recording
             hue: Appearance.colors.colHueYellow
-            symbol: root.action === RegionSelection.SnipAction.RecordWithSound ? "volume_up" : "volume_off"
-            toggled: root.action === RegionSelection.SnipAction.RecordWithSound
+            symbol: root.action === 5 /* SnipAction.RecordWithSound */ ? "volume_up" : "volume_off"
+            toggled: root.action === 5 /* SnipAction.RecordWithSound */
             onClicked: {
-                const on = root.action !== RegionSelection.SnipAction.RecordWithSound;
+                const on = root.action !== 5 /* SnipAction.RecordWithSound */;
                 Persistent.states.snip.sound = on;
-                root.action = on ? RegionSelection.SnipAction.RecordWithSound : RegionSelection.SnipAction.Record;
+                root.action = on ? 5 /* SnipAction.RecordWithSound */ : 4 /* SnipAction.Record */;
             }
             StyledToolTip { text: Translation.tr("System sound in the recording") }
         }

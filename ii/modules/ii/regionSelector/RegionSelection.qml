@@ -44,8 +44,8 @@ PanelWindow {
     // TODO: Ask: sidebar AI
     enum SnipAction { Copy, Edit, Search, CharRecognition, Record, RecordWithSound, AttachToAi, SnapWindow } 
     enum SelectionMode { RectCorners, Circle, Window }
-    property var action: RegionSelection.SnipAction.Copy
-    property var selectionMode: RegionSelection.SelectionMode.RectCorners
+    property var action: 0 /* SnipAction.Copy */
+    property var selectionMode: 0 /* SelectionMode.RectCorners */
     signal dismiss()
     signal delayed(int seconds)
 
@@ -120,10 +120,10 @@ PanelWindow {
         return offsetAdjustedLayers;
     }
 
-    property bool isCircleSelection: (root.selectionMode === RegionSelection.SelectionMode.Circle)
+    property bool isCircleSelection: (root.selectionMode === 1 /* SelectionMode.Circle */)
     property bool enableWindowRegions: Config.options.regionSelector.targetRegions.windows && !isCircleSelection
-    property bool enableLayerRegions: Config.options.regionSelector.targetRegions.layers && !isCircleSelection && root.selectionMode !== RegionSelection.SelectionMode.Window
-    property bool enableContentRegions: Config.options.regionSelector.targetRegions.content && root.selectionMode !== RegionSelection.SelectionMode.Window
+    property bool enableLayerRegions: Config.options.regionSelector.targetRegions.layers && !isCircleSelection && root.selectionMode !== 2 /* SelectionMode.Window */
+    property bool enableContentRegions: Config.options.regionSelector.targetRegions.content && root.selectionMode !== 2 /* SelectionMode.Window */
     property real targetRegionOpacity: Config.options.regionSelector.targetRegions.opacity
     property bool contentRegionOpacity: Config.options.regionSelector.targetRegions.contentRegionOpacity
 
@@ -214,7 +214,7 @@ PanelWindow {
             root.preparationDone = !checkRecordingProc.running;
         }
     }
-    property bool isRecording: root.action === RegionSelection.SnipAction.Record || root.action === RegionSelection.SnipAction.RecordWithSound
+    property bool isRecording: root.action === 4 /* SnipAction.Record */ || root.action === 5 /* SnipAction.RecordWithSound */
     property bool recordingShouldStop: false
     Process {
         id: checkRecordingProc
@@ -260,20 +260,20 @@ PanelWindow {
 
     function getScreenshotAction() {
         switch(root.action) {
-            case RegionSelection.SnipAction.Copy:
-                return ScreenshotAction.Action.Copy;
-            case RegionSelection.SnipAction.Edit:
-                return ScreenshotAction.Action.Edit;
-            case RegionSelection.SnipAction.Search:
-                return ScreenshotAction.Action.Search;
-            case RegionSelection.SnipAction.CharRecognition:
-                return ScreenshotAction.Action.CharRecognition;
-            case RegionSelection.SnipAction.Record:
-                return ScreenshotAction.Action.Record;
-            case RegionSelection.SnipAction.RecordWithSound:
-                return ScreenshotAction.Action.RecordWithSound;
-            case RegionSelection.SnipAction.AttachToAi:
-                return ScreenshotAction.Action.AttachToAi;
+            case 0 /* SnipAction.Copy */:
+                return ScreenshotAction.actions.Copy;
+            case 1 /* SnipAction.Edit */:
+                return ScreenshotAction.actions.Edit;
+            case 2 /* SnipAction.Search */:
+                return ScreenshotAction.actions.Search;
+            case 3 /* SnipAction.CharRecognition */:
+                return ScreenshotAction.actions.CharRecognition;
+            case 4 /* SnipAction.Record */:
+                return ScreenshotAction.actions.Record;
+            case 5 /* SnipAction.RecordWithSound */:
+                return ScreenshotAction.actions.RecordWithSound;
+            case 6 /* SnipAction.AttachToAi */:
+                return ScreenshotAction.actions.AttachToAi;
             default:
                 console.warn("[Region Selector] Unknown snip action, skipping snip.");
                 root.dismiss();
@@ -301,7 +301,7 @@ PanelWindow {
         // Snap the focused window into the region instead of capturing it.
         // This leaves before the screenshot pipeline: there is nothing to
         // grab, crop or save, and the region is the whole output.
-        if (root.action === RegionSelection.SnipAction.SnapWindow) {
+        if (root.action === 7 /* SnipAction.SnapWindow */) {
             // Hyprland works in logical coordinates and so does the layer
             // surface, so the region needs no scale conversion — but it IS
             // relative to this screen, and dispatches are global.
@@ -319,8 +319,8 @@ PanelWindow {
         }
 
         // Adjust action
-        if (root.action === RegionSelection.SnipAction.Copy || root.action === RegionSelection.SnipAction.Edit) {
-            root.action = root.mouseButton === Qt.RightButton ? RegionSelection.SnipAction.Edit : RegionSelection.SnipAction.Copy;
+        if (root.action === 0 /* SnipAction.Copy */ || root.action === 1 /* SnipAction.Edit */) {
+            root.action = root.mouseButton === Qt.RightButton ? 1 /* SnipAction.Edit */ : 0 /* SnipAction.Copy */;
         }
         
         const screenshotDir = Config.options.screenSnip.savePath !== "" ? //
@@ -401,7 +401,7 @@ PanelWindow {
                     }
                 }
                 // Circle dragging?
-                else if (root.selectionMode === RegionSelection.SelectionMode.Circle) {
+                else if (root.selectionMode === 1 /* SelectionMode.Circle */) {
                     const padding = Config.options.regionSelector.circle.padding + Config.options.regionSelector.circle.strokeWidth / 2;
                     const dragPoints = (root.points.length > 0) ? root.points : [{ x: mouseArea.mouseX, y: mouseArea.mouseY }];
                     const maxX = Math.max(...dragPoints.map(p => p.x));
@@ -428,7 +428,7 @@ PanelWindow {
             Loader {
                 z: 2
                 anchors.fill: parent
-                active: root.selectionMode !== RegionSelection.SelectionMode.Circle
+                active: root.selectionMode !== 1 /* SelectionMode.Circle */
                 sourceComponent: RectCornersSelectionDetails {
                     regionX: root.regionX
                     regionY: root.regionY
@@ -444,7 +444,7 @@ PanelWindow {
             Loader {
                 z: 2
                 anchors.fill: parent
-                active: root.selectionMode === RegionSelection.SelectionMode.Circle
+                active: root.selectionMode === 1 /* SelectionMode.Circle */
                 sourceComponent: CircleSelectionDetails {
                     color: root.selectionBorderColor
                     overlayColor: root.overlayColor

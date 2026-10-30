@@ -92,23 +92,23 @@ PanelWindow {
         case WRegionSelectionPanel.MediaType.Image:
             switch (root.imageAction) {
             case WRegionSelectionPanel.ImageAction.Copy:
-                return ScreenshotAction.Action.Copy;
+                return ScreenshotAction.actions.Copy;
             case WRegionSelectionPanel.ImageAction.Menu:
-                return ScreenshotAction.Action.Edit;
+                return ScreenshotAction.actions.Edit;
             case WRegionSelectionPanel.ImageAction.CharRecognition:
-                return ScreenshotAction.Action.CharRecognition;
+                return ScreenshotAction.actions.CharRecognition;
             case WRegionSelectionPanel.ImageAction.Search:
-                return ScreenshotAction.Action.Search;
+                return ScreenshotAction.actions.Search;
             default:
-                return ScreenshotAction.Action.Copy;
+                return ScreenshotAction.actions.Copy;
             }
             break;
         case WRegionSelectionPanel.MediaType.Video:
             switch (root.videoAction) {
             case WRegionSelectionPanel.VideoAction.Record:
-                return ScreenshotAction.Action.Record;
+                return ScreenshotAction.actions.Record;
             case WRegionSelectionPanel.VideoAction.RecordWithSound:
-                return ScreenshotAction.Action.RecordWithSound;
+                return ScreenshotAction.actions.RecordWithSound;
             }
         }
     }

@@ -46,7 +46,8 @@ Scope {
         // what's actually drawn.
         // Proxied to GlobalStates: the strip that sets it now lives in the
         // bar's right section, which cannot reach a window-local property.
-        readonly property string tab: GlobalStates.cornerPopupTab
+        // media only: the tab strip is gone (the user, 2026-10-28)
+        readonly property string tab: "media"
         // Latch: the Files view stays loaded after its first visit.
         property bool filesEverOpened: false
         onTabChanged: if (tab === "files") filesEverOpened = true
@@ -62,7 +63,7 @@ Scope {
         readonly property int _filesHeight: filesLoader.item?.contentHeight ?? 232
         readonly property int _windowHeight: windowLoader.item?.contentHeight ?? 300
         // the tab strip at the top, inside the popup (it was in the bar)
-        readonly property int _tabsHeight: 44
+        readonly property int _tabsHeight: 0
         // Surface height follows the active tab. Tab switches are user actions
         // (not per-frame), so an occasional resize here is fine.
         readonly property int _bodyHeight: tab === "media" ? _mediaHeight
@@ -123,6 +124,7 @@ Scope {
 
                 // ── Tabs: in the popup itself (the user, 2026-10-21; they were in the bar) ──
                 PillTabBar {
+                    visible: false
                     Layout.alignment: Qt.AlignHCenter
                     Layout.topMargin: 8
                     Layout.bottomMargin: 6

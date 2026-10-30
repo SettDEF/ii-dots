@@ -26,7 +26,16 @@ Singleton {
     // Steam's non-Steam shortcuts. Created from its file rather than by type: a
     // launcher that cannot load this reader should still be a launcher, and a
     // missing type here would take the whole singleton down with it.
+    // Made once the shell has started (or at the first search): reading Steam's files and the 577
+    // desktop entries took ~100 ms in the middle of startup, for results nobody had asked for yet.
+    property bool _steamWanted: false
+    Timer {
+        interval: 3000
+        running: !root._steamWanted && Startup.stage >= Startup.lastStage
+        onTriggered: root._steamWanted = true
+    }
     readonly property var steamShortcuts: {
+        if (!root._steamWanted) return null;
         const c = Qt.createComponent(Qt.resolvedUrl("launcher/SteamShortcuts.qml"));
         if (c.status !== Component.Ready) {
             console.warn("[LauncherSearch] Steam shortcuts unavailable: " + c.errorString());
@@ -987,6 +996,7 @@ Singleton {
     property list<var> results: []
     function refresh() { root.results = root._computeResults(); }
     onQueryChanged: {
+        if (root.query.length > 0) root._steamWanted = true;
         nonAppResultsTimer.restart();
         refresh();
     }

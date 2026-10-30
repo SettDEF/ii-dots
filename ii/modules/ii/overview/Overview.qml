@@ -10,6 +10,7 @@ import Quickshell
 import Quickshell.Io
 import Quickshell.Wayland
 import Quickshell.Hyprland
+import Quickshell.Widgets
 
 Scope {
     id: overviewScope
@@ -46,8 +47,9 @@ Scope {
         mask: Region {
             item: GlobalStates.overviewOpen ? searchWidget : null
             height: searchWidget.barBandHeight
-            regions: [dropdownRegion, gridRegion, resultsRegion]
+            regions: [dropdownRegion, gridRegion, resultsRegion, hiddenRegion]
         }
+        Region { id: hiddenRegion; item: hiddenRow.visible ? hiddenRow : null }
         Region { id: dropdownRegion; item: searchWidget.dropdownItem }
         Region { id: gridRegion; item: overviewLoader.item }
         Region { id: resultsRegion; item: searchWidget.resultsItem }
@@ -106,6 +108,68 @@ Scope {
         }
         implicitWidth: columnLayout.implicitWidth
         implicitHeight: columnLayout.implicitHeight
+
+        // the hidden windows (scratchpad, minimized): a row of their own along the bottom left of
+        // the screen while the overview is open; a click brings one to the current workspace
+        readonly property var hiddenWindows: (HyprlandData.windowList ?? []).filter(w => (w?.workspace?.id ?? 0) < 0)
+        function bringHere(w) {
+            const here = HyprlandData.activeWorkspace?.id;
+            if (!w || here === undefined) return;
+            HyprDispatch.run(`movetoworkspace ${here}, address:${w.address}`);
+            HyprDispatch.run(`focuswindow address:${w.address}`);
+            GlobalStates.overviewOpen = false;
+        }
+        Row {
+            id: hiddenRow
+            visible: GlobalStates.overviewOpen && panelWindow.hiddenWindows.length > 0
+            anchors.left: parent.left
+            anchors.bottom: parent.bottom
+            anchors.leftMargin: 16
+            anchors.bottomMargin: 16
+            spacing: 6
+            z: 10
+            StyledText {
+                anchors.verticalCenter: parent.verticalCenter
+                text: "Hidden"
+                font.pixelSize: Appearance.font.pixelSize.smaller
+                color: Appearance.colors.colSubtext
+                rightPadding: 4
+            }
+            Repeater {
+                model: panelWindow.hiddenWindows
+                delegate: Rectangle {
+                    id: hw
+                    required property var modelData
+                    implicitHeight: 34
+                    implicitWidth: Math.min(260, hwRow.implicitWidth + 20)
+                    radius: Appearance.rounding.full
+                    color: hwHover.hovered ? Appearance.colors.colLayer2Hover : Appearance.colors.colLayer2
+                    Row {
+                        id: hwRow
+                        anchors.verticalCenter: parent.verticalCenter
+                        anchors.left: parent.left
+                        anchors.leftMargin: 10
+                        spacing: 8
+                        IconImage {
+                            anchors.verticalCenter: parent.verticalCenter
+                            implicitSize: 18
+                            source: Quickshell.iconPath(AppSearch.guessIcon(hw.modelData?.class ?? ""), "image-missing")
+                        }
+                        StyledText {
+                            anchors.verticalCenter: parent.verticalCenter
+                            width: Math.min(implicitWidth, 200)
+                            elide: Text.ElideRight
+                            text: hw.modelData?.title || hw.modelData?.class || "Window"
+                            font.pixelSize: Appearance.font.pixelSize.smaller
+                            color: Appearance.colors.colOnLayer2
+                        }
+                    }
+                    HoverHandler { id: hwHover; cursorShape: Qt.PointingHandCursor }
+                    TapHandler { onTapped: panelWindow.bringHere(hw.modelData) }
+                    StyledToolTip { text: "Bring here"; extraVisibleCondition: hwHover.hovered }
+                }
+            }
+        }
 
         function setSearchingText(text) {
             searchWidget.setSearchingText(text);

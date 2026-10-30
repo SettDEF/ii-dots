@@ -17,6 +17,8 @@ Item { // Notification item area
     property real fontSize: Appearance.font.pixelSize.small
     property real padding: onlyNotification ? 0 : 8
     property real summaryElideRatio: 0.85
+    /// a popup's body stops here, so its buttons stay inside the card's 280 px (0 = whole body)
+    property real bodyMaxHeight: 0
 
     property real dragConfirmThreshold: 70 // Drag further to discard notification
     property real dismissOvershoot: notificationIcon.implicitWidth + 20 // Account for gaps and bouncy animations
@@ -198,6 +200,8 @@ Item { // Notification item area
                         animation: Appearance.animation.elementMoveFast.numberAnimation.createObject(this)
                     }
                     Layout.fillWidth: true
+                    Layout.maximumHeight: root.bodyMaxHeight > 0 ? root.bodyMaxHeight : -1
+                    clip: root.bodyMaxHeight > 0
                     font.pixelSize: root.fontSize
                     color: Appearance.colors.colSubtext
                     wrapMode: Text.Wrap

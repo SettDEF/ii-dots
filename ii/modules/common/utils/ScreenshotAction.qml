@@ -23,6 +23,10 @@ Singleton {
         AttachToAi
     }
 
+    // the same values as the enum above, as a plain object: quickshell does not expose a singleton's
+    // enum at runtime (ScreenshotAction.Action came back undefined and every snip threw)
+    readonly property var actions: ({ "Copy": 0, "Edit": 1, "Search": 2, "CharRecognition": 3, "Record": 4, "RecordWithSound": 5, "AttachToAi": 6 })
+
     property string imageSearchEngineBaseUrl: Config.options.search.imageSearch.imageSearchEngineBaseUrl
     property string fileUploadApiEndpoint: "https://uguu.se/upload"
 
@@ -45,7 +49,7 @@ Singleton {
         }
         const annotationCommand = `${Config.options.regionSelector.annotation.useSatty ? "satty" : "swappy"} -f -`;
         switch (action) {
-            case ScreenshotAction.Action.Copy:
+            case ScreenshotAction.actions.Copy:
                 if (saveDir === "") {
                     // Not saving — just copy to clipboard. `--type image/png`
                     // so wl-copy never has to guess the MIME type. A trace is
@@ -71,7 +75,7 @@ Singleton {
                 ]
 
                 break;
-            case ScreenshotAction.Action.Edit:
+            case ScreenshotAction.actions.Edit:
                 // Crop to a stable file, then ask Quickshell's native editor
                 // to open it via IPC. The editor's Save merges + writes back.
                 const editPath = `/tmp/quickshell-snip-${Date.now()}.png`
@@ -80,19 +84,19 @@ Singleton {
                     `qs -c ii ipc call screenshotEditor open '${editPath}' && ` +
                     `${cleanup}`]
                 break;
-            case ScreenshotAction.Action.Search:
+            case ScreenshotAction.actions.Search:
                 return ["bash", "-c", `${cropInPlace} && xdg-open "${root.imageSearchEngineBaseUrl}$(${uploadAndGetUrl(screenshotPath)})" && ${cleanup}`]
                 break;
-            case ScreenshotAction.Action.CharRecognition:
+            case ScreenshotAction.actions.CharRecognition:
                 return ["bash", "-c", `${cropInPlace} && tesseract '${StringUtils.shellSingleQuoteEscape(screenshotPath)}' stdout -l $(tesseract --list-langs | awk 'NR>1{print $1}' | tr '\\n' '+' | sed 's/\\+$/\\n/') | wl-copy && ${cleanup}`]
                 break;
-            case ScreenshotAction.Action.Record:
+            case ScreenshotAction.actions.Record:
                 return ["bash", "-c", `${Directories.recordScriptPath} --region '${slurpRegion}'${gifFlag}`]
                 break;
-            case ScreenshotAction.Action.RecordWithSound:
+            case ScreenshotAction.actions.RecordWithSound:
                 return ["bash", "-c", `${Directories.recordScriptPath} --region '${slurpRegion}' --sound${gifFlag}`]
                 break;
-            case ScreenshotAction.Action.AttachToAi:
+            case ScreenshotAction.actions.AttachToAi:
                 const attachPath = `/tmp/quickshell-ai-snip-${Date.now()}.png`
                 return ["bash", "-c",
                     `${cropBase} '${attachPath}' && ` +

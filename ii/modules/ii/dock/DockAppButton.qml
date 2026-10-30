@@ -93,7 +93,9 @@ DockButton {
     function isMinimized(toplevel) {
         const a = root.addressOf(toplevel);
         return a.length > 0
-            && HyprlandData.windowByAddress[a]?.workspace?.name === "special:minimized";
+            // any hidden special workspace: minimized, and the scratchpad too (special:special), where a
+            // plain activate() popped the whole scratchpad open instead of bringing the window here
+            && (HyprlandData.windowByAddress[a]?.workspace?.name ?? "").startsWith("special:");
     }
     function restore(toplevel) {
         const a = root.addressOf(toplevel);

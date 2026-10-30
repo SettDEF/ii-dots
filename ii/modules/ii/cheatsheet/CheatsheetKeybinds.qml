@@ -10,8 +10,10 @@ import QtQuick.Layouts
 Item {
     id: root
     /// Sub-category: "desktop" (Hyprland), or an app id from AppKeybinds
-    /// (tmux, wezterm, …). Searching looks through ALL of them.
+    /// (tmux, wezterm, …). Searching looks through ALL of them, unless an app
+    /// was picked while searching (`scope`): then only that one.
     property string app: "desktop"
+    property string scope: ""
     readonly property var appEntry: AppKeybinds.apps.find(a => a.id === root.app) ?? null
     readonly property var keybinds: {
         const searching = (root._q ?? "").trim().length > 0;
@@ -19,8 +21,9 @@ Item {
             return { children: (root.appEntry?.sections ?? []).map(s => ({ name: s.name, keybinds: s.keybinds, children: [] })) };
         if (!searching) return HyprlandKeybinds.keybinds;
         // search: the desktop's sections, then every app's, named "tmux · Panes"
-        const out = (HyprlandKeybinds.keybinds?.children ?? []).slice();
-        for (const a of AppKeybinds.apps)
+        if (root.scope === "desktop") return HyprlandKeybinds.keybinds;
+        const out = root.scope ? [] : (HyprlandKeybinds.keybinds?.children ?? []).slice();
+        for (const a of AppKeybinds.apps.filter(a => !root.scope || a.id === root.scope))
             for (const s of a.sections)
                 out.push({ name: `${a.name} · ${s.name}`, keybinds: s.keybinds, children: [] });
         return { children: out };
@@ -75,11 +78,12 @@ Item {
     // ── search: the settings app's matcher (fuzzysort), one ranking ──
     /// Set by the search field in the cheatsheet header (Cheatsheet.qml).
     property string query: ""
+
     /// The query the results follow: settles 150 ms after the last
     /// keystroke, so typing does not re-rank and re-lay-out the whole sheet
     /// on every letter (it lagged).
     property string _q: ""
-    onQueryChanged: if (query.trim() === "") { qDebounce.stop(); _q = ""; } else qDebounce.restart()
+    onQueryChanged: if (query.trim() === "") { qDebounce.stop(); _q = ""; scope = ""; } else qDebounce.restart()
     Timer { id: qDebounce; interval: 150; onTriggered: root._q = root.query }
 
     // Names people type for the same key or action. A query word in a group
@@ -385,7 +389,8 @@ Item {
                 delegate: Rectangle {
                     id: appChip
                     required property var modelData
-                    readonly property bool sel: root.app === appChip.modelData.id && (root._q ?? "").trim() === ""
+                    // searching: lit when the search is narrowed to it; else the app shown
+                    readonly property bool sel: (root._q ?? "").trim() === "" ? root.app === appChip.modelData.id : root.scope === appChip.modelData.id
                     readonly property bool labelled: appChip.sel || !appDock.compact
                     implicitWidth: appChipRow.implicitWidth + (appChip.labelled ? 26 : 17)
                     implicitHeight: 34
@@ -394,7 +399,8 @@ Item {
                          : appChipHover.hovered ? Appearance.colors.colLayer2 : Appearance.colors.colLayer1
                     Behavior on color { animation: Appearance.animation.elementMoveFast.colorAnimation.createObject(this) }
                     HoverHandler { id: appChipHover; cursorShape: Qt.PointingHandCursor }
-                    TapHandler { onTapped: root.app = appChip.modelData.id }
+                    // while searching: narrows the search to this app; again: every app
+                    TapHandler { onTapped: { root.app = appChip.modelData.id; if ((root.query ?? "").trim() !== "") root.scope = root.scope === appChip.modelData.id ? "" : appChip.modelData.id; } }
                     StyledToolTip {
                         extraVisibleCondition: false
                         alternativeVisibleCondition: appChipHover.hovered && !appChip.labelled

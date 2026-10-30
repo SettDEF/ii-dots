@@ -44,7 +44,9 @@ Scope {
         : fileIsPicture ? "file://" + ClipboardWatch.filePath
         : frame.length > 0 ? "file://" + frame : ""
 
-    function hide() { if (shown) linger.restart(); shown = false; editing = false; keys = false; }
+    function hide() { if (shown) linger.restart(); shown = false; editing = false; keys = false; pinned = false; }
+    /// pinned from the card: no timer closes it
+    property bool pinned: false
     // a click on the toast gives it the keyboard: Esc closes, Enter runs the main button
     property bool keys: false
     // Keeps the window alive while the card fades out.
@@ -57,6 +59,7 @@ Scope {
             if (!root.shown)
                 root.screen = Quickshell.screens.find(s => s.name === Hyprland.focusedMonitor?.name) ?? Quickshell.screens[0];
             root.editing = false;
+            if (root.shown) root.bumps++;   // a new copy while it shows: a small bump, not a re-entry
             root.shown = true;
             hideTimer.restart();
         }
@@ -66,8 +69,13 @@ Scope {
     Timer {
         id: hideTimer
         interval: root.editing || root.keys ? 30000 : 4000
-        onTriggered: root.hide()
+        onTriggered: if (!root.pinned) root.hide()
+        // the bar at the card's foot runs down with it, and stands full while it is held (hover)
+        onRunningChanged: if (running) { countdown.stop(); root.left = 1; countdown.start(); } else { countdown.stop(); root.left = 1; }
     }
+    property real left: 1
+    property int bumps: 0
+    NumberAnimation { id: countdown; target: root; property: "left"; from: 1; to: 0; duration: hideTimer.interval }
 
     // ── file details: folder or not, and a still for videos ──
     Process {
@@ -150,17 +158,44 @@ Scope {
                 devices: KdeConnectService.reachableDevices
                 editing: root.editing
 
-                // Enter: rise and fade in. Leave: slide right and fade.
+                // Enter: springs up from the corner (a touch of overshoot). Leave: slips right, quicker.
                 opacity: root.shown ? 1 : 0
-                transform: Translate {
-                    id: slide
-                    x: root.shown ? 0 : 24
-                    Behavior on x { NumberAnimation { duration: 260; easing.type: Easing.OutCubic } }
-                }
+                transform: [
+                    Scale {
+                        id: grow
+                        origin.x: card.width; origin.y: card.height
+                        xScale: root.shown ? 1 : 0.9; yScale: xScale
+                        Behavior on xScale { NumberAnimation { duration: root.shown ? 420 : 200; easing.type: root.shown ? Easing.OutBack : Easing.InCubic; easing.overshoot: 1.6 } }
+                    },
+                    Translate {
+                        id: slide
+                        x: root.shown ? 0 : 56
+                        y: root.shown ? 0 : 14
+                        Behavior on x { NumberAnimation { duration: root.shown ? 380 : 210; easing.type: root.shown ? Easing.OutQuint : Easing.InCubic } }
+                        Behavior on y { NumberAnimation { duration: root.shown ? 380 : 210; easing.type: Easing.OutQuint } }
+                    },
+                    Scale { id: bump; origin.x: card.width; origin.y: card.height; xScale: 1; yScale: xScale }
+                ]
                 Behavior on opacity {
-                    NumberAnimation { duration: root.shown ? 160 : 200; easing.type: Easing.OutCubic }
+                    NumberAnimation { duration: root.shown ? 220 : 190; easing.type: root.shown ? Easing.OutCubic : Easing.InCubic }
                 }
-                Component.onCompleted: { opacity = 0; slide.x = 24; Qt.callLater(() => { opacity = Qt.binding(() => root.shown ? 1 : 0); slide.x = Qt.binding(() => root.shown ? 0 : 24); }); }
+                Component.onCompleted: {
+                    opacity = 0; slide.x = 56; slide.y = 14; grow.xScale = 0.9;
+                    Qt.callLater(() => {
+                        opacity = Qt.binding(() => root.shown ? 1 : 0);
+                        slide.x = Qt.binding(() => root.shown ? 0 : 56);
+                        slide.y = Qt.binding(() => root.shown ? 0 : 14);
+                        grow.xScale = Qt.binding(() => root.shown ? 1 : 0.9);
+                    });
+                }
+                // the card lives in a per-screen delegate: it watches the counter rather than being called
+                property int bumpSeen: root.bumps
+                onBumpSeenChanged: pulse.restart()
+                SequentialAnimation {
+                    id: pulse
+                    NumberAnimation { target: bump; property: "xScale"; to: 1.035; duration: 110; easing.type: Easing.OutCubic }
+                    NumberAnimation { target: bump; property: "xScale"; to: 1; duration: 320; easing.type: Easing.OutBack; easing.overshoot: 2 }
+                }
 
                 // any press on the card (a chip too: a PointHandler only watches) takes the keyboard
                 PointHandler {
@@ -198,6 +233,8 @@ Scope {
                 }
 
                 onCloseRequested: root.hide()
+                pinned: root.pinned
+                onPinToggled: { root.pinned = !root.pinned; if (root.pinned) hideTimer.stop(); else hideTimer.restart(); }
                 // an image is copied out first: the clipboard's file is replaced by the next copy
                 onShareRequested: {
                     const share = Quickshell.env("HOME") + "/.scripts/apps/share/share";

@@ -21,8 +21,8 @@ Scope {
         GlobalStates.regionSelectorOpen = false
     }
 
-    property var action: RegionSelection.SnipAction.Copy
-    property var selectionMode: RegionSelection.SelectionMode.RectCorners
+    property var action: 0 /* SnipAction.Copy */
+    property var selectionMode: 0 /* SelectionMode.RectCorners */
     
     Variants {
         model: Quickshell.screens
@@ -103,36 +103,36 @@ Scope {
     }
 
     function screenshot() {
-        root.action = RegionSelection.SnipAction.Copy
-        root.selectionMode = RegionSelection.SelectionMode.RectCorners
+        root.action = 0 /* SnipAction.Copy */
+        root.selectionMode = 0 /* SelectionMode.RectCorners */
         GlobalStates.regionSelectorOpen = true
     }
 
     function search() {
-        root.action = RegionSelection.SnipAction.Search
+        root.action = 2 /* SnipAction.Search */
         if (Config.options.search.imageSearch.useCircleSelection) {
-            root.selectionMode = RegionSelection.SelectionMode.Circle
+            root.selectionMode = 1 /* SelectionMode.Circle */
         } else {
-            root.selectionMode = RegionSelection.SelectionMode.RectCorners
+            root.selectionMode = 0 /* SelectionMode.RectCorners */
         }
         GlobalStates.regionSelectorOpen = true
     }
 
     function ocr() {
-        root.action = RegionSelection.SnipAction.CharRecognition
-        root.selectionMode = RegionSelection.SelectionMode.RectCorners
+        root.action = 3 /* SnipAction.CharRecognition */
+        root.selectionMode = 0 /* SelectionMode.RectCorners */
         GlobalStates.regionSelectorOpen = true
     }
 
     function record() {
-        root.action = RegionSelection.SnipAction.Record
-        root.selectionMode = RegionSelection.SelectionMode.RectCorners
+        root.action = 4 /* SnipAction.Record */
+        root.selectionMode = 0 /* SelectionMode.RectCorners */
         GlobalStates.regionSelectorOpen = true
     }
 
     function recordWithSound() {
-        root.action = RegionSelection.SnipAction.RecordWithSound
-        root.selectionMode = RegionSelection.SelectionMode.RectCorners
+        root.action = 5 /* SnipAction.RecordWithSound */
+        root.selectionMode = 0 /* SelectionMode.RectCorners */
         GlobalStates.regionSelectorOpen = true
     }
 
@@ -140,14 +140,14 @@ Scope {
     /// The manual half of a tiling WM: the cases where no automatic layout is
     /// the one you want.
     function snapWindow() {
-        root.action = RegionSelection.SnipAction.SnapWindow
-        root.selectionMode = RegionSelection.SelectionMode.RectCorners
+        root.action = 7 /* SnipAction.SnapWindow */
+        root.selectionMode = 0 /* SelectionMode.RectCorners */
         GlobalStates.regionSelectorOpen = true
     }
 
     function lens() {
-        root.action = RegionSelection.SnipAction.AttachToAi
-        root.selectionMode = RegionSelection.SelectionMode.RectCorners
+        root.action = 6 /* SnipAction.AttachToAi */
+        root.selectionMode = 0 /* SelectionMode.RectCorners */
         GlobalStates.regionSelectorOpen = true
     }
 
@@ -160,8 +160,8 @@ Scope {
         }
         /// `region screenshotIn 5`: a region shot whose capture waits N seconds.
         function screenshotIn(seconds: int) {
-            root.action = RegionSelection.SnipAction.Copy
-            root.selectionMode = RegionSelection.SelectionMode.RectCorners
+            root.action = 0 /* SnipAction.Copy */
+            root.selectionMode = 0 /* SelectionMode.RectCorners */
             root.startDelayed(seconds)
         }
         function snap() {

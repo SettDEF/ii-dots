@@ -47,6 +47,9 @@ Rectangle {
     signal editCancelled()
     signal closeRequested()
     signal shareRequested()
+    signal pinToggled()
+    /// kept open (no timer) until closed
+    property bool pinned: false
 
     function setEditText(t) { editor.text = t; editor.forceActiveFocus(); editor.selectAll(); }
 
@@ -186,63 +189,46 @@ Rectangle {
                         color: Appearance.colors.colSubtext
                     }
                 }
-                // text / link: the content itself
-                StyledText {
-                    Layout.fillWidth: true
-                    visible: (root.kind === "text" || root.kind === "link") && !root.editing
-                    text: root.text
-                    wrapMode: root.kind === "link" ? Text.NoWrap : Text.WrapAtWordBoundaryOrAnywhere
-                    maximumLineCount: root.kind === "link" ? 1 : 3
-                    elide: root.kind === "link" ? Text.ElideMiddle : Text.ElideRight
-                    font.pixelSize: Appearance.font.pixelSize.smaller
-                    color: Appearance.m3colors.m3onSurfaceVariant
-                }
             }
 
-            // share: the share sheet with every app and target that takes it (an icon, so the chips stay one row)
-            Rectangle {
-                visible: !root.editing
-                Layout.alignment: Qt.AlignTop
-                implicitWidth: 28
-                implicitHeight: 28
-                radius: 14
-                color: shareMa.containsMouse ? Appearance.colors.colLayer2Hover : "transparent"
-                MaterialSymbol {
-                    anchors.centerIn: parent
-                    text: "ios_share"
-                    iconSize: 18
-                    color: shareMa.containsMouse ? Appearance.colors.colPrimary : Appearance.colors.colSubtext
-                }
-                MouseArea {
-                    id: shareMa
-                    anchors.fill: parent
-                    hoverEnabled: true
-                    cursorShape: Qt.PointingHandCursor
-                    onClicked: root.shareRequested()
-                }
-                StyledToolTip { text: Translation.tr("Share (Super+Shift+U)"); extraVisibleCondition: false; alternativeVisibleCondition: shareMa.containsMouse }
-            }
-            // close
+            // pin · pop out · share · close, together in a pill
             Rectangle {
                 Layout.alignment: Qt.AlignTop
-                implicitWidth: 28
-                implicitHeight: 28
-                radius: 14
-                color: closeMa.containsMouse ? Appearance.colors.colLayer2Hover : "transparent"
-                MaterialSymbol {
+                implicitWidth: hdrRow.implicitWidth + 8
+                implicitHeight: 32
+                radius: 16
+                color: Appearance.colors.colLayer2
+                Row {
+                    id: hdrRow
                     anchors.centerIn: parent
-                    text: "close"
-                    iconSize: 18
-                    color: Appearance.colors.colSubtext
-                }
-                MouseArea {
-                    id: closeMa
-                    anchors.fill: parent
-                    hoverEnabled: true
-                    cursorShape: Qt.PointingHandCursor
-                    onClicked: root.closeRequested()
+                    spacing: 0
+                    HdrBtn { icon: "keep"; on: root.pinned; tip: root.pinned ? Translation.tr("Pinned: stays until closed") : Translation.tr("Pin: keep it open"); onHit: root.pinToggled() }
+                    // out into a window of its own: the text in zett, a file or link opened
+                    HdrBtn {
+                        visible: root.kind !== "image"
+                        icon: "open_in_new"
+                        tip: root.kind === "text" ? Translation.tr("Open in zett") : Translation.tr("Open")
+                        onHit: {
+                            if (root.kind === "text") { Quickshell.execDetached([Quickshell.env("HOME") + "/.scripts/apps/zett/zett-edit"]); root.closeRequested(); }
+                            else root.openRequested();
+                        }
+                    }
+                    HdrBtn { visible: !root.editing; icon: "ios_share"; tip: Translation.tr("Share (Super+Shift+U)"); onHit: root.shareRequested() }
+                    HdrBtn { icon: "close"; tip: Translation.tr("Close"); onHit: root.closeRequested() }
                 }
             }
+        }
+
+        // text / link: the content itself, the card's full width under the header row
+        StyledText {
+            Layout.fillWidth: true
+            visible: (root.kind === "text" || root.kind === "link") && !root.editing
+            text: root.text
+            wrapMode: root.kind === "link" ? Text.NoWrap : Text.WrapAtWordBoundaryOrAnywhere
+            maximumLineCount: root.kind === "link" ? 1 : 4
+            elide: root.kind === "link" ? Text.ElideMiddle : Text.ElideRight
+            font.pixelSize: Appearance.font.pixelSize.smaller
+            color: Appearance.m3colors.m3onSurfaceVariant
         }
 
         // ── editor (text only) ──
@@ -287,9 +273,12 @@ Rectangle {
         }
 
         // ── actions ──
-        Flow {
+        // one row: past three chips the secondary ones fold to their icons
+        RowLayout {
             Layout.fillWidth: true
             spacing: 6
+            readonly property bool dense: visibleChildren.length > 3
+            layoutDirection: Qt.LeftToRight
 
             ToastChip {
                 visible: root.editing

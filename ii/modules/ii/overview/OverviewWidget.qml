@@ -11,6 +11,7 @@ import Quickshell
 import Quickshell.Wayland
 import Quickshell.Hyprland
 import Quickshell.Io
+import Quickshell.Widgets
 
 Item {
     id: root
@@ -23,6 +24,16 @@ Item {
         const inWorkspaceGroup = (root.workspaceGroup * root.workspacesShown < win?.workspace?.id && win?.workspace?.id <= (root.workspaceGroup + 1) * root.workspacesShown)
         return inWorkspaceGroup;
     })
+    // Windows on a hidden special workspace (the scratchpad, minimized): no workspace tile shows them,
+    // so they get a row of their own; a click brings one to the current workspace.
+    readonly property var hiddenWindows: (HyprlandData.windowList ?? []).filter(w => (w?.workspace?.id ?? 0) < 0)
+    function bringHere(w) {
+        const here = HyprlandData.activeWorkspace?.id;
+        if (!w || here === undefined) return;
+        HyprDispatch.run(`movetoworkspace ${here}, address:${w.address}`);
+        HyprDispatch.run(`focuswindow address:${w.address}`);
+        GlobalStates.overviewOpen = false;
+    }
     property int keyboardSelectedIndex: -1
     onVisibleWindowsChanged: {
         if (keyboardSelectedIndex >= visibleWindows.length) {

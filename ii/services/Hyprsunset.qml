@@ -30,6 +30,9 @@ Singleton {
     property int clockHour: DateTime.clock.hours
     property int clockMinute: DateTime.clock.minutes
 
+    // loom is the night light itself (hyprsunset's socket, its commands): nothing to start or kill
+    readonly property bool onLoom: (Quickshell.env("HYPRLAND_INSTANCE_SIGNATURE") || "").startsWith("loom_")
+
     property var manualActive
     property int manualActiveHour
     property int manualActiveMinute
@@ -122,6 +125,7 @@ Singleton {
         interval: 800
         onTriggered: {
             if (root.backendOk === false) { root._startFallback(); return; }
+            if (root.onLoom) { root._startHyprsunset(); return; }
             Quickshell.execDetached(["bash", "-c",
                 `if pidof hyprsunset >/dev/null; then hyprctl hyprsunset temperature ${root.colorTemperature}; else hyprsunset --temperature ${root.colorTemperature}; fi`]);
         }
@@ -156,6 +160,10 @@ Singleton {
     }
 
     function _startHyprsunset() {
+        if (root.onLoom) {
+            Quickshell.execDetached(["hyprctl", "hyprsunset", "temperature", `${root.colorTemperature}`]);
+            return;
+        }
         Quickshell.execDetached(["bash", "-c",
             `pidof hyprsunset || hyprsunset --temperature ${root.colorTemperature}`]);
     }
@@ -170,6 +178,7 @@ Singleton {
 
     function enable() {
         root.active = true;
+        if (root.onLoom) root.backendOk = true;
         if (root.backendOk === undefined) {
             backendProbe.running = true;   // probes, then starts the right one
             return;
@@ -180,6 +189,10 @@ Singleton {
 
     function disable() {
         root.active = false;
+        if (root.onLoom) {
+            Quickshell.execDetached(["hyprctl", "hyprsunset", "identity"]);
+            return;
+        }
         Quickshell.execDetached(["bash", "-c",
             "pkill hyprsunset; command -v redshift >/dev/null && redshift -x >/dev/null 2>&1"]);
     }

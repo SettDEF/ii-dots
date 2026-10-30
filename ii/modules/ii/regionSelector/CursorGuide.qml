@@ -9,27 +9,27 @@ Item {
     property var selectionMode
 
     property string description: switch (root.action) {
-    case RegionSelection.SnipAction.Copy:
-    case RegionSelection.SnipAction.Edit:
+    case 0 /* SnipAction.Copy */:
+    case 1 /* SnipAction.Edit */:
         return Translation.tr("Copy region (LMB) or annotate (RMB)");
-    case RegionSelection.SnipAction.Search:
+    case 2 /* SnipAction.Search */:
         return Translation.tr("Search with Google Lens");
-    case RegionSelection.SnipAction.CharRecognition:
+    case 3 /* SnipAction.CharRecognition */:
         return Translation.tr("Recognize text");
-    case RegionSelection.SnipAction.Record:
-    case RegionSelection.SnipAction.RecordWithSound:
+    case 4 /* SnipAction.Record */:
+    case 5 /* SnipAction.RecordWithSound */:
         return Translation.tr("Record region");
     }
     property string materialSymbol: switch (root.action) {
-    case RegionSelection.SnipAction.Copy:
-    case RegionSelection.SnipAction.Edit:
+    case 0 /* SnipAction.Copy */:
+    case 1 /* SnipAction.Edit */:
         return "content_cut";
-    case RegionSelection.SnipAction.Search:
+    case 2 /* SnipAction.Search */:
         return "image_search";
-    case RegionSelection.SnipAction.CharRecognition:
+    case 3 /* SnipAction.CharRecognition */:
         return "document_scanner";
-    case RegionSelection.SnipAction.Record:
-    case RegionSelection.SnipAction.RecordWithSound:
+    case 4 /* SnipAction.Record */:
+    case 5 /* SnipAction.RecordWithSound */:
         return "videocam";
     default:
         return "";

@@ -888,6 +888,10 @@ Singleton {
             /// The card that pops up after every copy.
             property JsonObject clipboardToast: JsonObject {
                 property bool enable: true
+                // what plays a copied stream / video link or media file: reel, mpv, vlc, celluloid, haruna,
+                // or "custom" with mediaCommand ("{url}" is replaced; run through sh)
+                property string mediaPlayer: "reel"
+                property string mediaCommand: ""
             }
             property JsonObject regionSelector: JsonObject {
                 property JsonObject targetRegions: JsonObject {

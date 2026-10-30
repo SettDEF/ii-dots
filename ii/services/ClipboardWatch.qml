@@ -94,7 +94,8 @@ Singleton {
                     root.preview = parts[1].trim();
                     // Empty copies (a cleared selection) are not worth a toast.
                     if (root.preview.length === 0) return;
-                    const m = root.preview.match(/^\s*(https?:\/\/\S+)\s*$/);
+                    // a stray space before the ending ("…/mono .m3u8", from a wrapped page) is not part of it
+                    const m = root.preview.replace(/^(\s*https?:\/\/\S+)\s+(\.[A-Za-z0-9]{2,5}(?:[?#]\S*)?\s*)$/, "$1$2").match(/^\s*(https?:\/\/\S+)\s*$/);
                     root.url = m ? m[1] : "";
                     root.filePath = "";
                     if (!root.url) root._maybePath(root.preview);

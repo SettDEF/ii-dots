@@ -14,7 +14,10 @@ Rectangle {
     property bool primary: false
     signal activated
 
-    implicitWidth: row.implicitWidth + 24
+    // in a crowded row (the row's `dense`) a secondary chip is only its icon, its name a tooltip
+    readonly property bool compact: !primary && !!parent && parent.dense === true
+    implicitWidth: compact ? implicitHeight : row.implicitWidth + 24
+    Behavior on implicitWidth { NumberAnimation { duration: 180; easing.type: Easing.OutCubic } }
     implicitHeight: 34
     radius: Appearance.rounding.full
     readonly property color base: primary ? Appearance.m3colors.m3primary : Appearance.m3colors.m3secondaryContainer
@@ -33,6 +36,7 @@ Rectangle {
             color: root.fg
         }
         StyledText {
+            visible: !root.compact
             Layout.maximumWidth: 150
             text: root.label
             elide: Text.ElideRight
@@ -49,7 +53,7 @@ Rectangle {
         onClicked: root.activated()
     }
     StyledToolTip {
-        text: root.tip
-        extraVisibleCondition: root.tip.length > 0
+        text: root.compact ? (root.tip || root.label) : root.tip
+        extraVisibleCondition: text.length > 0
     }
 }
