@@ -456,6 +456,13 @@ if [ "$(getent passwd "$USER" | cut -d: -f7)" != /usr/bin/zsh ] && [ -x /usr/bin
     run sudo chsh -s /usr/bin/zsh "$USER" || warn "could not switch to zsh (chsh -s /usr/bin/zsh)"
 fi
 
+step "Dotfiles"
+# zsh, functions, scripts and app settings (public, no login); what is there is kept as NAME.bak-DATE
+DOT="$HOME/.local/src/dotfiles"
+if [ -d "$DOT/.git" ]; then run git -C "$DOT" pull --ff-only -q || warn "dotfiles: could not update"
+else run git clone -q --depth 1 https://github.com/SettDEF/dotfiles.git "$DOT" || warn "dotfiles: could not clone"; fi
+if [ -f "$DOT/install.sh" ]; then run bash "$DOT/install.sh" || warn "dotfiles did not install"; fi
+
 # ── 5. This config ──────────────────────────────────────────────────────────
 step "The config"
 SRC=""
@@ -517,13 +524,6 @@ fi
 # it, a fresh install logs into an empty grey screen and looks broken. This
 # writes the smallest config that starts the shell and gives you the keys to
 # reach it — and never touches one that is already there.
-step "Dotfiles"
-# zsh, functions, scripts and app settings (public, no login); what is there is kept as NAME.bak-DATE
-DOT="$HOME/.local/src/dotfiles"
-if [ -d "$DOT/.git" ]; then run git -C "$DOT" pull --ff-only -q || warn "dotfiles: could not update"
-else run git clone -q --depth 1 https://github.com/SettDEF/dotfiles.git "$DOT" || warn "dotfiles: could not clone"; fi
-if [ -f "$DOT/install.sh" ]; then run bash "$DOT/install.sh" || warn "dotfiles did not install"; fi
-
 step "Hyprland config"
 HYPR_DIR="$HOME/.config/hypr"
 if [ "$DO_HYPR" != 1 ]; then

@@ -48,6 +48,8 @@ RECOMMENDED_PKGS=(libnotify wl-clipboard networkmanager pipewire pipewire-pulse
                   ddcutil
                   # called by the shell's own commands (audio, visualiser, night light, wallpaper colours)
                   alsa-utils libpulse cava hyprsunset imagemagick pacman-contrib procps-ng
+                  # screenshots and recording: annotate, text from a picture, window shots, the recorder
+                  swappy tesseract tesseract-data-eng hyprshot gpu-screen-recorder ffmpeg
                   syntax-highlighting      # code blocks in the AI chat
                   # Applications the shell launches BY NAME. Without them the
                   # button is there and does nothing, which is worse than a
