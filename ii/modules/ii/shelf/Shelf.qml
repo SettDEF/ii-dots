@@ -32,8 +32,9 @@ Scope {
                 readonly property HyprlandMonitor hyprMonitor: Hyprland.monitorFor(shelfLoader.modelData)
                 readonly property bool isActiveMonitor: Hyprland.focusedMonitor?.id === hyprMonitor?.id
 
-                readonly property real shelfHeight: 500
-                readonly property real shelfWidth:  700
+                // 500×700, or less on a small screen (40% of its height, half its width): its zone pushes every window down
+                readonly property real shelfHeight: Math.min(500, Math.round((shelfWin.screen?.height ?? 1080) * 0.4))
+                readonly property real shelfWidth:  Math.min(700, Math.round((shelfWin.screen?.width ?? 1920) * 0.5))
 
                 // Position: top-left, just below the bar
                 anchors.top:  !Config.options.bar.bottom
