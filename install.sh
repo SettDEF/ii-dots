@@ -243,13 +243,15 @@ install_packages() {
     fi
 
     if [ "$ASSUME_YES" != 1 ] && [ "$DRY" != 1 ]; then
-        read -rp "   install them now? [y/N] " a
+        read -rp "   install them now? [y/N] " a </dev/tty || a=n
         [[ "$a" =~ ^[Yy]$ ]] || { warn "skipping package install"; return; }
     fi
     if [ -n "$helper" ]; then
-        run "$helper" -S --needed "${missing[@]}"
+        # asked once above (or --yes): pacman must not stop again at its own "Proceed?",
+        # which a chroot or su session often does not even show
+        run "$helper" -S --needed --noconfirm "${missing[@]}"
     else
-        run sudo pacman -S --needed "${missing[@]}" || warn "some packages were not found in the repos"
+        run sudo pacman -S --needed --noconfirm "${missing[@]}" || warn "some packages were not found in the repos"
     fi
 }
 
