@@ -14,7 +14,7 @@ Item {
     signal closed
 
     required property Item contentItem
-    property real visualMargin: 12
+    property real visualMargin: Looks.noAlpha ? 0 : 12
     property int closeAnimDuration: 150
     property bool revealFromSides: false
     property bool revealFromLeft: true
@@ -85,13 +85,13 @@ Item {
     component OpenAnim: PropertyAnimation {
         target: panelContent
         to: root.visualMargin
-        duration: 200
+        duration: Looks.noAlpha ? 0 : 200
         easing.type: Easing.BezierSpline
         easing.bezierCurve: Looks.transition.easing.bezierCurve.easeIn
     }
     component CloseAnim: PropertyAnimation {
         target: panelContent
-        duration: root.closeAnimDuration
+        duration: Looks.noAlpha ? 0 : root.closeAnimDuration
         easing.type: Easing.BezierSpline
         easing.bezierCurve: Looks.transition.easing.bezierCurve.easeOut
     }

@@ -22,7 +22,7 @@ PopupWindow {
     }
 
     function open() {
-        marginBehavior.enabled = true;
+        marginBehavior.enabled = !Looks.noAlpha;
         root.visible = true;
     }
 
@@ -35,8 +35,8 @@ PopupWindow {
 
     ///////////////////// Internals /////////////////////
     readonly property bool bottom: Config.options.waffles.bar.bottom
-    property real visualMargin: 12
-    property real ambientShadowWidth: 1
+    property real visualMargin: Looks.noAlpha ? 0 : 12
+    property real ambientShadowWidth: Looks.noAlpha ? 0 : 1
 
     visible: false
     color: "transparent"
@@ -86,7 +86,7 @@ PopupWindow {
                 topMargin: root.bottom ? (root.ambientShadowWidth + root.visualMargin) : sourceEdgeMargin
             }
             color: Looks.colors.bg1Base
-            radius: Looks.radius.large
+            radius: Looks.noAlpha ? 0 : Looks.radius.large
 
             layer.enabled: true
             layer.effect: OpacityMask {

@@ -17,9 +17,9 @@ Loader {
     signal focusCleared()
     
     property Item anchorItem: parent
-    property real visualMargin: 12
+    property real visualMargin: Looks.noAlpha ? 0 : 12
     readonly property bool barAtBottom: Config.options.waffles.bar.bottom
-    property real ambientShadowWidth: 1
+    property real ambientShadowWidth: Looks.noAlpha ? 0 : 1
 
     onFocusCleared: {
         if (!root.closeOnFocusLost) return;
@@ -79,7 +79,7 @@ Loader {
             target: popupWindow
             property: "sourceEdgeMargin"
             to: (root.ambientShadowWidth + root.visualMargin)
-            duration: 200
+            duration: Looks.noAlpha ? 0 : 200
             easing.type: Easing.BezierSpline
             easing.bezierCurve: Looks.transition.easing.bezierCurve.easeIn
         }
@@ -89,7 +89,7 @@ Loader {
                 target: popupWindow
                 property: "sourceEdgeMargin"
                 to: -implicitHeight
-                duration: 150
+                duration: Looks.noAlpha ? 0 : 150
                 easing.type: Easing.BezierSpline
                 easing.bezierCurve: Looks.transition.easing.bezierCurve.easeOut
             }

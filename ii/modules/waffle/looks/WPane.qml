@@ -11,7 +11,7 @@ import qs.modules.waffle.looks
 Item {
     id: root
     property Item contentItem
-    property real radius: Looks.radius.large
+    property real radius: Looks.noAlpha ? 0 : Looks.radius.large
     property alias color: contentRect.color
     property alias border: borderRect
     property alias borderColor: borderRect.border.color
