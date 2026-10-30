@@ -433,10 +433,9 @@ own_build() {   # own_build NAME DIR JOBS  -> the app's install.sh, with a heart
     local name="$1" at="$2" jobs="$3" log="$OWN_SRC/.logs/$1.log" start=$SECONDS
     mkdir -p "$OWN_SRC/.logs"
     if [ ! -f "$at/install.sh" ] && [ -f "$at/scripts/install.sh" ]; then
-        # loom: built here, installed by scripts/install.sh, plus its login-screen entry
+        # loom: built here, installed by scripts/install.sh (its login-screen entry: loom_session_entry)
         ( cd "$at" && export CARGO_TARGET_DIR="$at/target" && cargo build --release -j "${jobs:-2}" \
-            && LOOM_BIN="$at/target/release" sh scripts/install.sh \
-            && { [ ! -f dist/loom.desktop ] || sudo install -m 644 dist/loom.desktop /usr/share/wayland-sessions/loom.desktop; } ) > "$log" 2>&1 &
+            && LOOM_BIN="$at/target/release" sh scripts/install.sh </dev/null ) > "$log" 2>&1 &
     else
         ( cd "$at" && CARGO_BUILD_JOBS="${jobs:-}" JOBS="$jobs" bash ./install.sh ) > "$log" 2>&1 &
     fi
@@ -449,6 +448,20 @@ own_build() {   # own_build NAME DIR JOBS  -> the app's install.sh, with a heart
         fi
     done
     wait "$pid"
+}
+
+# loom in the login screen's list, with this home in it. Here in the foreground: in the background
+# build sudo had no terminal to ask in, and dist/loom.desktop named one machine's /home/caesar
+# (or @HOME@), so the login screen listed loom and started nothing.
+loom_session_entry() {
+    local src="$1/dist/loom.desktop" dst=/usr/share/wayland-sessions/loom.desktop tmp
+    [ -f "$src" ] || return 0
+    tmp="$(mktemp)"
+    sed -e "s|@HOME@|$HOME|g" -e "s|^Exec=/home/[^/]*/|Exec=$HOME/|" "$src" > "$tmp"
+    if cmp -s "$tmp" "$dst"; then rm -f "$tmp"; return 0; fi
+    info "loom: adding it to the login screen's sessions (sudo)"
+    run sudo install -Dm 644 "$tmp" "$dst" || warn "loom: not in the login screen's list (sudo install -Dm 644 $src $dst, with your home in Exec=)"
+    rm -f "$tmp"
 }
 
 install_own_apps() {
@@ -521,6 +534,7 @@ install_own_apps() {
         if [ "$DRY" = 1 ]; then printf '   would: (cd %s && ./install.sh)\n' "$at"; continue; fi
         if own_build "$app" "$at" "$jobs"; then
             done_list+=("$app"); info "$app installed"
+            [ "$app" = loom ] && loom_session_entry "$at"
         else
             failed+=("$app"); warn "$app did not install (its log: $OWN_SRC/.logs/$app.log); the shell works without it"
         fi
