@@ -21,7 +21,7 @@
 # sudo only where a package or a systemd unit genuinely needs root.
 #
 # It is safe to re-run: every step checks whether it has already been done.
-# Nothing is removed, and an existing ~/.config/hypr is never overwritten.
+# Nothing is removed; an existing ~/.config/hypr without this config is kept as hypr.bak-DATE.
 set -euo pipefail
 
 REPO_URL="${QS_REPO_URL:-}"       # set by --repo, or detected from a clone
@@ -120,7 +120,7 @@ What it does, in order
   3. builds paru, if no AUR helper is present
   4. installs Hyprland, a terminal, fonts and the portals
   5. clones this config and hands over to its own install.sh
-  6. writes a starter ~/.config/hypr, unless one is already there
+  6. writes ~/.config/hypr (an old one is kept as hypr.bak-DATE)
   7. tells you how to start it
 
 Re-running is safe: each step is skipped if it is already done.
@@ -515,11 +515,16 @@ HYPR_DIR="$HOME/.config/hypr"
 if [ "$DO_HYPR" != 1 ]; then
     info "skipping (--no-hypr). Add this to your own config:"
     info "  exec-once = qs -c $NAME"
-elif [ -e "$HYPR_DIR/hyprland.conf" ] || [ -e "$HYPR_DIR/hyprland.lua" ]; then
-    warn "$HYPR_DIR already has a Hyprland config — left untouched."
-    warn "To use this shell from it, add:  exec-once = qs -c $NAME"
-    warn "and see $SRC/hypr/ for what else the shell expects."
+elif [ -e "$HYPR_DIR/hyprland.lua" ]; then
+    warn "$HYPR_DIR already has this config (hyprland.lua) — left untouched."
+    warn "To update it: bash $SRC/hypr/apply.sh $NAME"
 elif [ -d "$SRC/hypr" ]; then
+    # a hyprland.conf here is Hyprland's own default (made on its first start) or archinstall's: kept aside
+    if [ -e "$HYPR_DIR" ]; then
+        bak="$HYPR_DIR.bak-$(date +%Y%m%d-%H%M%S)"
+        info "your old $HYPR_DIR is kept as $bak"
+        run mv "$HYPR_DIR" "$bak"
+    fi
     info "installing the starter config to $HYPR_DIR"
     run mkdir -p "$HYPR_DIR"
     run cp -r "$SRC/hypr/." "$HYPR_DIR/"
