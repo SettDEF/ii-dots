@@ -28,7 +28,8 @@ BodyRectangle {
         }
 
         AllApps {
-            implicitHeight: 300 // for now
+            Layout.fillWidth: true
+            Layout.fillHeight: true
         }
     }
 
@@ -46,11 +47,20 @@ BodyRectangle {
         title: Translation.tr("All")
         // TODO: Do we wanna also implement list view and grid view?
         //       (instead of only category view)
-        AllAppsGrid {
+        // the room under Pinned, scrolling: at a fixed 300 its second row was drawn over the footer
+        Flickable {
+            id: allFlick
             Layout.fillWidth: true
             Layout.fillHeight: true
-            Layout.leftMargin: 32
-            Layout.rightMargin: 32
+            clip: true
+            contentHeight: allGrid.implicitHeight
+            boundsBehavior: Flickable.StopAtBounds
+            ScrollBar.vertical: ScrollBar {}
+            AllAppsGrid {
+                id: allGrid
+                x: 32
+                width: allFlick.width - 64
+            }
         }
     }
 
@@ -71,6 +81,7 @@ BodyRectangle {
         ColumnLayout {
             id: pageSectionContentArea
             Layout.fillWidth: true
+            Layout.fillHeight: true
         }
     }
 }

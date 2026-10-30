@@ -16,6 +16,10 @@ WBarAttachedPanelContent {
     id: root
 
     property bool searching: false
+    // the screen's room for it (WaffleStartMenu sets these): the 832 × 800 page was taller than a
+    // 768-pixel screen, and the top (search, pinned apps) was cut off
+    property real maxWidth: 832
+    property real maxHeight: 900
     property string searchText: LauncherSearch.query
 
     StartMenuContext {
@@ -85,7 +89,7 @@ WBarAttachedPanelContent {
             SearchBar {
                 id: searchBar
                 Layout.fillWidth: true
-                implicitWidth: 832 // TODO: Make sizes naturally inferred
+                implicitWidth: Math.min(832, root.maxWidth)
                 horizontalPadding: 32
                 // verticalPadding: root.searching ? 32 : 16 // TODO: make this not nuke the panel
                 Synchronizer on searching {
@@ -101,8 +105,10 @@ WBarAttachedPanelContent {
                 }
             }
             Item {
-                implicitHeight: root.searching ? 800 : 800 // TODO: Make sizes naturally inferred
+                implicitHeight: Math.max(320, Math.min(800, root.maxHeight - searchBar.implicitHeight))
                 Layout.fillWidth: true
+                // a shorter page scrolls; its last row must not be drawn over the footer
+                clip: true
                 Loader {
                     id: pageContentLoader
                     anchors.fill: parent
