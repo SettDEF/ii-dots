@@ -151,9 +151,17 @@ if [ -f "$cj" ]; then
     # Generate visual thumbnail of the processed wallpaper
     "$HOME/.local/bin/tinct" image thumb --size 160 --jobs 1 "$tmp" "$thumb_path"
     
-    jq -cn --arg p "$pri" --arg s "$sec" --arg t "$ter" --arg w "$NEW_WALL" \
+    # the exact theme that is on, and one entry per look: an older one of the same wallpaper,
+    # state and theme goes (it piled up, "teenager" three times running), the new one is newest
+    exact=$(jq -r '.appearance.wallpaperTheming.exactTheme // ""' "$SHELL_CONFIG_FILE" 2>/dev/null)
+    if [ -f "$hist" ]; then
+        new_key=$(jq -cn --arg w "$NEW_WALL" --argjson st "$snapJson" --arg ex "$exact" '{w:$w, st:$st, ex:$ex}')
+        tmp_h=$(mktemp)
+        jq -c --argjson nk "$new_key" 'select(({w:.wallpaper, st:.state, ex:(.exact // "")}|tostring) != ($nk|tostring))' "$hist" > "$tmp_h" 2>/dev/null && mv "$tmp_h" "$hist" || rm -f "$tmp_h"
+    fi
+    jq -cn --arg p "$pri" --arg s "$sec" --arg t "$ter" --arg w "$NEW_WALL" --arg ex "$exact" \
           --arg th "$thumb_path" --argjson st "$snapJson" --argjson ts "$ts" \
-          '{ts:$ts, primary:$p, secondary:$s, tertiary:$t, wallpaper:$w, thumbnail:$th, state:$st}' >> "$hist"
+          '{ts:$ts, primary:$p, secondary:$s, tertiary:$t, wallpaper:$w, thumbnail:$th, state:$st, exact:$ex}' >> "$hist"
 
     if [ $(wc -l < "$hist") -gt 40 ]; then
         tmp_hist=$(mktemp) && tail -n 40 "$hist" > "$tmp_hist" && mv "$tmp_hist" "$hist"

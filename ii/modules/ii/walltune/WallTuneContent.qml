@@ -779,6 +779,8 @@ Rectangle {
         if (s.darkMode      !== undefined) root.darkMode      = s.darkMode
         if (s.applyMode     !== undefined) root.applyMode     = s.applyMode
         if (s.stackable     !== undefined) root.stackable     = s.stackable
+        // the exact theme that was on (entries before it was recorded have none: left as it is)
+        if (entry.exact !== undefined) Config.options.appearance.wallpaperTheming.exactTheme = entry.exact
 
         debounce.restart()
         saveDeb.restart()
@@ -1008,12 +1010,12 @@ Rectangle {
             `mkdir -p "$(dirname "$hist")"`,
             `cj="$HOME/.local/state/quickshell/user/generated/colors.json"`,
             `if [ -f "$cj" ]; then`,
-            `  new_key=$(jq -cn --arg w '${srcWall}' --argjson st '${snapJson}' '{w:$w, st:$st}')`,
+            `  new_key=$(jq -cn --arg w '${srcWall}' --argjson st '${snapJson}' --arg ex '${Config.options.appearance.wallpaperTheming.exactTheme ?? ""}' '{w:$w, st:$st, ex:$ex}')`,
             `  if [ -f "$hist" ]; then`,
             // Strip every prior entry that matches new_key, in place. `tostring`
             // canonicalises the JSON so deep object compare is just string ==.
             `    tmp_h=$(mktemp)`,
-            `    jq -c --argjson nk "$new_key" 'select(({w:.wallpaper, st:.state}|tostring) != ($nk|tostring))' "$hist" > "$tmp_h" 2>/dev/null && mv "$tmp_h" "$hist" || rm -f "$tmp_h"`,
+            `    jq -c --argjson nk "$new_key" 'select(({w:.wallpaper, st:.state, ex:(.exact // "")}|tostring) != ($nk|tostring))' "$hist" > "$tmp_h" 2>/dev/null && mv "$tmp_h" "$hist" || rm -f "$tmp_h"`,
             `  fi`,
             `  pri=$(jq -r '.primary // ""' "$cj")`,
             `  sec=$(jq -r '.secondary // ""' "$cj")`,
@@ -1023,9 +1025,9 @@ Rectangle {
             `  mkdir -p "$thumb_dir"`,
             `  thumb_path="$thumb_dir/$ts.png"`,
             `  "$HOME/.local/bin/tinct" image thumb --size 160 --jobs 1 '${tmp}' "$thumb_path"`,
-            `  jq -cn --arg p "$pri" --arg s "$sec" --arg t "$ter" --arg w '${srcWall}' \\`,
+            `  jq -cn --arg p "$pri" --arg s "$sec" --arg t "$ter" --arg w '${srcWall}' --arg ex '${Config.options.appearance.wallpaperTheming.exactTheme ?? ""}' \\`,
             `        --arg th "$thumb_path" --argjson st '${snapJson}' --argjson ts "$ts" \\`,
-            `        '{ts:$ts, primary:$p, secondary:$s, tertiary:$t, wallpaper:$w, thumbnail:$th, state:$st}' >> "$hist"`,
+            `        '{ts:$ts, primary:$p, secondary:$s, tertiary:$t, wallpaper:$w, thumbnail:$th, state:$st, exact:$ex}' >> "$hist"`,
             `  if [ $(wc -l < "$hist") -gt 40 ]; then`,
             `    tmp_h=$(mktemp) && tail -n 40 "$hist" > "$tmp_h" && mv "$tmp_h" "$hist"`,
             `  fi`,
