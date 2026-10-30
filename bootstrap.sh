@@ -119,6 +119,24 @@ EOF
 # kept for a re-run as your user (started as root, e.g. in archinstall's chroot)
 ORIG_ARGS=("$@")
 
+# Always the newest bootstrap: an older copy (downloaded before a fix) replaces itself with
+# the one on GitHub and starts again. GitHub's API, not raw.githubusercontent.com: that one is
+# cached for minutes. QS_NO_SELF_UPDATE=1 skips it; offline it carries on with this copy.
+SELF="${BASH_SOURCE[0]:-}"
+if [ -z "${QS_NO_SELF_UPDATE:-}" ] && [ -z "${QS_SELF_UPDATED:-}" ] && [ -f "$SELF" ] && [ -w "$SELF" ]; then
+    _new="$(mktemp)"
+    if curl -fsSL --max-time 15 -H "Accept: application/vnd.github.raw" \
+         "https://api.github.com/repos/SettDEF/ii-dots/contents/bootstrap.sh?ref=${QS_BRANCH:-master}" -o "$_new" 2>/dev/null \
+       && head -1 "$_new" | grep -q '^#!/usr/bin/env bash' && bash -n "$_new" 2>/dev/null; then
+        if ! cmp -s "$_new" "$SELF"; then
+            cp -f "$_new" "$SELF" && rm -f "$_new"
+            printf ':: bootstrap.sh was outdated: updated from GitHub, starting again\n'
+            QS_SELF_UPDATED=1 exec bash "$SELF" "${ORIG_ARGS[@]}"
+        fi
+    fi
+    rm -f "$_new"
+fi
+
 while [ $# -gt 0 ]; do
     case "$1" in
         --repo)       REPO_URL="${2:?--repo needs a value}"; shift 2 ;;
@@ -431,8 +449,13 @@ if [ -d "$(dirname "${BASH_SOURCE[0]}")/ii" ]; then
     [ -n "$REPO_URL" ] || REPO_URL="$(git -C "$SRC" remote get-url origin 2>/dev/null || true)"
 elif [ -n "$REPO_URL" ]; then
     if [ -d "$CLONE_DIR/.git" ]; then
-        info "updating $CLONE_DIR"
-        run git -C "$CLONE_DIR" pull --ff-only
+        # a download copy, not a work tree: always exactly what GitHub has (a pull that could
+        # not fast-forward left an old install.sh, and the install stopped where it was fixed)
+        info "updating $CLONE_DIR to the newest $BRANCH"
+        run git -C "$CLONE_DIR" fetch -q --depth 1 origin "$BRANCH" \
+            && run git -C "$CLONE_DIR" reset -q --hard FETCH_HEAD \
+            || die "could not update $CLONE_DIR; check the network, or delete it and run this again"
+        ok "$(git -C "$CLONE_DIR" log -1 --format='source: %h %cr' 2>/dev/null)"
     else
         info "cloning $REPO_URL -> $CLONE_DIR"
         run git clone --depth 1 -b "$BRANCH" "$REPO_URL" "$CLONE_DIR"
