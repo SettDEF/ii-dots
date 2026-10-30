@@ -7,7 +7,12 @@
 
 use crate::model::{push, App, Bind, Section};
 
-const SOURCE: &str = "/mnt/storage/dev/projects/reel/reel/Settings.qml";
+/// reel's settings page in your projects folder ($PROJECTS_DIR from paths.env, else ~/dev/projects)
+fn source() -> String {
+    let projects = std::env::var("PROJECTS_DIR")
+        .unwrap_or_else(|_| format!("{}/dev/projects", std::env::var("HOME").unwrap_or_default()));
+    format!("{projects}/reel/reel/Settings.qml")
+}
 
 /// "Shift+Left" → (["Shift"], "Left")
 fn split(k: &str) -> (Vec<String>, String) {
@@ -17,7 +22,7 @@ fn split(k: &str) -> (Vec<String>, String) {
 }
 
 pub fn extract() -> Option<App> {
-    let qml = std::fs::read_to_string(std::env::var("REEL_SETTINGS_QML").unwrap_or_else(|_| SOURCE.into())).ok()?;
+    let qml = std::fs::read_to_string(std::env::var("REEL_SETTINGS_QML").unwrap_or_else(|_| source())).ok()?;
     let home = std::env::var("HOME").unwrap_or_default();
     let cfg = std::env::var("XDG_CONFIG_HOME").unwrap_or_else(|_| format!("{home}/.config"));
     let user: serde_json::Value = std::fs::read_to_string(format!("{cfg}/reel/settings.json"))

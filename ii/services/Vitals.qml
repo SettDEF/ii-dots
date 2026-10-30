@@ -50,9 +50,14 @@ Singleton {
     readonly property bool fresh: root.snap !== null && (Math.max(root._tick, Date.now()) - root.snapAt) < root.streamInterval * 3000 + 2000
     readonly property var procs: root.snap?.procs ?? []
 
+    // not installed (the other laptop): nothing is started, so no "failed to start" every few seconds
+    property bool installed: false
+    Process { id: probe; running: true; command: ["test", "-x", root.bin]; onExited: code => root.installed = code === 0 }
+    Timer { interval: 60000; running: !root.installed; repeat: true; onTriggered: probe.running = true }
+
     Process {
         id: streamProc
-        running: true
+        running: root.installed
         command: [root.bin, "--stream", "--interval", String(root.streamInterval), "--top", "10"]
         stdout: SplitParser {
             onRead: line => {
@@ -85,7 +90,7 @@ Singleton {
     // dock tile and keeps this at one tiny process per tick.
     Timer {
         interval: 15000
-        running: true
+        running: root.installed
         repeat: true
         triggeredOnStart: true
         onTriggered: root.refresh()

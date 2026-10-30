@@ -19,7 +19,8 @@ Singleton {
 	id: root
     // The popup animation preset (Config notifications.popupAnimation). "auto" follows the power: on battery
     // or in Vitals' Silent mode (the firmware's quiet profile) the light one, else the smooth one.
-    FileView { id: platformProfile; path: "/sys/firmware/acpi/platform_profile" }
+    // many laptops have no platform_profile: no error per reload
+    FileView { id: platformProfile; path: "/sys/firmware/acpi/platform_profile"; printErrors: false }
     Timer { interval: 10000; running: true; repeat: true; onTriggered: platformProfile.reload() }
     readonly property bool quietPower: platformProfile.text().trim() === "quiet"
     readonly property string popupAnimation: {

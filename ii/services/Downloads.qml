@@ -21,7 +21,7 @@ Singleton {
     id: root
 
     /// tela-zen's browser.download.dir, plus the XDG folder other browsers use.
-    readonly property var dirs: ["/mnt/storage/Downloads", `${Quickshell.env("HOME")}/Downloads`]
+    readonly property var dirs: Paths.downloads === `${Quickshell.env("HOME")}/Downloads` ? [Paths.downloads] : [Paths.downloads, `${Quickshell.env("HOME")}/Downloads`]
 
     /// [{ name, path, size, speed }] - speed in bytes/s, 0 until the second sample.
     property var active: []

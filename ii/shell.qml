@@ -106,10 +106,17 @@ ShellRoot {
         Config.options.panelFamily = families[nextIndex]
     }
 
+    // A switch unloads the old family first and loads the new one a tick later: both at once
+    // registered every IPC handler twice and laid windows out against the old bar's zone.
+    readonly property string wantedFamily: Config.ready ? Config.options.panelFamily : ""
+    property string shownFamily: ""
+    onWantedFamilyChanged: { shownFamily = ""; familySwitch.restart() }
+    Timer { id: familySwitch; interval: 1; onTriggered: root.shownFamily = root.wantedFamily }
+
     component PanelFamilyLoader: LazyLoader {
         required property string identifier
         property bool extraCondition: true
-        active: Config.ready && Config.options.panelFamily === identifier && extraCondition
+        active: root.shownFamily === identifier && extraCondition
     }
     
     PanelFamilyLoader {

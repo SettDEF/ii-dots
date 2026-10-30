@@ -29,8 +29,8 @@ Singleton {
     function _defaults() {
         const home = Directories.home ?? `${Quickshell.env("HOME")}`
         return [
-            { label: "Downloads",   path: home + "/Downloads",                          icon: "download",   filter: "zip",          mode: "zip",   extractTo: "/mnt/storage/usr/mooon/vault/beatbattle.net" },
-            { label: "BeatBattle",  path: "/mnt/storage/usr/mooon/vault/beatbattle.net", icon: "piano",       filter: "wav,mp3,flac", mode: "audio", extractTo: "" },
+            { label: "Downloads",   path: home + "/Downloads",                          icon: "download",   filter: "zip",          mode: "zip",   extractTo: Paths.vault + "/beatbattle.net" },
+            { label: "BeatBattle",  path: Paths.vault + "/beatbattle.net", icon: "piano",       filter: "wav,mp3,flac", mode: "audio", extractTo: "" },
             { label: "Mixes",       path: "/mnt/sdcard/lib/mixes",                       icon: "music_note",  filter: "wav,mp3,flac", mode: "audio", extractTo: "" },
         ]
     }

@@ -5,7 +5,7 @@
 #   replay.sh           start the buffer, or stop it if it is running
 #   replay.sh save      save the last 60 s (starts the buffer if it is off)
 
-DIR=/mnt/storage/Videos/Replays
+. "$HOME/.config/paths.env" 2>/dev/null; DIR="${VIDEOS_DIR:-$HOME/Videos}/Replays"   # paths.env: this machine's video folder
 SECONDS_KEPT=60
 PATTERN='^gpu-screen-recorder .* -r '
 

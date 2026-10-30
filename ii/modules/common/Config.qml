@@ -174,7 +174,7 @@ Singleton {
                     /// object to save; JsonObject misses nested writes.
                     property var apps: ({})
                     /// Window title bars from the ii-decor Hyprland plugin
-                    /// (/mnt/storage/dev/projects/ii-decor). Written to
+                    /// ($PROJECTS_DIR/ii-decor). Written to
                     /// ~/.config/hypr/ii-decor.json; inert until it is loaded.
                     property JsonObject decor: JsonObject {
                         property bool enable: true

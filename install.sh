@@ -48,10 +48,9 @@ RECOMMENDED_PKGS=(libnotify wl-clipboard networkmanager pipewire pipewire-pulse
                   ddcutil
                   # called by the shell's own commands (audio, visualiser, night light, wallpaper colours)
                   alsa-utils libpulse cava hyprsunset imagemagick pacman-contrib procps-ng
-                  syntax-highlighting      # code blocks in the AI chat
-                  # screenshots and recording: the region tool's annotate (swappy) and text (OCR),
-                  # the window screenshot's fallback, record.sh and replay.sh
+                  # screenshots and recording: annotate, text from a picture, window shots, the recorder
                   swappy tesseract tesseract-data-eng hyprshot gpu-screen-recorder ffmpeg
+                  syntax-highlighting      # code blocks in the AI chat
                   # Applications the shell launches BY NAME. Without them the
                   # button is there and does nothing, which is worse than a
                   # feature that hides itself.
@@ -404,7 +403,7 @@ install_companion() {
 # dotos (tasks), sinew (workouts), kalends (calendar), arcade (games, chess), prog (progress cards): they
 # are cloned from GitHub (public, no login), built here (Rust; slow on an old laptop) and
 # installed by each app's own install.sh. Off unless --with-own-apps.
-OWN_APPS="${QS_OWN_APPS:-reel zash zash-prompt zeit zett dotos sinew kalends arcade prog loom}"
+OWN_APPS="${QS_OWN_APPS:-reel zash zash-prompt zeit zett dotos sinew kalends arcade prog loom tinct-cast}"
 OWN_SRC="${QS_OWN_SRC:-$HOME/.local/src}"
 
 # A long silent build looks like a hang: a line a minute while one runs, its output in a log.
@@ -487,6 +486,9 @@ install_own_apps() {
         if [ -n "$asset" ] && [ "$DRY" != 1 ] && [ "${QS_BUILD_OWN:-0}" != 1 ]; then
             info "[$n/$total] $app: the ready-built release"
             if curl -fsSL --max-time 300 "$asset" | tar --zstd --no-overwrite-dir -xf - -C "$HOME"; then
+                # its scripts and launcher entries say @HOME@ where your home goes
+                local hf="$HOME/.local/share/ii-release/$app.home-files"
+                [ -f "$hf" ] && while IFS= read -r f; do [ -f "$HOME/$f" ] && sed -i "s|@HOME@|$HOME|g" "$HOME/$f"; done < "$hf"
                 done_list+=("$app"); info "$app installed (${asset##*/})"; continue
             fi
             warn "$app: the release did not download; building it instead"
