@@ -15,20 +15,33 @@ Singleton {
     property string filePath: Directories.generatedMaterialThemePath
 
     function reapplyTheme() {
+        root.lastApplied = ""   // asked for on purpose: applied even when the text is the same
         themeFileView.reload()
         termFileView.reload()
     }
 
+    // the text last applied: the file watcher and the reload message both arrive for one switch
+    property string lastApplied: ""
     function applyColors(fileContent) {
+        if (fileContent === root.lastApplied) return
+        root.lastApplied = fileContent
+        const t0 = Date.now()
         const json = JSON.parse(fileContent)
+        let changed = 0
         for (const key in json) {
             if (json.hasOwnProperty(key)) {
                 // Convert snake_case to CamelCase
                 const camelCaseKey = key.replace(/_([a-z])/g, (g) => g[1].toUpperCase())
                 const m3Key = `m3${camelCaseKey}`
+                // only colours the shell has, and only when they changed: each set re-runs every
+                // binding that reads it (tinct's 128 shades have no place here)
+                if (!(m3Key in Appearance.m3colors)) continue
+                if (Qt.colorEqual(Appearance.m3colors[m3Key], json[key])) continue
                 Appearance.m3colors[m3Key] = json[key]
+                changed++
             }
         }
+        console.info(`[MaterialThemeLoader] ${changed} colours in ${Date.now() - t0} ms`)
 
         Appearance.m3colors.darkmode = (Appearance.m3colors.m3background.hslLightness < 0.5)
     }
@@ -50,11 +63,9 @@ Singleton {
 
     IpcHandler {
         target: "materialTheme"
+        // read the file again (an atomic move the watcher missed); the same text is not applied twice
         function reload(): void {
-            root.filePath = ""
-            Qt.callLater(function() {
-                root.filePath = Directories.generatedMaterialThemePath
-            })
+            themeFileView.reload()
         }
     }
 
