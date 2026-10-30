@@ -232,6 +232,8 @@ Singleton {
                     property string exactTheme: ""
                     // what the theme leaves out: "theme" (its own manner) or "wallpaper"
                     property string exactFill: "theme"
+                    // Look > Colour > From a colour: the palette from this one colour instead of the wallpaper ("" = off)
+                    property string seedColor: ""
                     property bool enableAppsAndShell: true
                     property bool enableQtApps: true
                     property bool enableTerminal: true

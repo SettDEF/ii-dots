@@ -1028,6 +1028,15 @@ switch() {
             gsettings set org.gnome.desktop.interface color-scheme prefer-light
         fi
         theory_flag="" style_flag="" practical_flag="" remap_flag=""
+    else
+        # Look > Colour > From a colour: the palette from that one colour instead of the wallpaper's
+        # (the scheme and the grading still apply; only --path is swapped for --color)
+        local seed_color
+        seed_color=$(jq -r '.appearance.wallpaperTheming.seedColor // ""' "$SHELL_CONFIG_FILE" 2>/dev/null)
+        if [[ "$seed_color" =~ ^#[0-9a-fA-F]{6}$ && "${tinct_args[0]:-}" == "--path" ]]; then
+            tinct_args[0]="--color"
+            tinct_args[1]="$seed_color"
+        fi
     fi
 
     # ── Palette ──────────────────────────────────────────────────────────

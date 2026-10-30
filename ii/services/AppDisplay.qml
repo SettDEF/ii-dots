@@ -529,7 +529,11 @@ Singleton {
     readonly property string appShaderPath: "/dev/shm/qs-appdisplay.frag"
 
     // What the screen should be running, ignoring file-generation timing.
+    /// Look's colour-blindness preview (scripts/colors/cvd/*.frag): over everything while set, never
+    /// saved; cleared, the shader the rest asks for comes back
+    property string cvdPreview: ""
     readonly property string desiredShader: {
+        if (root.cvdPreview.length > 0) return root.cvdPreview;
         const g = root.governing;
         const p = g.length > 0 ? root.get(g) : null;
         // A shader set on the focused app's OWN profile beats GameMode: GameMode drops the generic

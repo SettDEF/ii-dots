@@ -72,6 +72,21 @@ Singleton {
     }
 
 
+    /// Look > Colour > From a colour: the palette from one colour (exact themes off), or "" for the wallpaper again
+    readonly property string seed: Config.options?.appearance?.wallpaperTheming?.seedColor ?? ""
+    function setSeed(hex) {
+        const h = (hex ?? "").toLowerCase();
+        if (h !== "" && !/^#[0-9a-f]{6}$/.test(h)) return;
+        Config.options.appearance.wallpaperTheming.seedColor = h;
+        if (h !== "") Config.options.appearance.wallpaperTheming.exactTheme = "";
+        apply();
+    }
+
+    /// several variables at once, one write and one apply (Readability > Fix all)
+    function setColors(map) {
+        writeOverrides(Object.assign({}, overrides, map));
+    }
+
     function setColor(name, value) {
         const o = Object.assign({}, overrides);
         o[name] = value;

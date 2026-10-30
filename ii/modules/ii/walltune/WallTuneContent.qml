@@ -264,6 +264,9 @@ Rectangle {
     property bool extractOpen:   false
     property bool exactThemeOpen: false
     property bool remapPageOpen: false
+    property bool seedOpen: false
+    property bool readabilityOpen: false
+    property bool cvdOpen: false
     property bool colourEditorOpen: false
     property bool mixOpen:       false
 
@@ -1962,6 +1965,43 @@ Rectangle {
                 lit: n > 0
                 onClicked: root.colourEditorOpen = true
             }
+            PaletteDivider {}
+            // the whole palette from one colour instead of the wallpaper (tinct generate --color)
+            PaletteRow {
+                glyph: "palette"
+                title: qsTr("From a colour")
+                subtitle: qsTr("The theme from one colour you pick")
+                value: ExactTheme.seed !== "" ? ExactTheme.seed : qsTr("Off")
+                lit: ExactTheme.seed !== ""
+                onClicked: root.seedOpen = true
+            }
+            PaletteDivider {}
+            // the text-on-fill pairs measured, and fixed
+            PaletteRow {
+                glyph: "contrast"
+                title: qsTr("Readability")
+                subtitle: qsTr("Text and its background, checked and fixed")
+                value: readability.failing.length > 0 ? qsTr("%1 hard to read").arg(readability.failing.length) : qsTr("All read")
+                lit: readability.failing.length > 0
+                onClicked: root.readabilityOpen = true
+            }
+            PaletteDivider {}
+            PaletteRow {
+                glyph: "visibility"
+                title: qsTr("Colour-blindness preview")
+                subtitle: qsTr("The screen as others see it")
+                value: AppDisplay.cvdPreview !== "" ? qsTr("On") : qsTr("Off")
+                lit: AppDisplay.cvdPreview !== ""
+                onClicked: root.cvdOpen = true
+            }
+            PaletteDivider {}
+            // one app with its own colours (tinct app): the App colours popup
+            PaletteRow {
+                glyph: "apps"
+                title: qsTr("App colours")
+                subtitle: qsTr("One app with its own colours")
+                onClicked: GlobalStates.appColorsOpen = true
+            }
         }
 
         PaletteCard {
@@ -3015,6 +3055,22 @@ Rectangle {
         headerItem: headerBar
         open: root.exactThemeOpen
         onClosed: root.exactThemeOpen = false
+    }
+    SeedColourSheet {
+        host: root
+        open: root.seedOpen
+        onClosed: root.seedOpen = false
+    }
+    ReadabilitySheet {
+        id: readability
+        host: root
+        open: root.readabilityOpen
+        onClosed: root.readabilityOpen = false
+    }
+    CvdSheet {
+        host: root
+        open: root.cvdOpen
+        onClosed: root.cvdOpen = false
     }
     ColourEditorSheet {
         host: root

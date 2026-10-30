@@ -12,3 +12,6 @@ AppGlassGroup 1.0 AppGlassGroup.qml
 ExactThemeSheet 1.0 ExactThemeSheet.qml
 ColourEditorSheet 1.0 ColourEditorSheet.qml
 RemapPage 1.0 RemapPage.qml
+SeedColourSheet 1.0 SeedColourSheet.qml
+ReadabilitySheet 1.0 ReadabilitySheet.qml
+CvdSheet 1.0 CvdSheet.qml
