@@ -92,7 +92,7 @@ bootstrap.sh — fresh Arch install to this desktop
 Options
       --repo URL     Where to clone this config from. Detected automatically
                      when you run this script from inside a clone.
-      --branch NAME  Branch to clone.                        (default: main)
+      --branch NAME  Branch to clone.                        (default: master)
   -n, --name NAME    Config name; the shell runs as \`qs -c NAME\`. (default: ii)
   -p, --profile P    minimal | core | recommended | full | rog | low-end
                      Passed through to install.sh.     (default: recommended)
@@ -134,7 +134,9 @@ ORIG_ARGS=("$@")
 # the one on GitHub and starts again. GitHub's API, not raw.githubusercontent.com: that one is
 # cached for minutes. QS_NO_SELF_UPDATE=1 skips it; offline it carries on with this copy.
 SELF="${BASH_SOURCE[0]:-}"
-if [ -z "${QS_NO_SELF_UPDATE:-}" ] && [ -z "${QS_SELF_UPDATED:-}" ] && [ -f "$SELF" ] && [ -w "$SELF" ]; then
+# Never inside a git clone: that copy is git's to update, and replacing it threw away your edits.
+if [ -z "${QS_NO_SELF_UPDATE:-}" ] && [ -z "${QS_SELF_UPDATED:-}" ] && [ -f "$SELF" ] && [ -w "$SELF" ] \
+   && ! git -C "$(dirname "$SELF")" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
     _new="$(mktemp)"
     if curl -fsSL --max-time 15 -H "Accept: application/vnd.github.raw" \
          "https://api.github.com/repos/SettDEF/ii-dots/contents/bootstrap.sh?ref=${QS_BRANCH:-master}" -o "$_new" 2>/dev/null \
@@ -158,7 +160,7 @@ while [ $# -gt 0 ]; do
         --no-hypr)    DO_HYPR=0; shift ;;
         --with-own-apps) OWN=1; shift ;;
         --no-own-apps) OWN=0; shift ;;
-        --user) shift 2 ;;   # root only: whom to install for (see the checks)
+        --user) : "${2:?--user needs a value}"; shift 2 ;;   # root only: whom to install for (see the checks)
         --with-tela)  TELA=1; shift ;;
         --no-tela)    TELA=0; shift ;;
         --with-quarry) QUARRY=1; shift ;;
@@ -314,7 +316,11 @@ fi
 
 # ── 2. The toolchain everything else needs ──────────────────────────────────
 step "Base tools"
-run sudo pacman -Sy --needed --noconfirm base-devel git
+# The keyring first: a fresh archinstall's can predate the mirrors' signatures. Then a full
+# -Syu, not -Sy: refreshing the database without upgrading is a partial upgrade, and the next
+# package built against the new libraries breaks the old ones.
+run sudo pacman -Sy --needed --noconfirm archlinux-keyring
+run sudo pacman -Syu --needed --noconfirm base-devel git
 ok "base-devel, git"
 
 # ── 3. An AUR helper ────────────────────────────────────────────────────────
@@ -466,15 +472,16 @@ if [ -f "$DOT/install.sh" ]; then run bash "$DOT/install.sh" || warn "dotfiles d
 # ── 5. This config ──────────────────────────────────────────────────────────
 step "The config"
 SRC=""
+HERE="$(dirname "${BASH_SOURCE[0]:-.}")"
 # A downloaded bootstrap.sh on its own (no clone around it, no --repo): this config's own repo,
 # not a question (it waited for an answer a chroot or su session did not show)
-if [ -z "$REPO_URL" ] && [ ! -d "$(dirname "${BASH_SOURCE[0]}")/ii" ]; then
+if [ -z "$REPO_URL" ] && [ ! -d "$HERE/ii" ]; then
     REPO_URL="$DEFAULT_REPO"
 fi
 # Running from inside a clone is the common case: use it, and learn the URL
 # from it so --repo is not needed.
-if [ -d "$(dirname "${BASH_SOURCE[0]}")/ii" ]; then
-    SRC="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+if [ -d "$HERE/ii" ]; then
+    SRC="$(cd "$HERE" && pwd)"
     ok "using the clone this script is in: $SRC"
     [ -n "$REPO_URL" ] || REPO_URL="$(git -C "$SRC" remote get-url origin 2>/dev/null || true)"
 elif [ -n "$REPO_URL" ]; then
@@ -563,9 +570,11 @@ step "Health check"
 step "Done"
 cat <<EOF
 
-  Start it:      Hyprland
-  From a TTY, after logging in. There is no display manager in this setup;
-  if you want one, install greetd or sddm separately.
+$(if systemctl is-enabled display-manager >/dev/null 2>&1; then
+    printf '  Start it:      reboot, and pick Hyprland at the login screen.'
+else
+    printf '  Start it:      Hyprland\n  From a TTY, after logging in. There is no display manager in this setup;\n  if you want one, install greetd or sddm separately.'
+fi)
 
   First launch walks you through language, keyboard layout and the look.
   All of it is in the settings afterwards — Super+I, or: qs -c $NAME ipc ...
