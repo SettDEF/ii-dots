@@ -167,7 +167,9 @@ Singleton {
     }
 
     // One notification for the whole story: each one replaces the last (its id is kept on disk),
-    // so new commits, "updated" and "failed" do not pile up. "Update" on it applies.
+    // so new commits, "updated" and "failed" do not pile up. "Update" on it applies. Its icon is a
+    // file of the shell's: system-software-update is not in every icon theme (Reversal: a
+    // missing-icon checkerboard).
     Process {
         id: notifyProc
         property string summary: ""
@@ -178,7 +180,7 @@ Singleton {
         command: ["bash", "-c",
             `d="$1"; mkdir -p "$d"; id=$(cat "$d/shell-update.notify-id" 2>/dev/null)
              [ -n "$4" ] && printf '%s' "$4" > "$d/shell-update.announced"
-             args=(-a Shell -i system-software-update -p)
+             args=(-a Shell -i '${Directories.assetsPath}/icons/shell-update.svg' -p)
              [ -n "$id" ] && args+=(-r "$id")
              [ "$5" = 1 ] && args+=(-A update="Update")
              notify-send "\${args[@]}" "$2" "$3" | { read -r nid && printf '%s' "$nid" > "$d/shell-update.notify-id"; cat; }`,
