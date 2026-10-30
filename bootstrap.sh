@@ -89,6 +89,8 @@ Options
       --with-own-apps  Your own apps (reel, zash, zeit, zett, dotos, sinew, kalends, arcade and more, the Zen browser) from their
                      GitHub repos (public, no login). On by default.
       --no-own-apps    Skip them.
+      --user NAME      Started as root (archinstall's chroot): install for this user.
+                     Without it: the only user there is, or it asks.
       --with-tela    Also install Tela, the browser. On by default for the
                      full and rog profiles; this forces it on for any.
       --no-tela      Never install Tela, whatever the profile.
@@ -114,6 +116,9 @@ Re-running is safe: each step is skipped if it is already done.
 EOF
 }
 
+# kept for a re-run as your user (started as root, e.g. in archinstall's chroot)
+ORIG_ARGS=("$@")
+
 while [ $# -gt 0 ]; do
     case "$1" in
         --repo)       REPO_URL="${2:?--repo needs a value}"; shift 2 ;;
@@ -124,6 +129,7 @@ while [ $# -gt 0 ]; do
         --no-hypr)    DO_HYPR=0; shift ;;
         --with-own-apps) OWN=1; shift ;;
         --no-own-apps) OWN=0; shift ;;
+        --user) shift 2 ;;   # root only: whom to install for (see the checks)
         --with-tela)  TELA=1; shift ;;
         --no-tela)    TELA=0; shift ;;
         --with-quarry) QUARRY=1; shift ;;
@@ -153,10 +159,46 @@ step "Checks"
        The package steps are pacman-specific. On another distro, install
        Hyprland and quickshell yourself and then run ./install.sh."
 
-[ "$(id -u)" -ne 0 ] || die "do not run this as root.
-       It installs into your home directory, and a root-owned ~/.config is a
-       long afternoon. Run it as your normal user; it will ask for sudo when
-       it needs it."
+# Root (archinstall's chroot, or su): it installs into a home directory, so it runs again as
+# your user (the only one in /home, or --user NAME, or asked), who needs sudo for the packages.
+if [ "$(id -u)" -eq 0 ]; then
+    users=$(awk -F: '$3 >= 1000 && $3 < 60000 && $7 !~ /nologin|false/ {print $1}' /etc/passwd)
+    target="${QS_USER:-}"
+    for a in "${ORIG_ARGS[@]}"; do [ "${prev:-}" = "--user" ] && target="$a"; prev="$a"; done
+    [ -n "$target" ] || [ "$(printf '%s\n' "$users" | grep -c .)" != 1 ] || target="$users"
+    if [ -z "$target" ]; then
+        [ -n "$users" ] || die "running as root and there is no user yet.
+       Make one first:  useradd -m -G wheel -s /bin/bash NAME && passwd NAME
+       allow sudo:      EDITOR=nano visudo   (uncomment %wheel ALL=(ALL:ALL) ALL)
+       then run this again."
+        printf 'Running as root. Install for which user? (%s) ' "$(echo $users)" >/dev/tty
+        read -r target </dev/tty
+    fi
+    id "$target" >/dev/null 2>&1 || die "no user \"$target\""
+    id -nG "$target" | grep -qw wheel || warn "$target is not in the wheel group: sudo will refuse (usermod -aG wheel $target, and the %wheel line in visudo)"
+    home=$(getent passwd "$target" | cut -d: -f6)
+    # this script as a file the user can read (piped from curl, it has none)
+    self="${BASH_SOURCE[0]:-}"
+    if [ ! -f "$self" ]; then
+        self="$home/bootstrap.sh"
+        curl -fsSL "${QS_BOOTSTRAP_URL:-https://raw.githubusercontent.com/SettDEF/ii-dots/master/bootstrap.sh}" -o "$self" \
+            || die "could not fetch bootstrap.sh for $target"
+    else
+        cp -f "$self" "$home/bootstrap.sh"; self="$home/bootstrap.sh"
+    fi
+    chown "$target": "$self" 2>/dev/null || warn "could not hand $self to $target"
+    # outside a running system (a chroot) user services and session settings only warn: run it
+    # once more after the first boot, which then does just those
+    systemd-detect-virt --chroot >/dev/null 2>&1 && warn "in a chroot: run bash ~/bootstrap.sh once more after the first boot"
+    ok "continuing as $target"
+    args=(); skip=0
+    for a in "${ORIG_ARGS[@]}"; do
+        if [ $skip = 1 ]; then skip=0; continue; fi
+        [ "$a" = "--user" ] && { skip=1; continue; }
+        args+=("$(printf '%q' "$a")")
+    done
+    exec su - "$target" -c "bash $(printf '%q' "$self") ${args[*]}"
+fi
 
 command -v sudo >/dev/null 2>&1 || die "sudo is not installed.
        As root: pacman -S sudo, then add your user to the wheel group and
