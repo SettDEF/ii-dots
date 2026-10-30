@@ -79,10 +79,13 @@ Scope { // Scope
 
             property bool reveal: root.pinned || (Config.options?.dock.hoverToReveal && dockMouseArea.containsMouse) || DockWidgets.anyRequestShow || GlobalStates.dockEditMode || (!ToplevelManager.activeToplevel?.activated) || dockRoot.emptyHere || GlobalStates.dockOpen
 
+            // Without a GPU that draws see-through windows (Appearance.noAlpha) the full-width window
+            // was a black strip around the dock: then only as wide as the dock, and while it is hidden
+            // only its hover strip.
             anchors {
                 bottom: true
-                left: true
-                right: true
+                left: !Appearance.noAlpha
+                right: !Appearance.noAlpha
             }
 
             exclusiveZone: root.pinned ? implicitHeight - (Appearance.sizes.hyprlandGapsOut) - (Appearance.sizes.elevationMargin - Appearance.sizes.hyprlandGapsOut) : 0
@@ -92,8 +95,10 @@ Scope { // Scope
             FrameProbe { name: "dock" }
             color: "transparent"
 
-            implicitHeight: (Config.options?.dock.height ?? 70) + Appearance.sizes.elevationMargin
-                + Appearance.sizes.hyprlandGapsOut + dockRoot.floatGap
+            implicitHeight: (Appearance.noAlpha && !dockRoot.reveal)
+                ? (Config.options?.dock.hoverToReveal ? Config.options.dock.hoverRegionHeight : 1)
+                : (Config.options?.dock.height ?? 70) + Appearance.sizes.elevationMargin
+                    + Appearance.sizes.hyprlandGapsOut + dockRoot.floatGap
 
             mask: Region {
                 item: dockMouseArea

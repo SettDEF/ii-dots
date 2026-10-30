@@ -94,8 +94,13 @@ Scope {
                 // Fixed height, never resized (resizing made menus jump while opening).
                 // Tall enough for long menus like the workspace icon list; the area
                 // below the bar is transparent and the mask passes its input through.
-                implicitHeight: Math.max(Appearance.sizes.barHeight + Appearance.rounding.screenRounding + barRoot.shelfHeight,
-                    Math.round(barRoot.screen.height * 0.6))
+                // Without a GPU that draws see-through windows (Appearance.noAlpha) that area was a
+                // black block over the top half of the screen: then only the bar (and the shelf while it is open),
+                // tall while a menu is open.
+                implicitHeight: (Appearance.noAlpha && !GlobalStates.barMenuOpen)
+                    ? Appearance.sizes.barHeight + (GlobalStates.shelfOpen ? barRoot.shelfHeight : 0)
+                    : Math.max(Appearance.sizes.barHeight + Appearance.rounding.screenRounding + barRoot.shelfHeight,
+                        Math.round(barRoot.screen.height * 0.6))
                 mask: Region {
                     item: hoverMaskRegion
                     // Whole window while a bar context menu is open (GlobalStates.barMenuOpen).
