@@ -362,6 +362,9 @@ Rectangle {
         { id: "scheme-neutral",      label: "Neutral",    color: "#9e8fb2" },
         { id: "scheme-rainbow",      label: "Rainbow",    color: "#5ab8f7" },
         { id: "scheme-tonal-spot",   label: "Tonal Spot", color: "#c4a4f7" },
+        // tinct's other two (Auto picks between them and the rest by the image's colourfulness)
+        { id: "scheme-vibrant",      label: "Vibrant",    color: "#f75ab0" },
+        { id: "scheme-vhs",          label: "VHS",        color: "#5af7d0" },
     ]
 
     // Color Theory — post-extraction palette rotation
