@@ -37,6 +37,15 @@ have qs && ok "quickshell installed" || fail "quickshell is not installed" "sudo
 grep -rqs 'qs -c\|quickshell' "$H" && ok "Hyprland starts the shell" || fail "the Hyprland config does not start the shell" "add exec-once: qs -c ii"
 [ -d "$HOME/.config/illogical-impulse" ] && ok "shell settings (illogical-impulse)" || note "no shell settings yet" "they come with the dotfiles"
 if pgrep -x qs >/dev/null; then ok "the shell is running"; elif [ -n "${WAYLAND_DISPLAY:-}" ]; then fail "the shell is not running" "qs -c ii   (its errors show in the terminal)"; fi
+# QML errors in the shell's log since its last reload (a broken widget, a missing module): the usual cause of a missing bar
+if pgrep -x qs >/dev/null; then
+    qerr=$(timeout 10 qs log -c ii -t 2000 2>/dev/null | sed -E 's/\x1b\[[0-9;]*m//g' \
+        | awk '/Reloading configuration/{b=""} {b=b $0 "\n"} END{printf "%s", b}' \
+        | grep -E 'ERROR|CRIT|ReferenceError|TypeError|is not a type|is not installed|module ".*" .*not|Failed to load|failed to load' \
+        | sed -E 's/^[^A-Z]*//' | cut -c1-150 | sort | uniq -c | sort -rn | head -5)
+    [ -z "$qerr" ] && ok "no errors in the shell's log" || fail "errors in the shell's log (the most frequent):" "$(sed 's/^ */     /' <<<"$qerr")
+     the whole log: qs log -c ii"
+fi
 
 echo "── zsh"
 sh=$(getent passwd "$USER" | cut -d: -f7)
@@ -49,6 +58,36 @@ if have zsh; then
     [ "$ms" -gt 1500 ] && note "zsh takes ${ms} ms to start" "zsh -ic 'zprof' after zmodload zsh/zprof in .zshrc shows what is slow"
 fi
 case ":$PATH:" in *":$HOME/.local/bin:"*) ok "~/.local/bin is on PATH" ;; *) fail "~/.local/bin is not on PATH" "your apps (zash, zeit …) are not found; open a new zsh" ;; esac
+
+echo "── Paths"
+# configs from the other laptop name /home/caesar; another user name here means they point nowhere
+if [ "$HOME" != /home/caesar ]; then
+    n=$(grep -rIl '/home/caesar' "$H" "$HOME/.config/zsh" "$HOME/.config/function" "$HOME/.scripts" "$HOME/.config/illogical-impulse" 2>/dev/null | wc -l)
+    [ "$n" -eq 0 ] && ok "no paths to /home/caesar" || fail "$n files point to /home/caesar, but you are $HOME" "sudo ln -s $HOME /home/caesar   (or: grep -rl /home/caesar ~/.config | xargs sed -i 's#/home/caesar#$HOME#g')"
+else ok "home is /home/caesar, as the configs expect"; fi
+
+echo "── Graphics"
+gpu=$(lspci 2>/dev/null | grep -iE 'vga|3d|display' | sed 's/^[^:]*: //' | head -2 | tr '\n' ';')
+[ -n "$gpu" ] && ok "graphics: ${gpu%;}"
+if have vulkaninfo; then
+    v=$(timeout 15 vulkaninfo --summary 2>/dev/null | grep -m1 deviceName | sed 's/.*= //')
+    case "$v" in ""|*llvmpipe*) note "no Vulkan on the graphics chip${v:+ ($v, software)}" "Intel up to Haswell (HD 4600) has partial Vulkan only: sudo pacman -S vulkan-intel; quickshell uses OpenGL, which is fine" ;;
+                 *) ok "Vulkan: $v" ;; esac
+fi
+if have eglinfo; then
+    gl=$(timeout 15 eglinfo -B 2>/dev/null | grep -m1 -i 'OpenGL.*renderer' | sed 's/.*: //')
+    case "$gl" in ""|*llvmpipe*|*softpipe*) fail "OpenGL runs in software${gl:+ ($gl)}: everything will be slow" "sudo pacman -S mesa; check that the i915 driver loaded: lsmod | grep i915" ;;
+                  *) ok "OpenGL: $gl" ;; esac
+else note "cannot check OpenGL (eglinfo missing)" "sudo pacman -S mesa-utils"; fi
+
+echo "── Portals and permissions"
+pgrep -f /usr/lib/xdg-desktop-portal-hyprland >/dev/null || ! [ -n "${WAYLAND_DISPLAY:-}" ] && ok "portal for Hyprland (screen share, file dialogs)" \
+    || fail "xdg-desktop-portal-hyprland is not running" "sudo pacman -S xdg-desktop-portal-hyprland xdg-desktop-portal-gtk; log in again"
+[ -x /usr/lib/xdg-desktop-portal-gtk ] && ok "GTK portal (file dialogs)" || note "no GTK portal: file open/save dialogs may not appear" "sudo pacman -S xdg-desktop-portal-gtk"
+systemctl is-active polkit >/dev/null 2>&1 && ok "polkit" || fail "polkit is not running: nothing can ask for your password" "sudo pacman -S polkit; sudo systemctl start polkit"
+# the ii shell is its own polkit agent; else polkit-gnome or hyprpolkitagent
+if pgrep -x qs >/dev/null || pgrep -f 'polkit-gnome-authentication-agent|hyprpolkitagent|polkit-kde' >/dev/null; then ok "a password prompt for admin tasks (polkit agent)"
+elif [ -n "${WAYLAND_DISPLAY:-}" ]; then fail "no polkit agent: admin tasks fail without asking" "the shell is it (qs -c ii); or: sudo pacman -S polkit-gnome"; fi
 
 echo "── Your apps"
 miss=""; for a in zash zeit zett reel dotos sinew kalends arcade prog loom tinct; do have "$a" || miss+="$a "; done
