@@ -11,3 +11,4 @@ PaletteSlider 1.0 PaletteSlider.qml
 AppGlassGroup 1.0 AppGlassGroup.qml
 ExactThemeSheet 1.0 ExactThemeSheet.qml
 ColourEditorSheet 1.0 ColourEditorSheet.qml
+RemapPage 1.0 RemapPage.qml

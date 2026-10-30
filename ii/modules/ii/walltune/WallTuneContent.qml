@@ -263,6 +263,7 @@ Rectangle {
     property bool appliesOpen:    false
     property bool extractOpen:   false
     property bool exactThemeOpen: false
+    property bool remapPageOpen: false
     property bool colourEditorOpen: false
     property bool mixOpen:       false
 
@@ -2644,6 +2645,30 @@ Rectangle {
                 id: remapBody
                 x: root.foldPad; width: parent.width - 2 * root.foldPad; spacing: 6
 
+                // every palette in a page to search and filter (the chips below stay)
+                RippleButton {
+                    Layout.fillWidth: true
+                    implicitHeight: 32
+                    buttonRadius: Appearance.rounding.small
+                    colBackground: Appearance.colors.colLayer2
+                    colBackgroundHover: Appearance.colors.colLayer2Hover
+                    onClicked: root.remapPageOpen = true
+                    contentItem: RowLayout {
+                        anchors.fill: parent
+                        anchors.leftMargin: 10
+                        anchors.rightMargin: 8
+                        spacing: 8
+                        MaterialSymbol { text: "search"; iconSize: Appearance.font.pixelSize.normal; color: Appearance.colors.colOnLayer2 }
+                        StyledText {
+                            Layout.fillWidth: true
+                            text: qsTr("All palettes: search, groups, colours")
+                            font.pixelSize: Appearance.font.pixelSize.smaller
+                            color: Appearance.colors.colOnLayer2
+                        }
+                        MaterialSymbol { text: "chevron_right"; iconSize: Appearance.font.pixelSize.normal; color: Appearance.colors.colSubtext }
+                    }
+                }
+
                 // Palette chips
                 Flow { Layout.fillWidth: true; spacing: 4
                     Repeater {
@@ -2975,6 +3000,13 @@ Rectangle {
         }
     }
 
+    RemapPage {
+        host: root
+        headerItem: headerBar
+        look: root
+        open: root.remapPageOpen
+        onClosed: root.remapPageOpen = false
+    }
     ExactThemeSheet {
         host: root
         headerItem: headerBar
