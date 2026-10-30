@@ -301,7 +301,11 @@ Item { // Notification item area
                                     (contentItem.implicitWidth + leftPadding + rightPadding)
 
                                 onClicked: {
-                                    Quickshell.clipboardText = notificationObject.body
+                                    // a verification code alone when there is one, else the whole text; through wl-copy,
+                                    // because the clipboard needs keyboard focus a popup does not have
+                                    const body = (notificationObject.body ?? "").replace(/<[^>]*>/g, "");
+                                    const code = body.match(/\b(\d{6,8}|[A-Z0-9]{4}-[A-Z0-9]{4})\b/);
+                                    Quickshell.execDetached(["wl-copy", "--", code ? code[1] : body]);
                                     copyIcon.text = "inventory"
                                     copyIconTimer.restart()
                                 }
