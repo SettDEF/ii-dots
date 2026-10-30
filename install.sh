@@ -400,14 +400,21 @@ install_companion() {
 # dotos (tasks), sinew (workouts), kalends (calendar), arcade (games, chess), prog (progress cards): they
 # are cloned from GitHub (public, no login), built here (Rust; slow on an old laptop) and
 # installed by each app's own install.sh. Off unless --with-own-apps.
-OWN_APPS="${QS_OWN_APPS:-reel zash zash-prompt zeit zett dotos sinew kalends arcade prog}"
+OWN_APPS="${QS_OWN_APPS:-reel zash zash-prompt zeit zett dotos sinew kalends arcade prog loom}"
 OWN_SRC="${QS_OWN_SRC:-$HOME/.local/src}"
 
 # A long silent build looks like a hang: a line a minute while one runs, its output in a log.
 own_build() {   # own_build NAME DIR JOBS  -> the app's install.sh, with a heartbeat
     local name="$1" at="$2" jobs="$3" log="$OWN_SRC/.logs/$1.log" start=$SECONDS
     mkdir -p "$OWN_SRC/.logs"
-    ( cd "$at" && CARGO_BUILD_JOBS="${jobs:-}" JOBS="$jobs" bash ./install.sh ) > "$log" 2>&1 &
+    if [ ! -f "$at/install.sh" ] && [ -f "$at/scripts/install.sh" ]; then
+        # loom: built here, installed by scripts/install.sh, plus its login-screen entry
+        ( cd "$at" && export CARGO_TARGET_DIR="$at/target" && cargo build --release -j "${jobs:-2}" \
+            && LOOM_BIN="$at/target/release" sh scripts/install.sh \
+            && { [ ! -f dist/loom.desktop ] || sudo install -m 644 dist/loom.desktop /usr/share/wayland-sessions/loom.desktop; } ) > "$log" 2>&1 &
+    else
+        ( cd "$at" && CARGO_BUILD_JOBS="${jobs:-}" JOBS="$jobs" bash ./install.sh ) > "$log" 2>&1 &
+    fi
     local pid=$!
     local last=$SECONDS
     while kill -0 "$pid" 2>/dev/null; do
@@ -441,6 +448,7 @@ install_own_apps() {
     fi
 
     run sudo pacman -S --needed --noconfirm rust cmake clang pkgconf mpv qt6-base qt6-declarative qt6-svg qt6-shadertools \
+        libinput seatd mesa libxkbcommon wayland xorg-xwayland libdisplay-info pixman \
         || warn "some build packages were not found"
     # Tela, the Zen browser build: a Firefox build takes hours, so the package itself comes
     # from its release (generic x86-64; runs on old laptops too)
@@ -470,7 +478,7 @@ install_own_apps() {
         fi
         info "[$n/$total] building $app"
         # the installer at the top, or in a folder named after the app (dotos/install.sh)
-        local at="$dir"; [ -f "$dir/install.sh" ] || at="$dir/$app"
+        local at="$dir"; [ -f "$dir/install.sh" ] || [ -f "$dir/scripts/install.sh" ] || at="$dir/$app"
         if [ "$DRY" = 1 ]; then printf '   would: (cd %s && ./install.sh)\n' "$at"; continue; fi
         if own_build "$app" "$at" "$jobs"; then
             done_list+=("$app"); info "$app installed"
