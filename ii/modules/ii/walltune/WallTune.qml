@@ -21,6 +21,9 @@ Scope {
         sourceComponent: PanelWindow {
             id: win
             visible: GlobalStates.wallTuneOpen || panel.openT > 0
+            // kept built while hidden, so its screen must follow the screens there are: the one it was made
+            // on can go (a monitor unplugged, a restart of the compositor) and it then never showed again
+            screen: Quickshell.screens.find(s => s.name === Hyprland.focusedMonitor?.name) ?? Quickshell.screens[0]
 
             // Esc closes. This used to come free with the focus grab; without it
             // the panel would only be closable from its own buttons.
