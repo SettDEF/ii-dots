@@ -100,10 +100,9 @@ Options
                         On by default for the 'full' and 'rog' profiles. It is
                         the slow part: qt6-webengine plus a Rust build.
       --no-tela         Do not install Tela even if the profile would.
-      --with-quarry     Also install quarry, the wallpaper picker's search
-                        backend (github.com/SettDEF/quarry). Off by default
-                        until it is published; without it the picker scans
-                        ~/Pictures/Wallpapers instead.
+      --with-quarry     Install quarry, the wallpaper picker's search backend
+                        (github.com/SettDEF/quarry). On by default; without it
+                        the picker scans ~/Pictures/Wallpapers instead.
       --no-quarry       Never install quarry.
       --no-deps         Skip package installation entirely.
   -y, --yes             Do not ask before installing packages.
