@@ -161,6 +161,8 @@ Scope {
             // ever fires from a real SUPER+<key> bind, so there is no
             // self-fire from the Super press to filter out.
             GlobalStates.superReleaseMightTrigger = false;
+            // releaseToggle() reads this, not the flag above
+            GlobalStates.superInterruptTime = Date.now();
         }
     }
     GlobalShortcut {
@@ -173,6 +175,7 @@ Scope {
             if (Date.now() - GlobalStates.superPressTime > 80) {
                 GlobalStates.superReleaseMightTrigger = false;
             }
+            GlobalStates.superInterruptTime = Date.now();
         }
     }
 

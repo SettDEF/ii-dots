@@ -59,6 +59,25 @@ Scope {
         }
     }
 
+    // Super+N like Windows: the Nth taskbar app (focus, cycle its windows, or launch)
+    IpcHandler {
+        target: "taskbar"
+
+        function activate(n: int): string {
+            const apps = TaskbarApps.apps.filter(app => app.appId !== "SEPARATOR");
+            const app = apps[n - 1];
+            if (!app) return "none";
+            const wins = app.toplevels;
+            if (wins.length === 0) {
+                AppLaunch.launch(DesktopEntries.heuristicLookup(app.appId));
+                return "ok";
+            }
+            const cur = wins.findIndex(t => t.activated);
+            wins[(cur + 1) % wins.length].activate();
+            return "ok";
+        }
+    }
+
     GlobalShortcut {
         name: "barToggle"
         description: "Toggles bar on press"

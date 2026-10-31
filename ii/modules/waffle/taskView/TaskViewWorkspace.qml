@@ -86,22 +86,31 @@ WMouseAreaButton {
                 sourceComponent: StyledImage {
                     cache: true
                     sourceSize: Qt.size(root.screenAspectRatio * root.wallpaperHeight, root.wallpaperHeight)
-                    source: Config.options.background.wallpaperPath
+                    // a video wallpaper can't load as an image: use its thumbnail
+                    source: /\.(mp4|webm|mkv|avi|mov|m4v)$/i.test(Config.options.background.wallpaperPath) ? Config.options.background.thumbnailPath : Config.options.background.wallpaperPath
                     fillMode: Image.PreserveAspectCrop
 
                     Repeater {
                         model: ScriptModel {
                             values: HyprlandData.toplevelsForWorkspace(root.workspace)
                         }
-                        delegate: ScreencopyView {
+                        delegate: Rectangle {
                             required property var modelData
                             readonly property var hyprlandWindowData: HyprlandData.windowByAddress[`0x${modelData.HyprlandToplevel?.address}`]
-                            captureSource: modelData
-                            live: true
-                            width: hyprlandWindowData?.size[0] * root.windowScale
-                            height: hyprlandWindowData?.size[1] * root.windowScale
-                            x: hyprlandWindowData?.at[0] * root.windowScale
-                            y: hyprlandWindowData?.at[1] * root.windowScale
+                            readonly property real s: wsBg.height / Math.max(1, root.screenHeight)
+                            // a box first, so the window shows even when the capture is blank
+                            color: Looks.colors.bg2
+                            border.color: Looks.colors.bg2Border
+                            radius: 4
+                            width: (hyprlandWindowData?.size[0] ?? 0) * s
+                            height: (hyprlandWindowData?.size[1] ?? 0) * s
+                            x: (hyprlandWindowData?.at[0] ?? 0) * s
+                            y: (hyprlandWindowData?.at[1] ?? 0) * s
+                            ScreencopyView {
+                                anchors.fill: parent
+                                captureSource: parent.modelData
+                                live: true
+                            }
                         }
                     }
                 }
