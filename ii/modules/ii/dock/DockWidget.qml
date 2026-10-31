@@ -31,7 +31,10 @@ Item {
     z: chrome.item?.dragging ? 10 : 0
 
     Layout.fillHeight: root.inline
-    Layout.topMargin: root.entry?.topMargin ?? 0
+    // a tile is centred in the dock you see, not in the row: the row spans the window, which is
+    // inset elevationMargin on top and hyprlandGapsOut at the bottom, so without this every tile
+    // sat (10 - 5) / 2 px above the pin, the separators and the apps button (they all have it)
+    Layout.topMargin: root.entry?.topMargin ?? (root.inline ? 0 : Appearance.sizes.elevationMargin - Appearance.sizes.hyprlandGapsOut)
     Layout.bottomMargin: root.entry?.bottomMargin ?? 0
 
     // From the loaded item, so a widget that collapses to nothing (media with

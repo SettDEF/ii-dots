@@ -211,7 +211,8 @@ RowLayout {
         }
 
         // the mode's keys, faint at the field's end: fainter while typing, gone when the text reaches them
-        TextMetrics { id: typedWidth; font: searchInput.font; text: searchInput.text }
+        // what the field shows: the typed text, else the placeholder (the hint lay over it)
+        TextMetrics { id: typedWidth; font: searchInput.font; text: searchInput.text.length > 0 ? searchInput.text : searchInput.placeholderText }
         Timer { id: typing; interval: 700 }
         Connections {
             target: searchInput
@@ -223,7 +224,7 @@ RowLayout {
             text: modes.hintText
             font.pixelSize: Appearance.font.pixelSize.smaller
             color: Appearance.colors.colSubtext
-            readonly property bool room: typedWidth.advanceWidth + implicitWidth + 40 < searchInput.width
+            readonly property bool room: searchInput.leftPadding + typedWidth.advanceWidth + implicitWidth + 40 < searchInput.width
             opacity: modes.picking || !room || text === "" ? 0 : (typing.running ? 0.3 : 0.65)
             Behavior on opacity { NumberAnimation { duration: 200 } }
         }
