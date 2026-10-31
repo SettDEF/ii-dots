@@ -118,6 +118,9 @@ DockButton {
         active: !isSeparator
         sourceComponent: Item {
             anchors.centerIn: parent
+            // the same offset as the separator variant above: centred in the dock you see,
+            // not in the row (the icons sat 2.5 px above the tiles and separators)
+            anchors.verticalCenterOffset: (Appearance.sizes.elevationMargin - Appearance.sizes.hyprlandGapsOut) / 2
 
             Loader {
                 id: iconImageLoader
