@@ -21,6 +21,7 @@ import qs.modules.ii.cheatsheet
 import qs.modules.ii.onScreenKeyboard
 import qs.modules.ii.overlay
 import qs.modules.ii.wallpaperSelector
+import qs.modules.ii.skwdWall
 
 Scope {
     PanelLoader { component: WaffleActionCenter {} }
@@ -41,4 +42,6 @@ Scope {
     PanelLoader { component: OnScreenKeyboard {} }
     PanelLoader { component: Overlay {} }
     PanelLoader { component: WallpaperSelector {} }
+    PanelLoader { component: SkwdWall {} }
+    WallpaperShortcuts {}
 }
