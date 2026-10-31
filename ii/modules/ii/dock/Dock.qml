@@ -160,6 +160,10 @@ Scope { // Scope
                             anchors.horizontalCenter: parent.horizontalCenter
                             spacing: Config.options?.dock.spacing ?? 6
                             property real padding: 5
+                            // the two ends (pin, apps grid) are one width, so what is between them
+                            // sits at the dock's centre: the pin was 35 px, the grid button the
+                            // dock's height, and the apps sat off to one side
+                            readonly property real endWidth: Math.max(pinGroup.implicitWidth, appsButton.implicitWidth)
 
                             // Separators frame content, so they follow whether any
                             // widget actually occupies space (apps with no windows
@@ -174,9 +178,16 @@ Scope { // Scope
                                 dockRow.hasWidgets = any;
                             }
 
-                            VerticalButtonGroup {
-                                Layout.topMargin: Appearance.sizes.hyprlandGapsOut // why does this work
+                            Item {
                                 visible: Config.options.dock.showPinButton
+                                Layout.fillHeight: true
+                                Layout.preferredWidth: dockRow.endWidth
+                            VerticalButtonGroup {
+                                id: pinGroup
+                                anchors.horizontalCenter: parent.horizontalCenter
+                                // as the row's topMargin placed it (half of it, centred)
+                                anchors.verticalCenter: parent.verticalCenter
+                                anchors.verticalCenterOffset: Appearance.sizes.hyprlandGapsOut / 2
                                 GroupButton {
                                     // Pin button
                                     baseWidth: 35
@@ -193,6 +204,7 @@ Scope { // Scope
                                         color: root.pinned ? Appearance.m3colors.m3onPrimary : Appearance.colors.colOnLayer0
                                     }
                                 }
+                            }
                             }
                             DockSeparator { visible: Config.options.dock.showPinButton && (dockRow.hasWidgets || Config.options.dock.showAppsButton) }
                             // One repeater for the whole row. Apps and media are
@@ -216,8 +228,10 @@ Scope { // Scope
 
                             DockSeparator { visible: Config.options.dock.showAppsButton && dockRow.hasWidgets }
                             DockButton {
+                                id: appsButton
                                 visible: Config.options.dock.showAppsButton
                                 Layout.fillHeight: true
+                                Layout.preferredWidth: dockRow.endWidth
                                 onClicked: GlobalStates.overviewOpen = !GlobalStates.overviewOpen
                                 topInset: Appearance.sizes.hyprlandGapsOut + dockRow.padding
                                 bottomInset: Appearance.sizes.hyprlandGapsOut + dockRow.padding
