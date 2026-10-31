@@ -104,6 +104,7 @@ Item {
         anchors.fill: parent
         acceptedButtons: Qt.NoButton
         hoverEnabled: false
+        stepped: true
         onScrollUp: root.decreasePage();
         onScrollDown: root.increasePage();
     }
