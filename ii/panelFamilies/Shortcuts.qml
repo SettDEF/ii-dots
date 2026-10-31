@@ -97,50 +97,6 @@ Scope {
         function close(): void  { GlobalStates.rogPowerOpen = false }
     }
 
-    // ── WallpaperSelector ───────────────────────────────────────────────
-    GlobalShortcut {
-        name: "wallpaperSelectorToggle"
-        description: "Toggle wallpaper selector"
-        onPressed: {
-            if (Config.options.wallpaperSelector.useSystemFileDialog) {
-                Wallpapers.openFallbackPicker(Appearance.m3colors.darkmode);
-                return;
-            }
-            GlobalStates.wallpaperSelectorOpen = !GlobalStates.wallpaperSelectorOpen
-        }
-    }
-    GlobalShortcut {
-        name: "wallpaperSelectorRandom"
-        description: "Select random wallpaper in current folder"
-        onPressed: Wallpapers.randomFromCurrentFolder()
-    }
-    IpcHandler {
-        target: "wallpaperSelector"
-        function toggle(): void {
-            if (Config.options.wallpaperSelector.useSystemFileDialog) {
-                Wallpapers.openFallbackPicker(Appearance.m3colors.darkmode);
-                return;
-            }
-            GlobalStates.wallpaperSelectorOpen = !GlobalStates.wallpaperSelectorOpen
-        }
-        function random(): void {
-            Wallpapers.randomFromCurrentFolder();
-        }
-    }
-
-    // ── skwd-wall hub ───────────────────────────────────────────────────
-    GlobalShortcut {
-        name: "skwdWallToggle"
-        description: "Toggle skwd-wall (extended wallpaper picker)"
-        onPressed: GlobalStates.skwdWallOpen = !GlobalStates.skwdWallOpen
-    }
-    IpcHandler {
-        target: "skwdWall"
-        function toggle(): void { GlobalStates.skwdWallOpen = !GlobalStates.skwdWallOpen }
-        function open(): void   { GlobalStates.skwdWallOpen = true }
-        function close(): void  { GlobalStates.skwdWallOpen = false }
-    }
-
     // ── ScreenDraw ──────────────────────────────────────────────────────
     // Sidebar draw lives inside the left sidebar's Draw tab now — Super+Shift+D
     // opens the sidebar and switches to the Draw tab.

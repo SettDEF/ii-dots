@@ -66,6 +66,7 @@ Scope {
     // Always-loaded GlobalShortcuts for popup panels — registers with Hypr at
     // startup so the keybinds work even when the panels themselves are unloaded.
     Shortcuts {}
+    WallpaperShortcuts {}
     // Always-loaded diagnostic IPC (zero idle cost). See Diagnostics.qml.
     Diagnostics {}
 
