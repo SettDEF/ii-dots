@@ -163,7 +163,9 @@ Scope { // Scope
                             // the two ends (pin, apps grid) are one width, so what is between them
                             // sits at the dock's centre: the pin was 35 px, the grid button the
                             // dock's height, and the apps sat off to one side
-                            readonly property real endWidth: Math.max(pinGroup.implicitWidth, appsButton.implicitWidth)
+                            // (one fixed width: the larger of the two left the pin and the grid
+                            // floating 30 px from their separators, twice the gap on the apps' side)
+                            readonly property real endWidth: 32
 
                             // Separators frame content, so they follow whether any
                             // widget actually occupies space (apps with no windows
@@ -238,7 +240,8 @@ Scope { // Scope
                                 contentItem: MaterialSymbol {
                                     anchors.fill: parent
                                     horizontalAlignment: Text.AlignHCenter
-                                    font.pixelSize: parent.width / 2
+                                    // its size as before, when the button was the dock's height wide
+                                    font.pixelSize: 25
                                     text: "apps"
                                     color: Appearance.colors.colOnLayer0
                                 }
